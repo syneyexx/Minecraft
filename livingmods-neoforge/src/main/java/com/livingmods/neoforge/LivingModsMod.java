@@ -20,9 +20,9 @@ public final class LivingModsMod {
 
     public LivingModsMod(IEventBus modBus) {
         LivingModsEntities.register(modBus);
-        modBus.addListener(LivingModsCommands::register);
         modBus.addListener((EntityAttributeCreationEvent event) ->
                 event.put(LivingModsEntities.CITIZEN.get(), CitizenEntity.createAttributes().build()));
+        NeoForge.EVENT_BUS.addListener(LivingModsCommands::register);
         NeoForge.EVENT_BUS.register(ChunkMaterializationHandler.class);
         NeoForge.EVENT_BUS.register(WorldSessionLifecycle.class);
         NeoForge.EVENT_BUS.register(LivingModsClientEvents.class);

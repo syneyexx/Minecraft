@@ -32,6 +32,8 @@ public final class SidecarSimulationHost implements AutoCloseable {
     private final PersistenceCoordinator persistence;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final Thread simulationThread;
+    private final java.util.concurrent.ConcurrentHashMap<Long, Integer> regionSubscriptions =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public SidecarSimulationHost(UUID worldId, Path saveDir, int workers) throws IOException {
         this.worldId = worldId;
@@ -41,13 +43,20 @@ public final class SidecarSimulationHost implements AutoCloseable {
 
         CanonicalWorldState loaded = persistence.loadOrNull();
         long seed = readSeed(saveDir, worldId);
-        this.worldPlan = new WorldPlanner(config).plan(seed);
+        // Prefer cached worldplan metadata / deterministic regenerate. Minecraft writes plan under world dir.
+        Path worldRoot = saveDir.getParent() != null && saveDir.getFileName().toString().equals("canonical")
+                ? saveDir.getParent().getParent()
+                : saveDir;
+        this.worldPlan = com.livingmods.worldgen.persist.WorldPlanStore.loadOrGenerate(worldRoot, config, seed);
         if (loaded != null && loaded.planContentHash() == worldPlan.contentHash()) {
             this.state = loaded;
             LOG.info("Loaded canonical state revision=" + state.saveRevision());
         } else {
             this.state = InitialStateFactory.fromWorldPlan(worldPlan);
             LOG.info("Bootstrapped canonical state from world plan");
+            if (persistence.beginSaveBarrier()) {
+                persistence.completeSaveBarrier(state);
+            }
         }
 
         this.engine = new SimulationEngine(state, workers);
@@ -120,6 +129,21 @@ public final class SidecarSimulationHost implements AutoCloseable {
         } else if (minecraftGameTime > state.time().absoluteTicks()) {
             engine.advanceTo(SimulationTime.ofTicks(minecraftGameTime));
         }
+    }
+
+    /** detailLevel &lt; 0 unsubscribes. */
+    public void setRegionSubscription(int regionX, int regionZ, int detailLevel) {
+        long key = (((long) regionX) << 32) ^ (regionZ & 0xffffffffL);
+        if (detailLevel < 0) {
+            regionSubscriptions.remove(key);
+        } else {
+            regionSubscriptions.put(key, detailLevel);
+        }
+    }
+
+    public boolean isRegionSubscribed(int regionX, int regionZ) {
+        long key = (((long) regionX) << 32) ^ (regionZ & 0xffffffffL);
+        return regionSubscriptions.containsKey(key);
     }
 
     private static long readSeed(Path saveDir, UUID worldId) throws IOException {

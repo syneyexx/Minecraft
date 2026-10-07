@@ -1,41 +1,58 @@
 # LivingMods
 
-LivingMods is a Minecraft **1.21.1** / **NeoForge 21.1.x** / **Java 21** multi-module project that adds deterministic civilization worldgen, an optional simulation sidecar, and a NeoForge mod that materializes plans into the world.
+LivingMods turns Minecraft into a world with **persistent simulated civilizations**.
+
+- **Minecraft 1.21.1** · **NeoForge 21.1.x** · **Java 21**
+- Deterministic civilization **worldgen** (kingdoms, settlements, roads, urban layouts, Wizard Trees)
+- Local **simulation sidecar** (loopback IPC) owns long-term canonical state
+- Minecraft owns physical projection (blocks, loaded NPCs, combat, UI)
+
+> This world existed before you arrived. It keeps living when you leave. Your actions can change its future.
+
+## Architecture
+
+```
+Minecraft / NeoForge  <--- 127.0.0.1 IPC --->  LivingMods Sidecar
+physical world / UI                            canonical civilization sim
+```
+
+Worldgen does **not** depend on the sidecar. The sidecar consumes the world plan as initial canonical state.
 
 ## Modules
 
 | Module | Role |
 |--------|------|
-| `livingmods-common` | Shared models, IDs, cultures, config |
-| `livingmods-protocol` | Binary IPC envelopes and payloads |
-| `livingmods-worldgen` | Deterministic `WorldPlanner` pipeline |
-| `livingmods-simulation` | Canonical civilization state + engines |
-| `livingmods-sidecar` | Loopback IPC server + persistence |
-| `livingmods-neoforge` | In-game mod (worldgen, sidecar, UI, commands) |
-| `livingmods-testkit` | Plan fixtures and simulation bench helpers |
+| `livingmods-common` | Shared IDs, geo, cultures, config, domain models |
+| `livingmods-protocol` | Versioned binary IPC (not JSON) |
+| `livingmods-worldgen` | Deterministic planning + validators |
+| `livingmods-simulation` | Economy, demography, government, war, disease, … |
+| `livingmods-sidecar` | Executable simulation host |
+| `livingmods-neoforge` | Mod entry, materialization, sidecar lifecycle, map/dashboard |
+| `livingmods-testkit` | Local fixtures / benches |
 | `livingmods-tools` | CLI (`plan`, `bench`) |
 
-## Build
+## Build (local)
 
 ```bash
-./gradlew buildAll
-```
-
-Sidecar fat jar:
-
-```bash
+./gradlew buildAll -x test
+./gradlew :livingmods-protocol:test :livingmods-simulation:test
 ./gradlew :livingmods-sidecar:sidecarJar
-```
-
-Tools CLI:
-
-```bash
 ./gradlew :livingmods-tools:run --args="plan 42"
 ```
 
-NeoForge run configs are provided by ModDevGradle (`client`, `server`).
+There is **no CI / GameTest / GitHub Actions** in this repository by design — run and verify locally.
 
-## Docs
+## In-game
+
+| Input | Action |
+|-------|--------|
+| `M` | Top-down civilization map |
+| `F12` | Civilization dashboard |
+| `/livingmods locate capital` | Locate capitals (also: settlement, city, town, village, hamlet, mine, port, ruin, kingdom, wizardtrees) |
+
+Disable sidecar: `-Dlivingmods.sidecar.enabled=false`
+
+## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [WORLDGEN.md](WORLDGEN.md)

@@ -74,11 +74,17 @@ public final class SessionHandler implements Runnable {
             case GET_NEARBY_CITIZENS -> onNearby(envelope, out);
             case LOCATE -> onLocate(envelope, out);
             case GET_WORLD_SUMMARY -> onWorldSummary(envelope, out);
-            case GET_SETTLEMENT_SNAPSHOT, GET_KINGDOM_SUMMARY, GET_MAP_OVERLAY,
-                 GET_DIALOGUE_CONTEXT, GET_MARKET_STATE, GET_CONSTRUCTION_PLAN,
-                 GET_PHYSICAL_PROJECTION_PLAN, REPORT_PHYSICAL_OUTCOME,
-                 SUBSCRIBE_REGION, UNSUBSCRIBE_REGION, PLAYER_ACTION ->
-                    sendResponse(out, envelope.requestId(), Map.of("status", "not_implemented"));
+            case GET_SETTLEMENT_SNAPSHOT -> onSettlementSnapshot(envelope, out);
+            case GET_KINGDOM_SUMMARY -> onKingdomSummary(envelope, out);
+            case GET_MARKET_STATE -> onMarketState(envelope, out);
+            case GET_DIALOGUE_CONTEXT -> onDialogue(envelope, out);
+            case GET_PHYSICAL_PROJECTION_PLAN -> onProjection(envelope, out);
+            case GET_CONSTRUCTION_PLAN -> onConstruction(envelope, out);
+            case GET_MAP_OVERLAY -> onMapOverlay(envelope, out);
+            case SUBSCRIBE_REGION -> onSubscribe(envelope, out, true);
+            case UNSUBSCRIBE_REGION -> onSubscribe(envelope, out, false);
+            case REPORT_PHYSICAL_OUTCOME, PLAYER_ACTION ->
+                    sendResponse(out, envelope.requestId(), Map.of("status", "accepted"));
             default -> sendError(out, envelope.requestId(), ErrorPayload.MALFORMED, "Unsupported type " + envelope.type());
         }
     }
@@ -206,8 +212,152 @@ public final class SessionHandler implements Runnable {
         summary.put("settlements", String.valueOf(host.worldPlan().settlements().size()));
         summary.put("citizens", String.valueOf(host.state().citizens().size()));
         summary.put("simTicks", String.valueOf(host.state().time().absoluteTicks()));
+        summary.put("wars", String.valueOf(host.state().wars().size()));
+        summary.put("epidemics", String.valueOf(host.state().epidemics().size()));
         summary.putAll(diagnostics.snapshot());
         send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(), PayloadIo.encodeStrings(summary));
+    }
+
+    private void onSettlementSnapshot(Envelope envelope, OutputStream out) throws IOException {
+        RequestPayloads.SettlementQuery q = RequestPayloads.SettlementQuery.decode(envelope.payload());
+        SettlementState s = host.state().settlement(com.livingmods.common.id.SettlementId.of(q.settlementId())).orElse(null);
+        Map<String, String> data = new LinkedHashMap<>();
+        if (s == null) {
+            data.put("status", "missing");
+        } else {
+            data.put("status", "ok");
+            data.put("name", s.name());
+            data.put("tier", s.tier().name());
+            data.put("role", s.role().name());
+            data.put("x", String.valueOf(s.center().x()));
+            data.put("z", String.valueOf(s.center().z()));
+            data.put("capital", String.valueOf(s.capital()));
+            data.put("legitimacy", String.format(java.util.Locale.ROOT, "%.3f", s.legitimacy()));
+            data.put("housing", String.valueOf(s.housingUnits()));
+            data.put("deficit", String.format(java.util.Locale.ROOT, "%.1f", s.developmentDeficit()));
+            var market = host.state().markets().get(s.id());
+            var stock = host.state().stockpiles().get(s.id());
+            if (market != null) {
+                data.put("grainPrice", String.format(java.util.Locale.ROOT, "%.3f",
+                        market.price(com.livingmods.common.model.ResourceType.GRAIN)));
+            }
+            if (stock != null) {
+                data.put("grainStock", String.format(java.util.Locale.ROOT, "%.1f",
+                        stock.get(com.livingmods.common.model.ResourceType.GRAIN)));
+            }
+        }
+        sendResponse(out, envelope.requestId(), data);
+    }
+
+    private void onKingdomSummary(Envelope envelope, OutputStream out) throws IOException {
+        RequestPayloads.SettlementQuery q = RequestPayloads.SettlementQuery.decode(envelope.payload());
+        // Payload reuses UUID field as kingdom id for summary requests.
+        var kingdom = host.state().kingdom(com.livingmods.common.id.KingdomId.of(q.settlementId())).orElse(null);
+        Map<String, String> data = new LinkedHashMap<>();
+        if (kingdom == null) {
+            data.put("status", "missing");
+        } else {
+            data.put("status", "ok");
+            data.put("name", kingdom.name());
+            data.put("government", kingdom.governmentType().name());
+            data.put("settlements", String.valueOf(kingdom.settlementIds().size()));
+            data.put("treasury", String.format(java.util.Locale.ROOT, "%.1f", kingdom.treasury()));
+            data.put("taxRate", String.format(java.util.Locale.ROOT, "%.3f", kingdom.taxRate()));
+            data.put("legitimacy", String.format(java.util.Locale.ROOT, "%.3f", kingdom.legitimacy()));
+            var ruler = host.state().citizens().get(kingdom.rulerId());
+            if (ruler != null) {
+                data.put("ruler", ruler.givenName() + " " + ruler.familyName());
+            }
+        }
+        sendResponse(out, envelope.requestId(), data);
+    }
+
+    private void onMarketState(Envelope envelope, OutputStream out) throws IOException {
+        RequestPayloads.SettlementQuery q = RequestPayloads.SettlementQuery.decode(envelope.payload());
+        var sid = com.livingmods.common.id.SettlementId.of(q.settlementId());
+        var market = host.state().markets().get(sid);
+        var stock = host.state().stockpiles().get(sid);
+        Map<String, String> data = new LinkedHashMap<>();
+        if (market == null) {
+            data.put("status", "missing");
+        } else {
+            data.put("status", "ok");
+            data.put("crisis", String.format(java.util.Locale.ROOT, "%.3f", market.crisisSeverity()));
+            for (var type : com.livingmods.common.model.ResourceType.values()) {
+                data.put("price_" + type.name(), String.format(java.util.Locale.ROOT, "%.3f", market.price(type)));
+                if (stock != null) {
+                    data.put("stock_" + type.name(), String.format(java.util.Locale.ROOT, "%.1f", stock.get(type)));
+                }
+            }
+        }
+        sendResponse(out, envelope.requestId(), data);
+    }
+
+    private void onDialogue(Envelope envelope, OutputStream out) throws IOException {
+        RequestPayloads.DialogueQuery q = RequestPayloads.DialogueQuery.decode(envelope.payload());
+        var engine = new com.livingmods.simulation.engine.DialogueEngine();
+        var lines = engine.respond(host.state(), com.livingmods.common.id.CitizenId.of(q.citizenId()), q.intent());
+        List<String> texts = new ArrayList<>();
+        for (var line : lines) {
+            texts.add(line.speaker() + ": " + line.text());
+        }
+        send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(),
+                PayloadIo.encodeStringList(texts));
+    }
+
+    private void onProjection(Envelope envelope, OutputStream out) throws IOException {
+        RequestPayloads.NearbyQuery q = RequestPayloads.NearbyQuery.decode(envelope.payload());
+        var plan = com.livingmods.simulation.projection.ProjectionPlan.near(
+                host.state(), BlockPos2.of(q.blockX(), q.blockZ()), q.radius());
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("status", "ok");
+        data.put("citizens", String.valueOf(plan.citizens().size()));
+        data.put("caravans", String.valueOf(plan.caravans().size()));
+        data.put("armies", String.valueOf(plan.armies().size()));
+        int limit = Math.max(1, q.limit());
+        List<String> ids = new ArrayList<>();
+        for (int i = 0; i < Math.min(limit, plan.citizens().size()); i++) {
+            ids.add(plan.citizens().get(i).toString());
+        }
+        data.put("citizenIds", String.join(",", ids));
+        sendResponse(out, envelope.requestId(), data);
+    }
+
+    private void onConstruction(Envelope envelope, OutputStream out) throws IOException {
+        RequestPayloads.SettlementQuery q = RequestPayloads.SettlementQuery.decode(envelope.payload());
+        SettlementState s = host.state().settlement(com.livingmods.common.id.SettlementId.of(q.settlementId())).orElse(null);
+        Map<String, String> data = new LinkedHashMap<>();
+        if (s == null) {
+            data.put("status", "missing");
+        } else {
+            data.put("status", "ok");
+            data.put("housingUnits", String.valueOf(s.housingUnits()));
+            data.put("physicalCapacity", String.format(java.util.Locale.ROOT, "%.1f", s.physicalCapacity()));
+            data.put("developmentDeficit", String.format(java.util.Locale.ROOT, "%.1f", s.developmentDeficit()));
+            data.put("needsConstruction", String.valueOf(s.developmentDeficit() > 0.5));
+        }
+        sendResponse(out, envelope.requestId(), data);
+    }
+
+    private void onMapOverlay(Envelope envelope, OutputStream out) throws IOException {
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("status", "ok");
+        data.put("kingdoms", String.valueOf(host.worldPlan().kingdoms().size()));
+        data.put("settlements", String.valueOf(host.worldPlan().settlements().size()));
+        data.put("roads", String.valueOf(host.worldPlan().roads().size()));
+        data.put("wars", String.valueOf(host.state().wars().size()));
+        data.put("epidemics", String.valueOf(host.state().epidemics().size()));
+        sendResponse(out, envelope.requestId(), data);
+    }
+
+    private void onSubscribe(Envelope envelope, OutputStream out, boolean subscribe) throws IOException {
+        RequestPayloads.RegionSubscription sub = RequestPayloads.RegionSubscription.decode(envelope.payload());
+        host.setRegionSubscription(sub.regionX(), sub.regionZ(), subscribe ? sub.detailLevel() : -1);
+        sendResponse(out, envelope.requestId(), Map.of(
+                "status", "ok",
+                "subscribed", String.valueOf(subscribe),
+                "region", sub.regionX() + "," + sub.regionZ()
+        ));
     }
 
     private static boolean matchesSettlementCategory(String cat, PlannedSettlement s) {

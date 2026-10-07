@@ -38,7 +38,7 @@ public final class CanonicalStore {
         }
     }
 
-    public CanonicalSaveFormat.Snapshot readMetadata() throws IOException {
+    public CanonicalSaveFormat.SnapshotMeta readMetadata() throws IOException {
         recoverIfNeeded();
         if (!Files.exists(snapshotPath())) {
             throw new IOException("no snapshot");
@@ -51,12 +51,7 @@ public final class CanonicalStore {
         if (!Files.exists(snapshotPath())) {
             return InitialStateFactory.fromWorldPlan(plan);
         }
-        CanonicalSaveFormat.Snapshot meta = CanonicalSaveFormat.readSnapshot(Files.readAllBytes(snapshotPath()));
-        CanonicalWorldState state = InitialStateFactory.fromWorldPlan(plan, com.livingmods.common.time.SimulationTime.ofTicks(meta.timeTicks()));
-        for (long i = 0; i < meta.saveRevision(); i++) {
-            state.bumpSaveRevision();
-        }
-        return state;
+        return CanonicalSaveFormat.readFullState(Files.readAllBytes(snapshotPath()));
     }
 
     private void recoverIfNeeded() throws IOException {

@@ -59,10 +59,14 @@ public final class WorldPlanStore {
     }
 
     public static WorldPlan loadOrGenerate(Path worldDir, LivingModsConfig config) throws IOException {
+        return loadOrGenerate(worldDir, config, readLevelSeed(worldDir));
+    }
+
+    public static WorldPlan loadOrGenerate(Path worldDir, LivingModsConfig config, long seedHint) throws IOException {
         CachedPlanMeta meta = loadMeta(worldDir);
         WorldPlanner planner = new WorldPlanner(config);
         if (meta == null) {
-            long seed = readLevelSeed(worldDir);
+            long seed = seedHint != 0 ? seedHint : readLevelSeed(worldDir);
             WorldPlan plan = planner.plan(seed);
             save(worldDir, plan);
             return plan;
