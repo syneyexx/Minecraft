@@ -47,9 +47,12 @@ public final class LivingModsCommands {
         }
         int ox = (int) source.getEntity().getX();
         int oz = (int) source.getEntity().getZ();
-        UUID worldId = LivingModsWorldIds.fromSeed(source.getServer().overworld().getSeed());
+        UUID worldId = WorldSessionLifecycle.activeWorldId();
+        if (worldId == null) {
+            worldId = LivingModsWorldIds.fromSeed(source.getServer().overworld().getSeed());
+        }
         SidecarClient client = WorldSessionLifecycle.clientFor(worldId);
-        if (client != null && !client.degraded()) {
+        if (client != null && client.isReady()) {
             RequestPayloads.LocateQuery query = new RequestPayloads.LocateQuery(category, "", ox, oz, limit);
             byte[] payload;
             try {
@@ -58,7 +61,7 @@ public final class LivingModsCommands {
                 source.sendFailure(Component.literal("Locate encode failed"));
                 return 0;
             }
-            CompletableFuture<?> ignored = client.sendAsync(MessageType.LOCATE, System.nanoTime(), payload)
+            CompletableFuture<?> ignored = client.sendAsync(MessageType.LOCATE, payload)
                     .thenAccept(env -> {
                         try {
                             List<String> hits = PayloadIo.decodeStringList(env.payload());

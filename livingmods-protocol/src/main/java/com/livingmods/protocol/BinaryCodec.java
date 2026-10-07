@@ -76,14 +76,29 @@ public final class BinaryCodec {
             return;
         }
         byte[] b = s.getBytes(StandardCharsets.UTF_8);
+        if (b.length > ProtocolConstants.MAX_STRING_LENGTH) {
+            throw new IOException("String too long: " + b.length);
+        }
         dos.writeInt(b.length);
         dos.write(b);
     }
 
     public static String readString(DataInputStream dis) throws IOException {
+        return readString(dis, ProtocolConstants.MAX_STRING_LENGTH);
+    }
+
+    public static String readString(DataInputStream dis, int maxLen) throws IOException {
         int len = dis.readInt();
-        if (len < 0) return null;
+        if (len < 0) {
+            return null;
+        }
+        if (len > maxLen) {
+            throw new IOException("String too long: " + len + " (max " + maxLen + ")");
+        }
         byte[] b = dis.readNBytes(len);
+        if (b.length != len) {
+            throw new IOException("Truncated string");
+        }
         return new String(b, StandardCharsets.UTF_8);
     }
 
@@ -100,7 +115,9 @@ public final class BinaryCodec {
     public static UUID readUuid(DataInputStream dis) throws IOException {
         long msb = dis.readLong();
         long lsb = dis.readLong();
-        if (msb == 0 && lsb == 0) return null;
+        if (msb == 0 && lsb == 0) {
+            return null;
+        }
         return new UUID(msb, lsb);
     }
 }

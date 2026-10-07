@@ -20,6 +20,10 @@ public final class WorldPlanCache {
         return cached;
     }
 
+    public static void clear() {
+        cached = null;
+    }
+
     public static WorldPlan loadOrGenerate(MinecraftServer server) throws Exception {
         Path worldDir = server.getWorldPath(LevelResource.ROOT);
         long seed = server.overworld().getSeed();

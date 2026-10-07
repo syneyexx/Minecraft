@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Uniquely identifies a Minecraft world so two worlds never share simulation state.
+ * Persisted world identity (stable UUID + folder + seed). Handshake uses {@link WorldIdentityContract}.
  */
 public record WorldIdentity(
         UUID worldUuid,
@@ -18,5 +18,9 @@ public record WorldIdentity(
 
     public String storageKey() {
         return worldUuid.toString();
+    }
+
+    public WorldIdentityContract toContract(long worldPlanHash, int worldPlanRevision) {
+        return WorldIdentityContract.of(worldUuid, minecraftSeed, worldPlanHash, worldPlanRevision);
     }
 }
