@@ -372,10 +372,15 @@ public final class SessionHandler implements Runnable {
     }
 
     private static LocateHit hit(String name, int x, int z, String kind, int ox, int oz) {
+        return hit(name, kind, "-", x, z, ox, oz);
+    }
+
+    private static LocateHit hit(String name, String type, String kingdom, int x, int z, int ox, int oz) {
         long dx = (long) x - ox;
         long dz = (long) z - oz;
         long distSq = dx * dx + dz * dz;
-        return new LocateHit(formatHit(name, x, z, kind), distSq);
+        double dist = Math.sqrt(distSq);
+        return new LocateHit(formatHit(name, type, kingdom, x, z, dist), distSq);
     }
 
     private record LocateHit(String line, long distSq) {}
@@ -486,19 +491,47 @@ public final class SessionHandler implements Runnable {
 
     private void onProjection(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.NearbyQuery q = RequestPayloads.NearbyQuery.decode(envelope.payload());
+        int limit = Math.max(1, q.limit());
         var plan = com.livingmods.simulation.projection.ProjectionPlan.near(
-                host.state(), BlockPos2.of(q.blockX(), q.blockZ()), q.radius());
+                host.state(), BlockPos2.of(q.blockX(), q.blockZ()), q.radius(), limit, 1);
         Map<String, String> data = new LinkedHashMap<>();
         data.put("status", "ok");
-        data.put("citizens", String.valueOf(plan.citizens().size()));
+        data.put("citizens", String.valueOf(plan.projectedCitizens().size()));
         data.put("caravans", String.valueOf(plan.caravans().size()));
         data.put("armies", String.valueOf(plan.armies().size()));
-        int limit = Math.max(1, q.limit());
+        data.put("revision", String.valueOf(plan.revision()));
+        data.put("budget", String.valueOf(plan.budget()));
         List<String> ids = new ArrayList<>();
-        for (int i = 0; i < Math.min(limit, plan.citizens().size()); i++) {
-            ids.add(plan.citizens().get(i).toString());
+        List<String> packed = new ArrayList<>();
+        for (var projected : plan.projectedCitizens()) {
+            var citizen = host.state().citizens().get(projected.citizenId());
+            String cultureKey = "avalon";
+            if (citizen != null) {
+                var settlement = host.worldPlan().settlements().get(citizen.settlementId());
+                if (settlement != null && settlement.cultureKey() != null) {
+                    cultureKey = settlement.cultureKey();
+                }
+            }
+            String profession = citizen == null ? "FARMER" : citizen.profession().name();
+            boolean female = citizen != null && citizen.female();
+            int age = citizen == null ? 25 : citizen.ageYears(host.state().time());
+            ids.add(projected.citizenId().value().toString());
+            packed.add(String.join("|",
+                    projected.citizenId().value().toString(),
+                    projected.displayName().replace('|', ' ').replace(';', ','),
+                    projected.schedule().name(),
+                    String.valueOf(projected.x()),
+                    String.valueOf(projected.y()),
+                    String.valueOf(projected.z()),
+                    String.valueOf(projected.projectionRevision()),
+                    cultureKey,
+                    profession,
+                    female ? "1" : "0",
+                    String.valueOf(age)
+            ));
         }
         data.put("citizenIds", String.join(",", ids));
+        data.put("citizensPacked", String.join(";", packed));
         sendResponse(out, envelope.requestId(), data);
     }
 
@@ -556,7 +589,12 @@ public final class SessionHandler implements Runnable {
     }
 
     private static String formatHit(String name, int x, int z, String kind) {
-        return name + "@" + x + "," + z + " [" + kind + "]";
+        return formatHit(name, kind, "-", x, z, 0);
+    }
+
+    private static String formatHit(String name, String type, String kingdom, int x, int z, double distance) {
+        return String.format(java.util.Locale.ROOT, "%s | %s | %s | %d, %d | %.0fm",
+                name, type, kingdom == null || kingdom.isBlank() ? "-" : kingdom, x, z, distance);
     }
 
     private void sendResponse(OutputStream out, long requestId, Map<String, String> payload)

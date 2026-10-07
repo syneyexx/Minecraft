@@ -167,6 +167,24 @@ public final class SidecarProcessManager {
         return handle == null ? -1 : handle.port;
     }
 
+    /** Active sidecar OS pid for the current primary world handle, or -1. */
+    public static long pid() {
+        for (ProcessHandle handle : RUNNING.values()) {
+            if (handle.process != null && handle.process.isAlive()) {
+                return handle.process.pid();
+            }
+        }
+        return -1L;
+    }
+
+    public static long pid(UUID worldId) {
+        ProcessHandle handle = RUNNING.get(worldId);
+        if (handle == null || handle.process == null || !handle.process.isAlive()) {
+            return -1L;
+        }
+        return handle.process.pid();
+    }
+
     public static LaunchConfig launchConfig(UUID worldId) {
         ProcessHandle handle = RUNNING.get(worldId);
         return handle == null ? null : handle.config;

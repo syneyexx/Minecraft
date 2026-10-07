@@ -3,6 +3,7 @@ package com.livingmods.neoforge.sidecar;
 import com.livingmods.common.model.WorldIdentityContract;
 import com.livingmods.neoforge.LivingModsMod;
 import com.livingmods.neoforge.LivingModsWorldIds;
+import com.livingmods.neoforge.entity.CitizenProjectionBinder;
 import com.livingmods.neoforge.worldgen.WorldPlanCache;
 import com.livingmods.protocol.MessageType;
 import com.livingmods.worldgen.plan.WorldPlan;
@@ -115,6 +116,11 @@ public final class WorldSessionLifecycle {
         if (!SidecarProcessManager.isAlive(worldId) && activeIdentity != null) {
             attemptBoundedRestart(server, worldId);
         }
+
+        // Interest-based citizen projection (never 1:1 with population).
+        if (client != null && client.isReady()) {
+            CitizenProjectionBinder.get().onServerTick(server);
+        }
     }
 
     private static void attemptBoundedRestart(MinecraftServer server, UUID worldId) {
@@ -197,6 +203,7 @@ public final class WorldSessionLifecycle {
         CLIENTS.clear();
         SidecarProcessManager.stopAll();
         WorldPlanCache.clear();
+        CitizenProjectionBinder.get().clear();
         timeSyncBridge.reset();
         activeWorldId = null;
         activeIdentity = null;

@@ -21,7 +21,7 @@ A system is `VERIFIED` only when model + simulation + persistence + IPC + physic
 | Wizard Trees underground civ | FUNCTIONAL | Theocratic cavern settlements |
 | Chunk materialization | FUNCTIONAL | Hollow buildings, roads/bridges/walls/gates, farms/mines/ports, ruins, bandits, Wizard Trees caverns; chunk attachment idempotency |
 | Initial canonical state handoff | VERIFIED | `InitialStateFactory` |
-| Citizens / households / professions | FUNCTIONAL | Projection-capped physical entities |
+| Citizens / households / professions | INTEGRATED | Family graph, housing/work structure ids, demand professions, schedule, projection binder, NBT identity, skins/AI |
 | Economy / markets / trade | VERIFIED | Famine → price unit test |
 | Government / dynasties / succession | VERIFIED | Succession unit test |
 | Diplomacy / treaties | FUNCTIONAL | Relation matrix + treaty types |

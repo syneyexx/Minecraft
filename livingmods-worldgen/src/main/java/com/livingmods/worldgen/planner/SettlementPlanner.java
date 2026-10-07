@@ -2,6 +2,7 @@ package com.livingmods.worldgen.planner;
 
 import com.livingmods.common.config.LivingModsConfig;
 import com.livingmods.common.culture.CultureDefinition;
+import com.livingmods.common.culture.NameGrammar;
 import com.livingmods.common.culture.CultureRegistry;
 import com.livingmods.common.geo.BlockPos2;
 import com.livingmods.common.geo.BoundingBox2;
@@ -329,12 +330,11 @@ public final class SettlementPlanner {
 
     private String nameSettlement(CultureDefinition culture, SettlementTier tier, SettlementRole role,
                                   DeterministicRandom random) {
-        String prefix = random.pick(culture.naming().settlementPrefixes());
-        String suffix = random.pick(culture.naming().settlementSuffixes());
+        String base = NameGrammar.settlement(culture, random);
         if (role != SettlementRole.GENERAL && random.chance(0.35)) {
-            suffix = role.name().toLowerCase().replace('_', ' ') + " " + suffix;
+            return base + " " + role.name().charAt(0) + role.name().substring(1).toLowerCase().replace('_', ' ');
         }
-        return prefix + Character.toUpperCase(suffix.charAt(0)) + suffix.substring(1);
+        return base;
     }
 
     private record TierSlot(SettlementTier tier, SettlementRole role) {}

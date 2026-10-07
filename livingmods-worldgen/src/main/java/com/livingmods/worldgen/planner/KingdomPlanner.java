@@ -2,6 +2,7 @@ package com.livingmods.worldgen.planner;
 
 import com.livingmods.common.config.LivingModsConfig;
 import com.livingmods.common.culture.CultureDefinition;
+import com.livingmods.common.culture.NameGrammar;
 import com.livingmods.common.culture.CultureRegistry;
 import com.livingmods.common.geo.BlockPos2;
 import com.livingmods.common.geo.RegionCoord;
@@ -261,9 +262,7 @@ public final class KingdomPlanner {
     }
 
     private String nameKingdom(CultureDefinition culture, DeterministicRandom random) {
-        String prefix = random.pick(culture.naming().settlementPrefixes());
-        String suffix = random.pick(culture.naming().settlementSuffixes());
-        return prefix + Character.toUpperCase(suffix.charAt(0)) + suffix.substring(1);
+        return NameGrammar.kingdom(culture, random);
     }
 
     private record CandidateSite(RegionTerrainSummary summary, BlockPos2 center, double baseSuitability) {}
