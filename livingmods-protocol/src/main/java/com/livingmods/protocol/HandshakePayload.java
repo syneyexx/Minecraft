@@ -1,5 +1,6 @@
 package com.livingmods.protocol;
 
+import com.livingmods.common.model.WorldIdentityContract;
 import com.livingmods.common.version.LivingModsVersions;
 
 import java.io.ByteArrayInputStream;
@@ -19,11 +20,39 @@ public record HandshakePayload(
         HandshakeStatus status,
         String sidecarVersion,
         int canonicalSaveSchema,
-        String message
+        String message,
+        long minecraftSeed,
+        long worldPlanHash,
+        int worldPlanRevision,
+        String worldRoot
 ) {
     public enum HandshakeStatus { READY, REJECTED, NEEDS_MIGRATION }
 
     public static HandshakePayload minecraftRequest(UUID worldId) {
+        return minecraftRequest(worldId, 0L, 0L, 0, null);
+    }
+
+    public static HandshakePayload minecraftRequest(WorldIdentityContract identity) {
+        return minecraftRequest(identity, null);
+    }
+
+    public static HandshakePayload minecraftRequest(WorldIdentityContract identity, String worldRoot) {
+        return minecraftRequest(
+                identity.worldId(),
+                identity.minecraftSeed(),
+                identity.worldPlanHash(),
+                identity.worldPlanRevision(),
+                worldRoot
+        );
+    }
+
+    public static HandshakePayload minecraftRequest(
+            UUID worldId,
+            long minecraftSeed,
+            long worldPlanHash,
+            int worldPlanRevision,
+            String worldRoot
+    ) {
         return new HandshakePayload(
                 LivingModsVersions.PROTOCOL_VERSION,
                 worldId,
@@ -34,11 +63,25 @@ public record HandshakePayload(
                 HandshakeStatus.READY,
                 "",
                 LivingModsVersions.CANONICAL_SAVE_SCHEMA,
-                "hello"
+                "hello",
+                minecraftSeed,
+                worldPlanHash,
+                worldPlanRevision,
+                worldRoot
         );
     }
 
     public static HandshakePayload sidecarReady(UUID worldId) {
+        return sidecarReady(worldId, 0L, 0L, 0, null);
+    }
+
+    public static HandshakePayload sidecarReady(
+            UUID worldId,
+            long minecraftSeed,
+            long worldPlanHash,
+            int worldPlanRevision,
+            String worldRoot
+    ) {
         return new HandshakePayload(
                 LivingModsVersions.PROTOCOL_VERSION,
                 worldId,
@@ -49,7 +92,11 @@ public record HandshakePayload(
                 HandshakeStatus.READY,
                 LivingModsVersions.SIDECAR_VERSION,
                 LivingModsVersions.CANONICAL_SAVE_SCHEMA,
-                "ready"
+                "ready",
+                minecraftSeed,
+                worldPlanHash,
+                worldPlanRevision,
+                worldRoot
         );
     }
 
@@ -64,8 +111,16 @@ public record HandshakePayload(
                 HandshakeStatus.REJECTED,
                 LivingModsVersions.SIDECAR_VERSION,
                 LivingModsVersions.CANONICAL_SAVE_SCHEMA,
-                reason
+                reason,
+                0L,
+                0L,
+                0,
+                null
         );
+    }
+
+    public WorldIdentityContract toIdentityContract() {
+        return WorldIdentityContract.of(worldId, minecraftSeed, worldPlanHash, worldPlanRevision);
     }
 
     public byte[] encode() throws IOException {
@@ -81,6 +136,11 @@ public record HandshakePayload(
         BinaryCodec.writeString(dos, sidecarVersion);
         dos.writeInt(canonicalSaveSchema);
         BinaryCodec.writeString(dos, message);
+        // Appended for backward-compatible decode of older peers.
+        dos.writeLong(minecraftSeed);
+        dos.writeLong(worldPlanHash);
+        dos.writeInt(worldPlanRevision);
+        BinaryCodec.writeString(dos, worldRoot);
         return bos.toByteArray();
     }
 
@@ -96,8 +156,21 @@ public record HandshakePayload(
         String sidecarVersion = BinaryCodec.readString(dis);
         int canonical = dis.readInt();
         String message = BinaryCodec.readString(dis);
+        long minecraftSeed = 0L;
+        long worldPlanHash = 0L;
+        int worldPlanRevision = 0;
+        String worldRoot = null;
+        if (dis.available() >= 20) {
+            minecraftSeed = dis.readLong();
+            worldPlanHash = dis.readLong();
+            worldPlanRevision = dis.readInt();
+            if (dis.available() > 0) {
+                worldRoot = BinaryCodec.readString(dis);
+            }
+        }
         return new HandshakePayload(protocolVersion, worldId, modVersion, worldgen, saveSchema,
-                side, status, sidecarVersion, canonical, message);
+                side, status, sidecarVersion, canonical, message,
+                minecraftSeed, worldPlanHash, worldPlanRevision, worldRoot);
     }
 
     public boolean isCompatible() {

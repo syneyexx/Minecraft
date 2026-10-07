@@ -1,5 +1,6 @@
 package com.livingmods.worldgen.planner;
 
+import com.livingmods.common.config.LivingModsConfig;
 import com.livingmods.common.geo.BlockPos2;
 import com.livingmods.common.id.KingdomId;
 import com.livingmods.common.model.ResourceType;
@@ -11,7 +12,7 @@ import com.livingmods.worldgen.plan.PlannedKingdom;
 import com.livingmods.worldgen.plan.PlannedResourceSite;
 import com.livingmods.worldgen.plan.PlannedRoad;
 import com.livingmods.worldgen.plan.PlannedSettlement;
-import com.livingmods.worldgen.terrain.TerrainAnalyzer;
+import com.livingmods.worldgen.terrain.TerrainProvider;
 import com.livingmods.worldgen.terrain.TerrainSample;
 
 import java.util.ArrayList;
@@ -21,9 +22,15 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class ResourcePlanner {
-    private final TerrainAnalyzer terrain;
+    private final LivingModsConfig config;
+    private final TerrainProvider terrain;
 
-    public ResourcePlanner(TerrainAnalyzer terrain) {
+    public ResourcePlanner(TerrainProvider terrain) {
+        this(LivingModsConfig.defaults(), terrain);
+    }
+
+    public ResourcePlanner(LivingModsConfig config, TerrainProvider terrain) {
+        this.config = config;
         this.terrain = terrain;
     }
 
@@ -32,7 +39,6 @@ public final class ResourcePlanner {
         long resSeed = Hashing.mix(seed, 0x5245534F52L);
         List<PlannedResourceSite> sites = new ArrayList<>();
         Set<Long> used = new HashSet<>();
-        int ordinal = 0;
 
         for (PlannedKingdom kingdom : kingdoms) {
             if (kingdom.underground()) continue;
@@ -48,22 +54,25 @@ public final class ResourcePlanner {
                 Optional<KingdomId> claim = random.chance(0.7) ? Optional.of(kingdom.id()) : Optional.empty();
                 sites.add(new PlannedResourceSite(center, type, richness, claim));
                 used.add(center.packed());
-                ordinal++;
             }
         }
 
-        // Frontier deposits between kingdoms
-        DeterministicRandom frontierRandom = new DeterministicRandom(Hashing.mix(resSeed, 0x46524F4E54L));
-        for (int i = 0; i < 24; i++) {
-            int x = frontierRandom.nextInt(-5000, 5000);
-            int z = frontierRandom.nextInt(-5000, 5000);
-            BlockPos2 p = BlockPos2.of(x, z);
-            if (used.contains(p.packed())) continue;
-            TerrainSample s = terrain.sample(p);
-            if (!s.buildable() && !s.water()) continue;
-            ResourceType type = pickResource(frontierRandom, s);
-            sites.add(new PlannedResourceSite(p, type, 0.3 + frontierRandom.nextDouble() * 0.4, Optional.empty()));
-            used.add(p.packed());
+        // Frontier deposits within civilization radius (bounded — not infinite).
+        if (config.frontierEnabled()) {
+            DeterministicRandom frontierRandom = new DeterministicRandom(Hashing.mix(resSeed, 0x46524F4E54L));
+            int radius = config.civilizationRadiusBlocks();
+            for (int i = 0; i < 24; i++) {
+                int x = frontierRandom.nextInt(-radius, radius);
+                int z = frontierRandom.nextInt(-radius, radius);
+                if (Math.hypot(x, z) > radius) continue;
+                BlockPos2 p = BlockPos2.of(x, z);
+                if (used.contains(p.packed())) continue;
+                TerrainSample s = terrain.sample(p);
+                if (!s.buildable() && !s.water()) continue;
+                ResourceType type = pickResource(frontierRandom, s);
+                sites.add(new PlannedResourceSite(p, type, 0.3 + frontierRandom.nextDouble() * 0.4, Optional.empty()));
+                used.add(p.packed());
+            }
         }
         return sites;
     }
@@ -78,6 +87,7 @@ public final class ResourcePlanner {
         for (int i = 0; i < settlements.size(); i++) {
             PlannedSettlement s = settlements.get(i);
             if (s.role() == SettlementRole.MILITARY || s.capital()) continue;
+            if (Math.hypot(s.center().x(), s.center().z()) > config.civilizationRadiusBlocks()) continue;
 
             DeterministicRandom random = new DeterministicRandom(Hashing.mix(campSeed, s.id().hashCode()));
             if (!random.chance(0.08)) continue;
@@ -93,19 +103,40 @@ public final class ResourcePlanner {
 
             int size = 3 + random.nextInt(8);
             String reason = roadDist > 200 ? "remote frontier" : "weak patrol along trade route";
-            camps.add(new PlannedBanditCamp(camp, size, reason));
+            PlannedBanditCamp.CampVariant variant = pickCampVariant(size, roadDist, sample, random);
+            camps.add(new PlannedBanditCamp(camp, size, reason, variant));
             used.add(camp.packed());
         }
         return camps;
     }
 
+    private PlannedBanditCamp.CampVariant pickCampVariant(
+            int size, double roadDist, TerrainSample sample, DeterministicRandom random
+    ) {
+        if (size >= 9) {
+            return PlannedBanditCamp.CampVariant.STRONGHOLD;
+        }
+        if (size >= 7 && random.chance(0.45)) {
+            return PlannedBanditCamp.CampVariant.RUINED_FORT;
+        }
+        if (roadDist < 120) {
+            return PlannedBanditCamp.CampVariant.ROAD_CAMP;
+        }
+        if (sample.forested()) {
+            return PlannedBanditCamp.CampVariant.FOREST;
+        }
+        return PlannedBanditCamp.CampVariant.HIDEOUT;
+    }
+
     private BlockPos2 findResourceSite(BlockPos2 capital, PlannedKingdom kingdom,
                                      DeterministicRandom random, Set<Long> used) {
+        int maxDist = Math.min(2000, config.civilizationRadiusBlocks() / 2);
         for (int attempt = 0; attempt < 30; attempt++) {
             double angle = random.nextDouble() * Math.PI * 2;
-            int dist = 400 + random.nextInt(1600);
+            int dist = 400 + random.nextInt(Math.max(1, maxDist - 400));
             int x = capital.x() + (int) (Math.cos(angle) * dist);
             int z = capital.z() + (int) (Math.sin(angle) * dist);
+            if (Math.hypot(x, z) > config.civilizationRadiusBlocks()) continue;
             BlockPos2 p = BlockPos2.of(x, z);
             if (used.contains(p.packed())) continue;
             TerrainSample s = terrain.sample(p);
@@ -119,7 +150,7 @@ public final class ResourcePlanner {
     private ResourceType pickResource(DeterministicRandom random, TerrainSample s) {
         if (s.goodFarmland()) return random.chance(0.6) ? ResourceType.GRAIN : ResourceType.VEGETABLES;
         if (s.coastal() || s.river()) return random.chance(0.5) ? ResourceType.FISH : ResourceType.WATER;
-        if (s.biomeHint().contains("forest")) return ResourceType.WOOD;
+        if (s.forested()) return ResourceType.WOOD;
         if (s.elevation() > 95) return random.chance(0.5) ? ResourceType.IRON : ResourceType.COAL;
         if (s.moisture() < 0.3) return ResourceType.STONE;
         return random.pick(List.of(ResourceType.WOOD, ResourceType.STONE, ResourceType.IRON, ResourceType.GRAIN));

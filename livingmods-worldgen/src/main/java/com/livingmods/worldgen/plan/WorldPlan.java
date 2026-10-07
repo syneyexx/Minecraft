@@ -5,6 +5,7 @@ import com.livingmods.common.geo.BoundingBox2;
 import com.livingmods.common.geo.ChunkCoord;
 import com.livingmods.common.id.SettlementId;
 import com.livingmods.common.version.LivingModsVersions;
+import com.livingmods.worldgen.territory.TerritoryMap;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,6 +17,9 @@ import java.util.Optional;
 /**
  * Complete deterministic civilization plan independent of chunk generation order.
  * Chunks only query which predetermined placements intersect them.
+ * <p>
+ * Persisted in full by {@link com.livingmods.worldgen.persist.WorldPlanStore} so old worlds
+ * keep their civilization plan when algorithms change.
  */
 public final class WorldPlan {
     private final long seed;
@@ -26,6 +30,7 @@ public final class WorldPlan {
     private final List<PlannedRuin> ruins;
     private final List<PlannedResourceSite> resourceSites;
     private final List<PlannedBanditCamp> banditCamps;
+    private final TerritoryMap territories;
     private final long contentHash;
 
     public WorldPlan(
@@ -36,6 +41,21 @@ public final class WorldPlan {
             List<PlannedRuin> ruins,
             List<PlannedResourceSite> resourceSites,
             List<PlannedBanditCamp> banditCamps,
+            long contentHash
+    ) {
+        this(seed, kingdoms, settlements, roads, ruins, resourceSites, banditCamps,
+                TerritoryMap.empty(), contentHash);
+    }
+
+    public WorldPlan(
+            long seed,
+            List<PlannedKingdom> kingdoms,
+            List<PlannedSettlement> settlements,
+            List<PlannedRoad> roads,
+            List<PlannedRuin> ruins,
+            List<PlannedResourceSite> resourceSites,
+            List<PlannedBanditCamp> banditCamps,
+            TerritoryMap territories,
             long contentHash
     ) {
         this.seed = seed;
@@ -50,6 +70,7 @@ public final class WorldPlan {
         this.ruins = List.copyOf(ruins);
         this.resourceSites = List.copyOf(resourceSites);
         this.banditCamps = List.copyOf(banditCamps);
+        this.territories = territories == null ? TerritoryMap.empty() : territories;
         this.contentHash = contentHash;
     }
 
@@ -61,6 +82,7 @@ public final class WorldPlan {
     public List<PlannedRuin> ruins() { return ruins; }
     public List<PlannedResourceSite> resourceSites() { return resourceSites; }
     public List<PlannedBanditCamp> banditCamps() { return banditCamps; }
+    public TerritoryMap territories() { return territories; }
     public long contentHash() { return contentHash; }
 
     public Optional<PlannedSettlement> settlement(SettlementId id) {

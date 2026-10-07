@@ -97,6 +97,7 @@ public final class StructureRegistry {
         list.add(tpl(base, i++, "*", BuildingRole.MARKET_STALL, SettlementTier.VILLAGE, WealthClass.POOR, 4, 4, 3, 2.0, "commerce"));
         list.add(tpl(base, i++, "*", BuildingRole.MARKET_HALL, SettlementTier.TOWN, WealthClass.COMFORTABLE, 12, 10, 7, 1.5, "commerce"));
         list.add(tpl(base, i++, "*", BuildingRole.SHOP, SettlementTier.TOWN, WealthClass.COMMON, 7, 6, 5, 2.0, "commerce"));
+        list.add(tpl(base, i++, "*", BuildingRole.TAVERN, SettlementTier.TOWN, WealthClass.COMMON, 10, 9, 6, 1.8, "commerce"));
         list.add(tpl(base, i++, "*", BuildingRole.WORKSHOP, SettlementTier.VILLAGE, WealthClass.COMMON, 9, 8, 5, 2.0, "craft"));
         list.add(tpl(base, i++, "*", BuildingRole.SMITHY, SettlementTier.TOWN, WealthClass.COMMON, 8, 8, 5, 1.5, "craft"));
         list.add(tpl(base, i++, "*", BuildingRole.WAREHOUSE, SettlementTier.TOWN, WealthClass.COMFORTABLE, 14, 10, 6, 1.2, "storage"));

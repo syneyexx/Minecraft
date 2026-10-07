@@ -1,8 +1,6 @@
 package com.livingmods.worldgen.terrain;
 
 import com.livingmods.common.geo.BlockPos2;
-import com.livingmods.common.geo.BoundingBox2;
-import com.livingmods.common.geo.RegionCoord;
 import com.livingmods.common.util.DeterministicRandom;
 import com.livingmods.common.util.Hashing;
 
@@ -10,10 +8,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Deterministic terrain sampling for planning. Independent of chunk generation order.
- * Uses seeded noise domains — not Minecraft's runtime sampler (worldgen module has no MC deps).
+ * DETERMINISTIC SYNTHETIC {@link TerrainProvider} for tests and pure worldgen tools ONLY.
+ * Independent of chunk generation order. Uses seeded noise domains — not Minecraft's
+ * runtime sampler (worldgen module has no MC deps).
+ * <p>
+ * Production Minecraft planning must inject {@code MinecraftTerrainProvider} from neoforge
+ * so LivingMods placement corresponds to real terrain.
  */
-public final class TerrainAnalyzer {
+public final class TerrainAnalyzer implements TerrainProvider {
     private final long worldSeed;
     private final Map<Long, TerrainSample> cache = new HashMap<>();
 
@@ -21,6 +23,12 @@ public final class TerrainAnalyzer {
         this.worldSeed = worldSeed;
     }
 
+    @Override
+    public long worldSeed() {
+        return worldSeed;
+    }
+
+    @Override
     public TerrainSample sample(int x, int z) {
         long key = ((long) x << 32) ^ (z & 0xffffffffL);
         TerrainSample cached = cache.get(key);
@@ -32,54 +40,68 @@ public final class TerrainAnalyzer {
         return sample;
     }
 
+    @Override
     public TerrainSample sample(BlockPos2 pos) {
         return sample(pos.x(), pos.z());
     }
 
-    public double averageSlope(BoundingBox2 box, int step) {
-        double sum = 0;
-        int n = 0;
-        for (int x = box.minX(); x <= box.maxX(); x += step) {
-            for (int z = box.minZ(); z <= box.maxZ(); z += step) {
-                sum += sample(x, z).slope();
-                n++;
-            }
-        }
-        return n == 0 ? 1.0 : sum / n;
+    @Override
+    public double surfaceHeight(int x, int z) {
+        return sample(x, z).elevation();
     }
 
-    public RegionTerrainSummary summarizeRegion(RegionCoord region, int regionSizeChunks) {
-        BlockPos2 origin = region.blockOrigin(regionSizeChunks);
-        int size = regionSizeChunks * 16;
-        double elev = 0, slope = 0, moist = 0, temp = 0;
-        int water = 0, buildable = 0, n = 0;
-        int step = 32;
-        for (int x = 0; x < size; x += step) {
-            for (int z = 0; z < size; z += step) {
-                TerrainSample s = sample(origin.x() + x, origin.z() + z);
-                elev += s.elevation();
-                slope += s.slope();
-                moist += s.moisture();
-                temp += s.temperature();
-                if (s.water()) water++;
-                if (s.buildable()) buildable++;
-                n++;
-            }
-        }
-        return new RegionTerrainSummary(
-                region,
-                elev / n,
-                slope / n,
-                moist / n,
-                temp / n,
-                water / (double) n,
-                buildable / (double) n,
-                dominantBiome(origin.x() + size / 2, origin.z() + size / 2)
-        );
+    @Override
+    public double oceanFloor(int x, int z) {
+        return sample(x, z).oceanFloor();
+    }
+
+    @Override
+    public String biomeHint(int x, int z) {
+        return sample(x, z).biomeHint();
+    }
+
+    @Override
+    public double temperature(int x, int z) {
+        return sample(x, z).temperature();
+    }
+
+    @Override
+    public double humidity(int x, int z) {
+        return sample(x, z).moisture();
+    }
+
+    @Override
+    public boolean waterPresence(int x, int z) {
+        return sample(x, z).water();
+    }
+
+    @Override
+    public boolean river(int x, int z) {
+        return sample(x, z).river();
+    }
+
+    @Override
+    public boolean coast(int x, int z) {
+        return sample(x, z).coastal();
+    }
+
+    @Override
+    public double slope(int x, int z) {
+        return sample(x, z).slope();
+    }
+
+    @Override
+    public double roughness(int x, int z) {
+        return sample(x, z).roughness();
+    }
+
+    @Override
+    public double buildableScore(int x, int z) {
+        return sample(x, z).buildableScore();
     }
 
     public String dominantBiome(int x, int z) {
-        return sample(x, z).biomeHint();
+        return biomeHint(x, z);
     }
 
     private TerrainSample compute(int x, int z) {
@@ -91,13 +113,18 @@ public final class TerrainAnalyzer {
         double dx = fbm(nx + 0.01, nz, 1) - fbm(nx - 0.01, nz, 1);
         double dz = fbm(nx, nz + 0.01, 1) - fbm(nx, nz - 0.01, 1);
         double slope = Math.min(1.0, Math.hypot(dx, dz) * 25);
+        double roughness = Math.min(1.0, Math.abs(fbm(nx * 2.2, nz * 2.2, 4)) * 0.7 + slope * 0.4);
         double moisture = clamp01(fbm(nx * 0.7 + 10, nz * 0.7, 3) * 0.5 + 0.5);
         double temperature = clamp01(0.55 - (elevation - 64) * 0.008 + fbm(nx + 3, nz + 3, 2) * 0.15);
         boolean river = riverNoise(x, z);
         boolean water = elevation < 62 || river && elevation < 66;
+        double oceanFloor = water ? Math.min(elevation - 4, 58) : elevation - slope * 2;
         boolean coastal = !water && nearWater(x, z, 24);
         String biome = classifyBiome(elevation, moisture, temperature, water, coastal);
-        return new TerrainSample(x, z, elevation, slope, moisture, temperature, water, coastal, river, biome);
+        return new TerrainSample(
+                x, z, elevation, oceanFloor, slope, roughness, moisture, temperature,
+                water, coastal, river, biome
+        );
     }
 
     private boolean nearWater(int x, int z, int radius) {
@@ -117,7 +144,7 @@ public final class TerrainAnalyzer {
         double elevation = fbm(nx, nz, 1) * 40 + 70 + Math.abs(fbm(nx * 0.5, nz * 0.5, 2)) * 25;
         boolean river = riverNoise(x, z);
         boolean water = elevation < 62 || river && elevation < 66;
-        return new TerrainSample(x, z, elevation, 0, 0.5, 0.5, water, false, river, "plains");
+        return new TerrainSample(x, z, elevation, 0.0, 0.5, 0.5, water, false, river, "plains");
     }
 
     private boolean riverNoise(int x, int z) {

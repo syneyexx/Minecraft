@@ -12,6 +12,7 @@ public enum BuildingRole {
     MARKET_STALL,
     MARKET_HALL,
     SHOP,
+    TAVERN,
     WORKSHOP,
     SMITHY,
     WAREHOUSE,

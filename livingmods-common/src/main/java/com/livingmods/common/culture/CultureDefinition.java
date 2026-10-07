@@ -47,8 +47,35 @@ public record CultureDefinition(
             List<String> maleNames,
             List<String> femaleNames,
             List<String> familyNames,
-            List<String> rulerTitles
-    ) {}
+            List<String> rulerTitles,
+            List<String> dynastyPrefixes,
+            List<String> kingdomPatterns
+    ) {
+        public NamingStyle {
+            settlementPrefixes = List.copyOf(settlementPrefixes);
+            settlementSuffixes = List.copyOf(settlementSuffixes);
+            maleNames = List.copyOf(maleNames);
+            femaleNames = List.copyOf(femaleNames);
+            familyNames = List.copyOf(familyNames);
+            rulerTitles = List.copyOf(rulerTitles);
+            dynastyPrefixes = dynastyPrefixes == null ? List.of() : List.copyOf(dynastyPrefixes);
+            kingdomPatterns = kingdomPatterns == null ? List.of() : List.copyOf(kingdomPatterns);
+        }
+
+        /** Back-compat constructor without dynasty/kingdom grammars. */
+        public NamingStyle(
+                List<String> settlementPrefixes,
+                List<String> settlementSuffixes,
+                List<String> maleNames,
+                List<String> femaleNames,
+                List<String> familyNames,
+                List<String> rulerTitles
+        ) {
+            this(settlementPrefixes, settlementSuffixes, maleNames, femaleNames, familyNames, rulerTitles,
+                    List.of("House", "Clan", "Line of"),
+                    List.of("Kingdom of {prefix}{suffix}", "{title}'s {prefix} Realm", "Dominion of {family}"));
+        }
+    }
 
     public record MilitaryStyle(
             String unitDoctrine,

@@ -1,6 +1,9 @@
 package com.livingmods.sidecar;
 
 import com.livingmods.common.geo.BlockPos2;
+import com.livingmods.common.id.CitizenId;
+import com.livingmods.common.id.KingdomId;
+import com.livingmods.common.id.PlayerId;
 import com.livingmods.common.model.SettlementTier;
 import com.livingmods.protocol.BinaryCodec;
 import com.livingmods.protocol.Envelope;
@@ -11,8 +14,10 @@ import com.livingmods.protocol.MessageType;
 import com.livingmods.protocol.PayloadIo;
 import com.livingmods.protocol.ProtocolConstants;
 import com.livingmods.protocol.RequestPayloads;
+import com.livingmods.simulation.engine.PlayerSystemsEngine;
 import com.livingmods.simulation.state.CitizenState;
 import com.livingmods.simulation.state.SettlementState;
+import com.livingmods.simulation.tick.SimulationContext;
 import com.livingmods.worldgen.plan.PlannedResourceSite;
 import com.livingmods.worldgen.plan.PlannedRuin;
 import com.livingmods.worldgen.plan.PlannedSettlement;
@@ -20,6 +25,7 @@ import com.livingmods.worldgen.plan.PlannedSettlement;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +40,7 @@ public final class SessionHandler implements Runnable {
     private final DiagnosticsExporter diagnostics;
     private final java.net.Socket socket;
     private final AtomicLong messageId = new AtomicLong(1);
+    private final PlayerSystemsEngine playerSystems = new PlayerSystemsEngine();
     private UUID sessionId;
     private volatile boolean handshaken;
 
@@ -47,9 +54,13 @@ public final class SessionHandler implements Runnable {
     public void run() {
         try (socket; var in = socket.getInputStream(); var out = socket.getOutputStream()) {
             LOG.info("Session connected from " + socket.getRemoteSocketAddress());
+            host.setFrozen(false);
             while (!socket.isClosed()) {
                 Envelope envelope = BinaryCodec.readEnvelope(in);
                 diagnostics.recordInbound(envelope.payloadLength() + ProtocolConstants.HEADER_SIZE);
+                diagnostics.recordStepNanos(host.lastStepNanos());
+                diagnostics.setQueuedIpc(host.outboundEventQueueDepth());
+                diagnostics.setSubscriptions(host.subscriptionCount());
                 handle(envelope, out);
                 EventPayload event;
                 while ((event = host.pollEvent()) != null) {
@@ -58,16 +69,34 @@ public final class SessionHandler implements Runnable {
             }
         } catch (IOException e) {
             LOG.info("Session closed: " + e.getMessage());
+        } finally {
+            host.setFrozen(true);
         }
     }
 
     private void handle(Envelope envelope, OutputStream out) throws IOException {
-        switch (envelope.type()) {
+        MessageType type = envelope.type();
+        if (type != MessageType.HANDSHAKE_REQUEST
+                && type != MessageType.HEARTBEAT
+                && type != MessageType.SHUTDOWN
+                && !handshaken) {
+            sendError(out, envelope.requestId(), ErrorPayload.NOT_READY, "Handshake required");
+            return;
+        }
+        if (host.isFailed()) {
+            sendError(out, envelope.requestId(), ErrorPayload.INTERNAL, "Sidecar host failed");
+            return;
+        }
+
+        switch (type) {
             case HANDSHAKE_REQUEST -> onHandshake(envelope, out);
-            case HEARTBEAT -> send(out, MessageType.HEARTBEAT, envelope.requestId(), envelope.simulationTicks(), new byte[0]);
+            case HEARTBEAT -> send(out, MessageType.HEARTBEAT, envelope.requestId(),
+                    host.state().time().absoluteTicks(), new byte[0]);
             case SAVE_REQUEST -> onSave(envelope, out);
             case SHUTDOWN -> {
-                send(out, MessageType.SHUTDOWN, envelope.requestId(), host.state().time().absoluteTicks(), new byte[0]);
+                host.finalSaveBarrier();
+                send(out, MessageType.SHUTDOWN, envelope.requestId(),
+                        host.state().time().absoluteTicks(), new byte[0]);
                 socket.close();
             }
             case TIME_SYNC -> onTimeSync(envelope, out);
@@ -83,9 +112,9 @@ public final class SessionHandler implements Runnable {
             case GET_MAP_OVERLAY -> onMapOverlay(envelope, out);
             case SUBSCRIBE_REGION -> onSubscribe(envelope, out, true);
             case UNSUBSCRIBE_REGION -> onSubscribe(envelope, out, false);
-            case REPORT_PHYSICAL_OUTCOME, PLAYER_ACTION ->
-                    sendResponse(out, envelope.requestId(), Map.of("status", "accepted"));
-            default -> sendError(out, envelope.requestId(), ErrorPayload.MALFORMED, "Unsupported type " + envelope.type());
+            case REPORT_PHYSICAL_OUTCOME, PLAYER_ACTION -> onPlayerAction(envelope, out);
+            default -> sendError(out, envelope.requestId(), ErrorPayload.MALFORMED,
+                    "Unsupported type " + type);
         }
     }
 
@@ -108,10 +137,35 @@ public final class SessionHandler implements Runnable {
             socket.close();
             return;
         }
+        if (req.worldPlanHash() != 0L && req.worldPlanHash() != host.expectedPlanHash()) {
+            HandshakePayload rejected = HandshakePayload.rejected(req.worldId(),
+                    "Plan hash mismatch: request=" + req.worldPlanHash()
+                            + " host=" + host.expectedPlanHash());
+            send(out, MessageType.HANDSHAKE_RESPONSE, envelope.requestId(), 0, rejected.encode());
+            sendError(out, envelope.requestId(), ErrorPayload.WORLD_MISMATCH, rejected.message());
+            socket.close();
+            return;
+        }
+        if (req.minecraftSeed() != 0L && req.minecraftSeed() != host.seed()) {
+            HandshakePayload rejected = HandshakePayload.rejected(req.worldId(),
+                    "Seed mismatch: request=" + req.minecraftSeed() + " host=" + host.seed());
+            send(out, MessageType.HANDSHAKE_RESPONSE, envelope.requestId(), 0, rejected.encode());
+            sendError(out, envelope.requestId(), ErrorPayload.WORLD_MISMATCH, rejected.message());
+            socket.close();
+            return;
+        }
         sessionId = req.worldId();
         handshaken = true;
-        HandshakePayload ready = HandshakePayload.sidecarReady(sessionId);
-        send(out, MessageType.HANDSHAKE_RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(), ready.encode());
+        host.setFrozen(false);
+        HandshakePayload ready = HandshakePayload.sidecarReady(
+                sessionId,
+                host.seed(),
+                host.expectedPlanHash(),
+                host.planRevision(),
+                host.worldRoot() == null ? null : host.worldRoot().toString()
+        );
+        send(out, MessageType.HANDSHAKE_RESPONSE, envelope.requestId(),
+                host.state().time().absoluteTicks(), ready.encode());
         host.pushEvent(new EventPayload(
                 com.livingmods.common.event.CivilizationEventType.SIDECAR_READY,
                 0, 0, 0, 0,
@@ -120,19 +174,19 @@ public final class SessionHandler implements Runnable {
     }
 
     private void onSave(Envelope envelope, OutputStream out) throws IOException {
-        if (!handshaken) {
-            sendError(out, envelope.requestId(), ErrorPayload.NOT_READY, "Handshake required");
-            return;
-        }
         if (!host.persistence().beginSaveBarrier()) {
             sendError(out, envelope.requestId(), ErrorPayload.TIMEOUT, "Save already in progress");
             return;
         }
         try {
             host.persistence().completeSaveBarrier(host.state());
-            Map<String, String> diag = diagnostics.snapshot();
+            Map<String, String> diag = new LinkedHashMap<>(diagnostics.snapshot());
             diag.put("status", "ok");
-            send(out, MessageType.SAVE_RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(), PayloadIo.encodeStrings(diag));
+            diag.put("revision", String.valueOf(host.state().saveRevision()));
+            diag.put("contentHash", String.valueOf(host.state().contentHash()));
+            diag.put("simulationTime", String.valueOf(host.state().time().absoluteTicks()));
+            send(out, MessageType.SAVE_RESPONSE, envelope.requestId(),
+                    host.state().time().absoluteTicks(), PayloadIo.encodeStrings(diag));
         } catch (IOException e) {
             sendError(out, envelope.requestId(), ErrorPayload.INTERNAL, e.getMessage());
         }
@@ -140,9 +194,115 @@ public final class SessionHandler implements Runnable {
 
     private void onTimeSync(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.TimeSync sync = RequestPayloads.TimeSync.decode(envelope.payload());
-        long target = sync.minecraftGameTime();
-        host.syncTime(target, sync.jumped());
+        host.syncTime(sync.minecraftGameTime(), sync.jumped());
         sendResponse(out, envelope.requestId(), Map.of("synced", "true"));
+    }
+
+    private void onPlayerAction(Envelope envelope, OutputStream out) throws IOException {
+        if (host.isFrozen()) {
+            sendError(out, envelope.requestId(), ErrorPayload.NOT_READY, "Host frozen");
+            return;
+        }
+        Map<String, String> fields;
+        try {
+            fields = PayloadIo.decodeStrings(envelope.payload());
+        } catch (IOException e) {
+            sendError(out, envelope.requestId(), ErrorPayload.MALFORMED, "Invalid player action payload");
+            return;
+        }
+        String action = firstNonBlank(fields.get("action"), fields.get("type"), fields.get("outcome"));
+        if (action == null) {
+            sendError(out, envelope.requestId(), ErrorPayload.MALFORMED, "Missing action type");
+            return;
+        }
+        PlayerId player = parsePlayer(fields);
+        KingdomId kingdom = parseKingdom(fields);
+        double delta = reputationDeltaFor(action.toUpperCase());
+        SimulationContext ctx = new SimulationContext(
+                host.state().seed(),
+                host.state().time(),
+                host.state().saveRevision()
+        );
+        playerSystems.recordPlayerAction(host.state(), player, kingdom, delta, ctx);
+        applyActionSideEffects(action.toUpperCase(), fields);
+
+        Map<String, String> response = new LinkedHashMap<>();
+        response.put("status", "accepted");
+        response.put("action", action.toUpperCase());
+        response.put("reputationDelta", String.valueOf(delta));
+        sendResponse(out, envelope.requestId(), response);
+    }
+
+    private void applyActionSideEffects(String action, Map<String, String> fields) {
+        switch (action) {
+            case "CITIZEN_KILLED" -> {
+                String citizenRaw = fields.get("citizenId");
+                if (citizenRaw != null && !citizenRaw.isBlank()) {
+                    try {
+                        CitizenId id = CitizenId.of(UUID.fromString(citizenRaw));
+                        CitizenState citizen = host.state().citizens().get(id);
+                        if (citizen != null) {
+                            citizen.setAlive(false);
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+            case "STRUCTURE_DESTROYED", "CARAVAN_ATTACKED", "CRIME_COMMITTED",
+                 "TRADE_COMPLETED", "FACTION_JOINED", "POLICY_CHANGED" -> {
+                // Reputation adjustment via recordPlayerAction is the primary mutation.
+            }
+            default -> {
+            }
+        }
+    }
+
+    private static double reputationDeltaFor(String action) {
+        return switch (action) {
+            case "TRADE_COMPLETED" -> 0.05;
+            case "CITIZEN_KILLED" -> -0.35;
+            case "CARAVAN_ATTACKED" -> -0.25;
+            case "STRUCTURE_DESTROYED" -> -0.40;
+            case "FACTION_JOINED" -> 0.20;
+            case "POLICY_CHANGED" -> 0.02;
+            case "CRIME_COMMITTED" -> -0.15;
+            default -> 0.0;
+        };
+    }
+
+    private PlayerId parsePlayer(Map<String, String> fields) {
+        String raw = firstNonBlank(fields.get("playerId"), fields.get("player"));
+        if (raw != null) {
+            try {
+                return PlayerId.of(UUID.fromString(raw));
+            } catch (Exception ignored) {
+            }
+        }
+        return PlayerSystemsEngine.demoPlayer();
+    }
+
+    private KingdomId parseKingdom(Map<String, String> fields) {
+        String raw = firstNonBlank(fields.get("kingdomId"), fields.get("kingdom"));
+        if (raw != null) {
+            try {
+                return KingdomId.of(UUID.fromString(raw));
+            } catch (Exception ignored) {
+            }
+        }
+        return host.state().kingdoms().keySet().stream().findFirst()
+                .orElse(KingdomId.of(new UUID(0L, 1L)));
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String v : values) {
+            if (v != null && !v.isBlank()) {
+                return v;
+            }
+        }
+        return null;
     }
 
     private void onNearby(Envelope envelope, OutputStream out) throws IOException {
@@ -155,56 +315,87 @@ public final class SessionHandler implements Runnable {
             if (s == null) continue;
             double dx = s.center().x() - q.blockX();
             double dz = s.center().z() - q.blockZ();
-            if (dx * dx + dz * dz > q.radius() * q.radius()) continue;
+            if (dx * dx + dz * dz > (double) q.radius() * q.radius()) continue;
             lines.add(c.id().toString() + "|" + c.givenName() + " " + c.familyName());
             if (++count >= q.limit()) break;
         }
-        send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(), PayloadIo.encodeStringList(lines));
+        send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(),
+                PayloadIo.encodeStringList(lines));
     }
 
     private void onLocate(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.LocateQuery q = RequestPayloads.LocateQuery.decode(envelope.payload());
-        List<String> hits = new ArrayList<>();
+        List<LocateHit> hits = new ArrayList<>();
         String cat = q.category().toLowerCase();
         int limit = Math.max(1, q.limit());
+        Map<String, String> kingdomNames = new LinkedHashMap<>();
+        for (var k : host.worldPlan().kingdoms()) {
+            kingdomNames.put(k.id().toString(), k.name());
+        }
 
         for (PlannedSettlement s : host.worldPlan().settlements().values()) {
             if (!matchesSettlementCategory(cat, s)) continue;
-            if (!q.nameFilter().isEmpty() && !s.name().toLowerCase().contains(q.nameFilter().toLowerCase())) continue;
-            hits.add(formatHit(s.name(), s.center().x(), s.center().z(), s.tier().name()));
-            if (hits.size() >= limit) break;
+            if (!q.nameFilter().isEmpty()
+                    && !s.name().toLowerCase().contains(q.nameFilter().toLowerCase())) {
+                continue;
+            }
+            String kingdom = s.ownerKingdom()
+                    .map(id -> kingdomNames.getOrDefault(id.toString(), "-"))
+                    .orElse("-");
+            hits.add(hit(s.name(), s.tier().name(), kingdom,
+                    s.center().x(), s.center().z(), q.originX(), q.originZ()));
         }
         if (cat.contains("kingdom")) {
             for (var k : host.worldPlan().kingdoms()) {
-                hits.add(formatHit(k.name(), k.capitalCenter().x(), k.capitalCenter().z(), "KINGDOM"));
-                if (hits.size() >= limit) break;
+                hits.add(hit(k.name(), "KINGDOM", k.name(),
+                        k.capitalCenter().x(), k.capitalCenter().z(), q.originX(), q.originZ()));
             }
         }
         if (cat.contains("mine") || cat.contains("port") || cat.contains("ruin")) {
             if (cat.contains("mine")) {
                 for (PlannedResourceSite site : host.worldPlan().resourceSites()) {
-                    hits.add(formatHit(site.resource().name(), site.center().x(), site.center().z(), "MINE"));
-                    if (hits.size() >= limit) break;
+                    hits.add(hit(site.resource().name(), "MINE", "-",
+                            site.center().x(), site.center().z(), q.originX(), q.originZ()));
                 }
             }
             if (cat.contains("ruin")) {
                 for (PlannedRuin ruin : host.worldPlan().ruins()) {
                     BlockPos2 c = ruin.bounds().center();
-                    hits.add(formatHit(ruin.historicalNote(), c.x(), c.z(), "RUIN"));
-                    if (hits.size() >= limit) break;
+                    hits.add(hit(ruin.historicalNote(), "RUIN", "-", c.x(), c.z(),
+                            q.originX(), q.originZ()));
                 }
             }
         }
         if (cat.contains("wizard")) {
             for (PlannedSettlement s : host.worldPlan().settlements().values()) {
                 if (s.role() == com.livingmods.common.model.SettlementRole.WIZARD_TREES) {
-                    hits.add(formatHit(s.name(), s.center().x(), s.center().z(), "WIZARD"));
-                    if (hits.size() >= limit) break;
+                    hits.add(hit(s.name(), "WIZARD", "-",
+                            s.center().x(), s.center().z(), q.originX(), q.originZ()));
                 }
             }
         }
-        send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(), PayloadIo.encodeStringList(hits));
+        hits.sort(Comparator.comparingLong(LocateHit::distSq));
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < Math.min(limit, hits.size()); i++) {
+            lines.add(hits.get(i).line());
+        }
+        send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(),
+                PayloadIo.encodeStringList(lines));
     }
+
+    private static LocateHit hit(String name, int x, int z, String kind, int ox, int oz) {
+        return hit(name, kind, "-", x, z, ox, oz);
+    }
+
+    private static LocateHit hit(String name, String type, String kingdom, int x, int z, int ox, int oz) {
+        long dx = (long) x - ox;
+        long dz = (long) z - oz;
+        long distSq = dx * dx + dz * dz;
+        double dist = Math.sqrt(distSq);
+        return new LocateHit(formatHit(name, type, kingdom, x, z, dist), distSq);
+    }
+
+    private record LocateHit(String line, long distSq) {}
 
     private void onWorldSummary(Envelope envelope, OutputStream out) throws IOException {
         Map<String, String> summary = new LinkedHashMap<>();
@@ -215,12 +406,14 @@ public final class SessionHandler implements Runnable {
         summary.put("wars", String.valueOf(host.state().wars().size()));
         summary.put("epidemics", String.valueOf(host.state().epidemics().size()));
         summary.putAll(diagnostics.snapshot());
-        send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(), PayloadIo.encodeStrings(summary));
+        send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(),
+                PayloadIo.encodeStrings(summary));
     }
 
     private void onSettlementSnapshot(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.SettlementQuery q = RequestPayloads.SettlementQuery.decode(envelope.payload());
-        SettlementState s = host.state().settlement(com.livingmods.common.id.SettlementId.of(q.settlementId())).orElse(null);
+        SettlementState s = host.state().settlement(
+                com.livingmods.common.id.SettlementId.of(q.settlementId())).orElse(null);
         Map<String, String> data = new LinkedHashMap<>();
         if (s == null) {
             data.put("status", "missing");
@@ -251,8 +444,8 @@ public final class SessionHandler implements Runnable {
 
     private void onKingdomSummary(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.SettlementQuery q = RequestPayloads.SettlementQuery.decode(envelope.payload());
-        // Payload reuses UUID field as kingdom id for summary requests.
-        var kingdom = host.state().kingdom(com.livingmods.common.id.KingdomId.of(q.settlementId())).orElse(null);
+        var kingdom = host.state().kingdom(
+                com.livingmods.common.id.KingdomId.of(q.settlementId())).orElse(null);
         Map<String, String> data = new LinkedHashMap<>();
         if (kingdom == null) {
             data.put("status", "missing");
@@ -284,9 +477,11 @@ public final class SessionHandler implements Runnable {
             data.put("status", "ok");
             data.put("crisis", String.format(java.util.Locale.ROOT, "%.3f", market.crisisSeverity()));
             for (var type : com.livingmods.common.model.ResourceType.values()) {
-                data.put("price_" + type.name(), String.format(java.util.Locale.ROOT, "%.3f", market.price(type)));
+                data.put("price_" + type.name(),
+                        String.format(java.util.Locale.ROOT, "%.3f", market.price(type)));
                 if (stock != null) {
-                    data.put("stock_" + type.name(), String.format(java.util.Locale.ROOT, "%.1f", stock.get(type)));
+                    data.put("stock_" + type.name(),
+                            String.format(java.util.Locale.ROOT, "%.1f", stock.get(type)));
                 }
             }
         }
@@ -296,7 +491,8 @@ public final class SessionHandler implements Runnable {
     private void onDialogue(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.DialogueQuery q = RequestPayloads.DialogueQuery.decode(envelope.payload());
         var engine = new com.livingmods.simulation.engine.DialogueEngine();
-        var lines = engine.respond(host.state(), com.livingmods.common.id.CitizenId.of(q.citizenId()), q.intent());
+        var lines = engine.respond(host.state(),
+                com.livingmods.common.id.CitizenId.of(q.citizenId()), q.intent());
         List<String> texts = new ArrayList<>();
         for (var line : lines) {
             texts.add(line.speaker() + ": " + line.text());
@@ -307,33 +503,64 @@ public final class SessionHandler implements Runnable {
 
     private void onProjection(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.NearbyQuery q = RequestPayloads.NearbyQuery.decode(envelope.payload());
+        int limit = Math.max(1, q.limit());
         var plan = com.livingmods.simulation.projection.ProjectionPlan.near(
-                host.state(), BlockPos2.of(q.blockX(), q.blockZ()), q.radius());
+                host.state(), BlockPos2.of(q.blockX(), q.blockZ()), q.radius(), limit, 1);
         Map<String, String> data = new LinkedHashMap<>();
         data.put("status", "ok");
-        data.put("citizens", String.valueOf(plan.citizens().size()));
+        data.put("citizens", String.valueOf(plan.projectedCitizens().size()));
         data.put("caravans", String.valueOf(plan.caravans().size()));
         data.put("armies", String.valueOf(plan.armies().size()));
-        int limit = Math.max(1, q.limit());
+        data.put("revision", String.valueOf(plan.revision()));
+        data.put("budget", String.valueOf(plan.budget()));
         List<String> ids = new ArrayList<>();
-        for (int i = 0; i < Math.min(limit, plan.citizens().size()); i++) {
-            ids.add(plan.citizens().get(i).toString());
+        List<String> packed = new ArrayList<>();
+        for (var projected : plan.projectedCitizens()) {
+            var citizen = host.state().citizens().get(projected.citizenId());
+            String cultureKey = "avalon";
+            if (citizen != null) {
+                var settlement = host.worldPlan().settlements().get(citizen.settlementId());
+                if (settlement != null && settlement.cultureKey() != null) {
+                    cultureKey = settlement.cultureKey();
+                }
+            }
+            String profession = citizen == null ? "FARMER" : citizen.profession().name();
+            boolean female = citizen != null && citizen.female();
+            int age = citizen == null ? 25 : citizen.ageYears(host.state().time());
+            ids.add(projected.citizenId().value().toString());
+            packed.add(String.join("|",
+                    projected.citizenId().value().toString(),
+                    projected.displayName().replace('|', ' ').replace(';', ','),
+                    projected.schedule().name(),
+                    String.valueOf(projected.x()),
+                    String.valueOf(projected.y()),
+                    String.valueOf(projected.z()),
+                    String.valueOf(projected.projectionRevision()),
+                    cultureKey,
+                    profession,
+                    female ? "1" : "0",
+                    String.valueOf(age)
+            ));
         }
         data.put("citizenIds", String.join(",", ids));
+        data.put("citizensPacked", String.join(";", packed));
         sendResponse(out, envelope.requestId(), data);
     }
 
     private void onConstruction(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.SettlementQuery q = RequestPayloads.SettlementQuery.decode(envelope.payload());
-        SettlementState s = host.state().settlement(com.livingmods.common.id.SettlementId.of(q.settlementId())).orElse(null);
+        SettlementState s = host.state().settlement(
+                com.livingmods.common.id.SettlementId.of(q.settlementId())).orElse(null);
         Map<String, String> data = new LinkedHashMap<>();
         if (s == null) {
             data.put("status", "missing");
         } else {
             data.put("status", "ok");
             data.put("housingUnits", String.valueOf(s.housingUnits()));
-            data.put("physicalCapacity", String.format(java.util.Locale.ROOT, "%.1f", s.physicalCapacity()));
-            data.put("developmentDeficit", String.format(java.util.Locale.ROOT, "%.1f", s.developmentDeficit()));
+            data.put("physicalCapacity",
+                    String.format(java.util.Locale.ROOT, "%.1f", s.physicalCapacity()));
+            data.put("developmentDeficit",
+                    String.format(java.util.Locale.ROOT, "%.1f", s.developmentDeficit()));
             data.put("needsConstruction", String.valueOf(s.developmentDeficit() > 0.5));
         }
         sendResponse(out, envelope.requestId(), data);
@@ -368,16 +595,24 @@ public final class SessionHandler implements Runnable {
             case "village" -> s.tier() == SettlementTier.VILLAGE;
             case "town" -> s.tier() == SettlementTier.TOWN;
             case "city" -> s.tier() == SettlementTier.CITY;
-            default -> cat.contains(s.tier().name().toLowerCase()) || cat.contains(s.role().name().toLowerCase());
+            default -> cat.contains(s.tier().name().toLowerCase())
+                    || cat.contains(s.role().name().toLowerCase());
         };
     }
 
     private static String formatHit(String name, int x, int z, String kind) {
-        return name + "@" + x + "," + z + " [" + kind + "]";
+        return formatHit(name, kind, "-", x, z, 0);
     }
 
-    private void sendResponse(OutputStream out, long requestId, Map<String, String> payload) throws IOException {
-        send(out, MessageType.RESPONSE, requestId, host.state().time().absoluteTicks(), PayloadIo.encodeStrings(payload));
+    private static String formatHit(String name, String type, String kingdom, int x, int z, double distance) {
+        return String.format(java.util.Locale.ROOT, "%s | %s | %s | %d, %d | %.0fm",
+                name, type, kingdom == null || kingdom.isBlank() ? "-" : kingdom, x, z, distance);
+    }
+
+    private void sendResponse(OutputStream out, long requestId, Map<String, String> payload)
+            throws IOException {
+        send(out, MessageType.RESPONSE, requestId, host.state().time().absoluteTicks(),
+                PayloadIo.encodeStrings(payload));
     }
 
     private void sendError(OutputStream out, long requestId, int code, String message) throws IOException {
@@ -385,7 +620,8 @@ public final class SessionHandler implements Runnable {
         send(out, MessageType.ERROR, requestId, host.state().time().absoluteTicks(), err.encode());
     }
 
-    private void send(OutputStream out, MessageType type, long requestId, long simTicks, byte[] payload) throws IOException {
+    private void send(OutputStream out, MessageType type, long requestId, long simTicks, byte[] payload)
+            throws IOException {
         Envelope env = new Envelope(
                 ProtocolConstants.PROTOCOL_VERSION,
                 type,

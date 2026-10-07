@@ -4,15 +4,14 @@ import com.livingmods.simulation.CanonicalWorldState;
 import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 public final class ConstructionEngine implements SimulationSubsystem {
     @Override
     public String name() { return "construction"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunGovernment(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runGovernment()) return;
 
         for (SettlementState s : state.settlements().values()) {
             if (!s.region().equals(work.region())) continue;

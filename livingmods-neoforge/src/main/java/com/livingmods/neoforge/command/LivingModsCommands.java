@@ -18,7 +18,11 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -47,9 +51,12 @@ public final class LivingModsCommands {
         }
         int ox = (int) source.getEntity().getX();
         int oz = (int) source.getEntity().getZ();
-        UUID worldId = LivingModsWorldIds.fromSeed(source.getServer().overworld().getSeed());
+        UUID worldId = WorldSessionLifecycle.activeWorldId();
+        if (worldId == null) {
+            worldId = LivingModsWorldIds.fromSeed(source.getServer().overworld().getSeed());
+        }
         SidecarClient client = WorldSessionLifecycle.clientFor(worldId);
-        if (client != null && !client.degraded()) {
+        if (client != null && client.isReady()) {
             RequestPayloads.LocateQuery query = new RequestPayloads.LocateQuery(category, "", ox, oz, limit);
             byte[] payload;
             try {
@@ -58,7 +65,7 @@ public final class LivingModsCommands {
                 source.sendFailure(Component.literal("Locate encode failed"));
                 return 0;
             }
-            CompletableFuture<?> ignored = client.sendAsync(MessageType.LOCATE, System.nanoTime(), payload)
+            CompletableFuture<?> ignored = client.sendAsync(MessageType.LOCATE, payload)
                     .thenAccept(env -> {
                         try {
                             List<String> hits = PayloadIo.decodeStringList(env.payload());
@@ -82,59 +89,59 @@ public final class LivingModsCommands {
             source.sendFailure(Component.literal("World plan not ready (sidecar offline — plan cache empty)"));
             return 0;
         }
-        int count = locateOffline(source, plan, category, limit);
+        int count = locateOffline(source, plan, category, ox, oz, limit);
         if (count == 0) {
             source.sendFailure(Component.literal("No matches for " + category));
         }
         return count;
     }
 
-    private static int locateOffline(CommandSourceStack source, WorldPlan plan, String category, int limit) {
-        String cat = category.toLowerCase();
-        int count = 0;
+    private static int locateOffline(
+            CommandSourceStack source,
+            WorldPlan plan,
+            String category,
+            int ox,
+            int oz,
+            int limit
+    ) {
+        String cat = category.toLowerCase(Locale.ROOT);
+        List<Hit> hits = new ArrayList<>();
+        Map<String, String> kingdomNames = new java.util.HashMap<>();
+        for (PlannedKingdom k : plan.kingdoms()) {
+            kingdomNames.put(k.id().toString(), k.name());
+        }
+
         if (cat.equals("kingdom")) {
             for (PlannedKingdom k : plan.kingdoms()) {
-                source.sendSuccess(() -> Component.literal(
-                        k.name() + " @ " + k.capitalCenter().x() + ", " + k.capitalCenter().z() + " [KINGDOM]"), false);
-                if (++count >= limit) {
-                    break;
-                }
+                hits.add(Hit.of(k.name(), "KINGDOM", k.name(),
+                        k.capitalCenter().x(), k.capitalCenter().z(), ox, oz));
             }
-            return count;
-        }
-        if (cat.equals("mine")) {
+        } else if (cat.equals("mine")) {
             for (PlannedResourceSite site : plan.resourceSites()) {
-                if (site.resource().name().contains("IRON") || site.resource().name().contains("COAL")
-                        || site.resource().name().contains("GOLD") || site.resource().name().contains("STONE")) {
-                    source.sendSuccess(() -> Component.literal(
-                            site.resource().name() + " @ " + site.center().x() + ", " + site.center().z() + " [MINE]"), false);
-                    if (++count >= limit) {
-                        break;
-                    }
+                String n = site.resource().name();
+                if (n.contains("IRON") || n.contains("COAL") || n.contains("GOLD") || n.contains("STONE")) {
+                    hits.add(Hit.of(n, "MINE", "", site.center().x(), site.center().z(), ox, oz));
                 }
             }
-            return count;
-        }
-        if (cat.equals("ruin")) {
+        } else if (cat.equals("ruin")) {
             for (PlannedRuin ruin : plan.ruins()) {
                 var c = ruin.bounds().center();
-                source.sendSuccess(() -> Component.literal(
-                        ruin.historicalNote() + " @ " + c.x() + ", " + c.z() + " [RUIN]"), false);
-                if (++count >= limit) {
-                    break;
-                }
+                hits.add(Hit.of(ruin.historicalNote(), "RUIN", "", c.x(), c.z(), ox, oz));
             }
-            return count;
+        } else {
+            for (PlannedSettlement s : plan.settlements().values()) {
+                if (!categoryMatches(cat, s)) continue;
+                String kingdom = s.ownerKingdom().map(id -> kingdomNames.getOrDefault(id.toString(), ""))
+                        .orElse("");
+                hits.add(Hit.of(s.name(), s.tier().name(), kingdom, s.center().x(), s.center().z(), ox, oz));
+            }
         }
-        for (PlannedSettlement s : plan.settlements().values()) {
-            if (!categoryMatches(cat, s)) {
-                continue;
-            }
-            source.sendSuccess(() -> Component.literal(
-                    s.name() + " @ " + s.center().x() + ", " + s.center().z() + " [" + s.tier() + "]"), false);
-            if (++count >= limit) {
-                break;
-            }
+
+        hits.sort(Comparator.comparingDouble(Hit::distance));
+        int count = 0;
+        for (Hit hit : hits) {
+            source.sendSuccess(() -> Component.literal(hit.format()), false);
+            if (++count >= limit) break;
         }
         return count;
     }
@@ -151,5 +158,19 @@ public final class LivingModsCommands {
             case "wizardtrees" -> s.role().name().equalsIgnoreCase("WIZARD_TREES") || s.underground();
             default -> s.tier().name().equalsIgnoreCase(category) || s.role().name().equalsIgnoreCase(category);
         };
+    }
+
+    private record Hit(String name, String type, String kingdom, int x, int z, double distance) {
+        static Hit of(String name, String type, String kingdom, int x, int z, int ox, int oz) {
+            double dx = x - ox;
+            double dz = z - oz;
+            return new Hit(name, type, kingdom == null ? "" : kingdom, x, z, Math.sqrt(dx * dx + dz * dz));
+        }
+
+        String format() {
+            String k = kingdom.isEmpty() ? "-" : kingdom;
+            return String.format(Locale.ROOT, "%s | %s | %s | %d, %d | %.0fm",
+                    name, type, k, x, z, distance);
+        }
     }
 }

@@ -36,10 +36,12 @@ public final class TestWorldPlans {
 
         PlannedKingdom kA = new PlannedKingdom(
                 kingdomA, "Kingdom A", cultureA, "culture_a", GovernmentType.MONARCHY,
-                capitalA, capA.center(), List.of(capitalA, villageA), List.of(BlockPos2.of(0, 0)), false, "faith_a");
+                capitalA, capA.center(), List.of(capitalA, villageA), List.of(BlockPos2.of(0, 0)),
+                List.of(kingdomB), false, "faith_a");
         PlannedKingdom kB = new PlannedKingdom(
                 kingdomB, "Kingdom B", cultureB, "culture_b", GovernmentType.MONARCHY,
-                capitalB, capB.center(), List.of(capitalB), List.of(BlockPos2.of(800, 0)), false, "faith_b");
+                capitalB, capB.center(), List.of(capitalB), List.of(BlockPos2.of(800, 0)),
+                List.of(kingdomA), false, "faith_b");
 
         long hash = Hashing.stateHash(seed, capA.id().hashCode(), capB.id().hashCode());
         return new WorldPlan(

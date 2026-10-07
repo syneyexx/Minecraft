@@ -1,5 +1,6 @@
 package com.livingmods.worldgen.planner;
 
+import com.livingmods.common.config.LivingModsConfig;
 import com.livingmods.common.culture.CultureDefinition;
 import com.livingmods.common.culture.CultureRegistry;
 import com.livingmods.common.geo.BlockPos2;
@@ -13,7 +14,7 @@ import com.livingmods.common.util.DeterministicRandom;
 import com.livingmods.common.util.Hashing;
 import com.livingmods.worldgen.plan.PlannedKingdom;
 import com.livingmods.worldgen.plan.PlannedSettlement;
-import com.livingmods.worldgen.terrain.TerrainAnalyzer;
+import com.livingmods.worldgen.terrain.TerrainProvider;
 import com.livingmods.worldgen.terrain.TerrainSample;
 
 import java.util.ArrayList;
@@ -21,15 +22,22 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Underground theocratic civilization — placed away from surface kingdom capitals.
+ * Underground theocratic civilization — placed away from surface kingdom capitals,
+ * still bounded by the Core Realm Zone / civilization radius.
  */
 public final class WizardTreesPlanner {
+    private final LivingModsConfig config;
     private final CultureRegistry cultures;
-    private final TerrainAnalyzer terrain;
+    private final TerrainProvider terrain;
 
     public record Result(PlannedKingdom kingdom, List<PlannedSettlement> settlements) {}
 
-    public WizardTreesPlanner(CultureRegistry cultures, TerrainAnalyzer terrain) {
+    public WizardTreesPlanner(CultureRegistry cultures, TerrainProvider terrain) {
+        this(LivingModsConfig.defaults(), cultures, terrain);
+    }
+
+    public WizardTreesPlanner(LivingModsConfig config, CultureRegistry cultures, TerrainProvider terrain) {
+        this.config = config;
         this.cultures = cultures;
         this.terrain = terrain;
     }
@@ -79,6 +87,7 @@ public final class WizardTreesPlanner {
                 center,
                 List.copyOf(settlementIds),
                 territory,
+                List.of(),
                 true,
                 culture.religionKey()
         );
@@ -88,9 +97,11 @@ public final class WizardTreesPlanner {
     private BlockPos2 findUndergroundCapital(long seed, List<PlannedKingdom> existing, DeterministicRandom random) {
         BlockPos2 best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
+        int radius = config.civilizationRadiusBlocks();
         for (int attempt = 0; attempt < 60; attempt++) {
-            int x = random.nextInt(-6000, 6000);
-            int z = random.nextInt(-6000, 6000);
+            int x = random.nextInt(-radius, radius);
+            int z = random.nextInt(-radius, radius);
+            if (Math.hypot(x, z) > radius) continue;
             double minSurface = Double.MAX_VALUE;
             for (PlannedKingdom k : existing) {
                 if (!k.underground()) {
@@ -108,7 +119,8 @@ public final class WizardTreesPlanner {
             }
         }
         if (best == null) {
-            best = BlockPos2.of(4096, -4096);
+            int fallback = Math.min(4096, radius * 2 / 3);
+            best = BlockPos2.of(fallback, -fallback);
         }
         return best;
     }
@@ -140,7 +152,9 @@ public final class WizardTreesPlanner {
             BlockPos2 center, KingdomId owner, CultureDefinition culture,
             boolean capital, int population, DeterministicRandom random
     ) {
-        int radius = tier.footprintRadius();
+        int radius = SettlementFootprint.footprintRadius(
+                tier, population, culture, config.civilizationDensityScale()
+        );
         return new PlannedSettlement(
                 id, name, tier, role, center, BoundingBox2.around(center, radius),
                 Optional.of(owner), culture.id(), culture.key(), capital, true, true,
