@@ -1,0 +1,45 @@
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':livingmods-common')
+    implementation project(':livingmods-protocol')
+    implementation project(':livingmods-worldgen')
+    implementation project(':livingmods-simulation')
+}
+
+application {
+    mainClass = 'com.livingmods.sidecar.SidecarMain'
+}
+
+tasks.named('jar', Jar) {
+    manifest {
+        attributes(
+                'Main-Class': 'com.livingmods.sidecar.SidecarMain',
+                'Implementation-Title': 'LivingMods Sidecar',
+                'Implementation-Version': project.version
+        )
+    }
+}
+
+tasks.register('sidecarJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.main.output
+    dependsOn configurations.runtimeClasspath
+    from {
+        configurations.runtimeClasspath.findAll { it.name.endsWith('jar') }.collect { zipTree(it) }
+    }
+    manifest {
+        attributes(
+                'Main-Class': 'com.livingmods.sidecar.SidecarMain',
+                'Implementation-Title': 'LivingMods Sidecar',
+                'Implementation-Version': project.version
+        )
+    }
+}
+
+tasks.named('build') {
+    dependsOn sidecarJar
+}
