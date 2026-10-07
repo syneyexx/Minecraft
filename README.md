@@ -59,6 +59,12 @@ Documented also in `gradle.properties`. Runtime authority is the Java constants.
 ./gradlew :livingmods-tools:run --args="plan 42"
 ```
 
+Installable mod artifact (includes Jar-in-Jar deps + embedded sidecar):
+
+`livingmods-neoforge/build/libs/livingmods-0.1.0.jar`
+
+Use that file in your NeoForge `mods/` folder — **not** the `-sources.jar`.
+
 Unit tests exist under protocol/simulation/worldgen modules; this documentation pass did **not** execute them. There is **no CI / GameTest / GitHub Actions** in this repository by design.
 
 ## In-game controls (as coded)
