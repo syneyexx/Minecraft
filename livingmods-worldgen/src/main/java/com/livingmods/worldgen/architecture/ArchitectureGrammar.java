@@ -61,20 +61,26 @@ public final class ArchitectureGrammar {
                 .orElse(registry.all().get(0));
 
         int rot = entranceDirection % 4;
-        int w = template.width();
-        int d = template.depth();
-        if (random.chance(0.3)) {
+        int w = Math.min(template.width(), lotBounds.width());
+        int d = Math.min(template.depth(), lotBounds.depth());
+        if (random.chance(0.3) && lotBounds.width() >= template.depth() && lotBounds.depth() >= template.width()) {
             int tmp = w;
             w = d;
             d = tmp;
             rot = (rot + 1) % 4;
         }
+        w = Math.max(3, w - 2);
+        d = Math.max(3, d - 2);
 
         int cx = lotBounds.center().x();
         int cz = lotBounds.center().z();
         int halfW = w / 2;
         int halfD = d / 2;
-        BoundingBox2 footprint = BoundingBox2.of(cx - halfW, cz - halfD, cx - halfW + w - 1, cz - halfD + d - 1);
+        int minX = Math.max(lotBounds.minX(), cx - halfW);
+        int minZ = Math.max(lotBounds.minZ(), cz - halfD);
+        int maxX = Math.min(lotBounds.maxX(), minX + w - 1);
+        int maxZ = Math.min(lotBounds.maxZ(), minZ + d - 1);
+        BoundingBox2 footprint = BoundingBox2.of(minX, minZ, maxX, maxZ);
 
         int floors = 1 + (wealth.ordinal() >= WealthClass.COMFORTABLE.ordinal() ? 1 : 0);
         if (role == BuildingRole.PALACE || role == BuildingRole.CASTLE_KEEP) {

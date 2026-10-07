@@ -60,11 +60,12 @@ public final class UrbanPlanner {
         List<PlannedDistrict> districts = planDistricts(seed, index, s, bounds, culture, random);
         List<PlannedLot> lots = new ArrayList<>();
         List<PlannedBuilding> buildings = new ArrayList<>();
+        java.util.Set<Long> occupiedLotCells = new java.util.HashSet<>();
         int lotOrdinal = 0;
         int buildingOrdinal = 0;
 
         for (PlannedDistrict district : districts) {
-            List<PlannedLot> districtLots = subdivideLots(seed, index, s, district, culture, random, lotOrdinal);
+            List<PlannedLot> districtLots = subdivideLots(seed, index, s, district, culture, random, lotOrdinal, occupiedLotCells);
             lotOrdinal += districtLots.size();
             for (PlannedLot lot : districtLots) {
                 lots.add(lot);
@@ -159,7 +160,8 @@ public final class UrbanPlanner {
 
     private List<PlannedLot> subdivideLots(long seed, int settlementIndex, PlannedSettlement s,
                                            PlannedDistrict district, CultureDefinition culture,
-                                           DeterministicRandom random, int lotBase) {
+                                           DeterministicRandom random, int lotBase,
+                                           java.util.Set<Long> occupiedLotCells) {
         List<PlannedLot> lots = new ArrayList<>();
         BoundingBox2 b = district.bounds();
         int lotW = culture.architecture().layoutStyle() == CultureDefinition.LayoutStyle.GRID ? 12 : 14;
@@ -168,6 +170,10 @@ public final class UrbanPlanner {
         for (int z = b.minZ(); z + lotD <= b.maxZ(); z += lotD + 2) {
             for (int x = b.minX(); x + lotW <= b.maxX(); x += lotW + 2) {
                 BoundingBox2 lotBox = BoundingBox2.of(x, z, x + lotW - 1, z + lotD - 1);
+                if (lotOverlapsExisting(lotBox, occupiedLotCells)) {
+                    continue;
+                }
+                markLotCells(lotBox, occupiedLotCells);
                 LotId lotId = LotId.deterministic(seed, settlementIndex * 1000L + lotBase + lots.size());
                 double slope = terrain.averageSlope(lotBox, 4);
                 EnumSet<BuildingRole> roles = rolesFor(district.type());
@@ -181,6 +187,29 @@ public final class UrbanPlanner {
             row++;
         }
         return lots;
+    }
+
+    private boolean lotOverlapsExisting(BoundingBox2 lotBox, java.util.Set<Long> occupied) {
+        for (int x = lotBox.minX(); x <= lotBox.maxX(); x++) {
+            for (int z = lotBox.minZ(); z <= lotBox.maxZ(); z++) {
+                if (occupied.contains(pack(x, z))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void markLotCells(BoundingBox2 lotBox, java.util.Set<Long> occupied) {
+        for (int x = lotBox.minX(); x <= lotBox.maxX(); x++) {
+            for (int z = lotBox.minZ(); z <= lotBox.maxZ(); z++) {
+                occupied.add(pack(x, z));
+            }
+        }
+    }
+
+    private static long pack(int x, int z) {
+        return ((long) x << 32) ^ (z & 0xffffffffL);
     }
 
     private List<BlockPos2> majorStreets(BlockPos2 center, int radius, CultureDefinition culture,

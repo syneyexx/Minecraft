@@ -63,7 +63,7 @@ public final class SettlementPlanner {
                 if (site == null) {
                     continue;
                 }
-                SettlementId id = SettlementId.deterministic(seed, ki * 1000L + ordinal);
+                SettlementId id = SettlementId.deterministic(seed, 20_000L + ki * 100L + ordinal);
                 String name = nameSettlement(culture, slot.tier(), slot.role(), random.fork(ordinal));
                 PlannedSettlement s = newSettlement(
                         id, name, slot.tier(), slot.role(), site, kingdom.id(), culture, false, random.fork("pop-" + ordinal)
