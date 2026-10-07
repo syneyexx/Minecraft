@@ -45,4 +45,12 @@ public final class ClientMapCache {
             return Collections.unmodifiableMap(new LinkedHashMap<>(dashboard));
         }
     }
+
+    /** Clear on disconnect / world switch so world A data never paints world B. */
+    public static void clear() {
+        mapData = null;
+        synchronized (dashboard) {
+            dashboard.clear();
+        }
+    }
 }

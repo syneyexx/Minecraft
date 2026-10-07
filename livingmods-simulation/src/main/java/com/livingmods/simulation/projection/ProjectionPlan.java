@@ -82,18 +82,16 @@ public final class ProjectionPlan {
         nearby.sort(Comparator.comparing(c -> c.id().value()));
 
         int settlementBoost = 0;
-        for (SettlementState s : state.settlements().values()) {
-            if (s.center().distanceTo(center) <= radius) {
-                settlementBoost += switch (s.tier()) {
-                    case CAMP -> 1;
-                    case HAMLET -> 2;
-                    case VILLAGE -> 4;
-                    case TOWN -> 8;
-                    case CITY -> 12;
-                    case METROPOLIS -> 14;
-                    case CAPITAL -> 16;
-                };
-            }
+        for (SettlementState s : index.settlementsNear(center, radius)) {
+            settlementBoost += switch (s.tier()) {
+                case CAMP -> 1;
+                case HAMLET -> 2;
+                case VILLAGE -> 4;
+                case TOWN -> 8;
+                case CITY -> 12;
+                case METROPOLIS -> 14;
+                case CAPITAL -> 16;
+            };
         }
 
         int density = Math.max(1, nearbyPlayers);

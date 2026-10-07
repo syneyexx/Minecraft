@@ -53,13 +53,15 @@ Status legend (mandatory):
 | Map (M) / Dashboard (F12) | INTEGRATED | Server payloads + tabbed diagnostics (live client fields) |
 | Locate commands | INTEGRATED | Sidecar path + offline plan-cache fallback |
 | Time sync / catch-up | INTEGRATED | `TIME_SYNC` + bounded catch-up in host |
-| User configuration | INTEGRATED | `config/livingmods.properties` with clamped ranges |
-| Optional mod integrations | IMPLEMENTING | Soft `ModList` detection + foreign-block refuse only; no real adapters |
+| User configuration | INTEGRATED | `livingmods.properties` format v1 + clamped ranges + legacy key migrate |
+| Optional mod integrations | IMPLEMENTING | Soft `ModList` detection only; Create/Waystones not claimed complete |
 | Determinism unit tests | FUNCTIONAL | Tests exist for sim/worldgen/protocol; **not executed this pass** |
 | Long-term accelerated sim | FUNCTIONAL | Host catch-up + tools `bench` |
-| Performance hardening | IMPLEMENTING | Async IPC, region subscriptions, projection caps — unproven under load |
-| Error handling / diagnostics | FUNCTIONAL | Handshake/save/restart errors logged; dashboard diagnostics |
-| Documentation | INTEGRATED | Rewritten for Blocks A–H; checklist unchecked |
+| Performance hardening | FUNCTIONAL | Indexed citizen loops, spatial cell cache, bounded queues/caches, workers `max(1,n/3)` |
+| Error handling / diagnostics | FUNCTIONAL | Plan/schema/duplicate-ID fail loudly; recoverable step degrade |
+| Multi-world static reset | FUNCTIONAL | ServerStopping clears clients/process/plan/projection caches |
+| Release Block I hardening | FUNCTIONAL | Deserial bounds, loopback IPC, versioned sidecar extract |
+| Documentation | INTEGRATED | Rewritten for Blocks A–I; checklist unchecked |
 
 ## RELEASE_READY count
 
@@ -68,7 +70,7 @@ Status legend (mandatory):
 | RELEASE_READY | **0** |
 | INTEGRATED | majority of foundation/worldgen/IPC/persistence/UI wiring |
 | FUNCTIONAL | most society engines + unit-tested islands |
-| IMPLEMENTING | optional mods, performance hardening |
+| IMPLEMENTING | optional mods (detection-only) |
 | PLANNED | real Create/Waystones/Macaw/Better Villages/Guns adapters |
 
 A subsystem may be promoted to RELEASE_READY only after the relevant sections of [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) pass on a real client/server.
@@ -95,7 +97,7 @@ Also recorded in `gradle.properties` for clarity; **Java constants win at runtim
 | D | Citizen vertical slice (projection, skins, NBT identity) | yes |
 | E+F | Multi-resource economy, road-routed trade, politics/war/justice | yes |
 | G+H | Society systems + player experience UI (map/dashboard) | yes |
-| I | Documentation honesty + release checklist | this commit |
+| I | Release hardening (perf, multi-world, security bounds, packaging) + docs | yes |
 
 ## Local commands (reference only — not run here)
 

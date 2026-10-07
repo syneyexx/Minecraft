@@ -19,4 +19,8 @@ public final class ClientNetworkBridge {
     public static void acceptDashboard(Map<String, String> metrics) {
         ClientMapCache.acceptDashboard(metrics);
     }
+
+    public static void clearCaches() {
+        ClientMapCache.clear();
+    }
 }

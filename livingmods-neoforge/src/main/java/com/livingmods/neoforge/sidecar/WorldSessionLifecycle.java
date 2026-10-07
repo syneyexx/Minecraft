@@ -209,6 +209,8 @@ public final class WorldSessionLifecycle {
         activeIdentity = null;
         activeWorldRoot = null;
         restartAttempts.set(0);
+        // Ensure no static process/socket/plan/canonical/cache from world A leaks into world B.
+        LivingModsMod.LOG.info("LivingMods world session cleared on server stop");
     }
 
     public static SidecarClient clientFor(UUID worldId) {

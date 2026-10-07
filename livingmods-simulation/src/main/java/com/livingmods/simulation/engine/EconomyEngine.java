@@ -1,5 +1,6 @@
 package com.livingmods.simulation.engine;
 
+import com.livingmods.common.id.CitizenId;
 import com.livingmods.common.model.Profession;
 import com.livingmods.common.model.ResourceType;
 import com.livingmods.simulation.CanonicalWorldState;
@@ -48,8 +49,9 @@ public final class EconomyEngine implements SimulationSubsystem {
             int builders = 0;
             int workers = 0;
 
-            for (CitizenState c : state.citizens().values()) {
-                if (!c.alive() || !c.settlementId().equals(settlement.id())) continue;
+            for (CitizenId cid : state.citizensInSettlement(settlement.id())) {
+                CitizenState c = state.citizens().get(cid);
+                if (c == null || !c.alive()) continue;
                 population++;
                 if (!c.canWork()) continue;
                 workers++;

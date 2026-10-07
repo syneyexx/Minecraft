@@ -14,8 +14,6 @@ import com.livingmods.worldgen.persist.WorldPlanStore;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
@@ -38,8 +36,9 @@ public final class SidecarSimulationHost implements AutoCloseable {
     private final WorldPlan worldPlan;
     private final CanonicalWorldState state;
     private final SimulationEngine engine;
-    private final BlockingQueue<EventPayload> outboundEvents = new LinkedBlockingQueue<>();
+    private final BoundedEventQueue outboundEvents = new BoundedEventQueue();
     private final PersistenceCoordinator persistence;
+    public static final int MAX_REGION_SUBSCRIPTIONS = 256;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicBoolean frozen = new AtomicBoolean(false);
     private final AtomicBoolean failed = new AtomicBoolean(false);
@@ -124,7 +123,8 @@ public final class SidecarSimulationHost implements AutoCloseable {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                LOG.warning("Simulation step failed: " + e.getMessage());
+                // Recoverable step failures degrade; plan/schema mismatches already fail construction loudly.
+                LOG.warning("Simulation step failed (recoverable): " + e.getMessage());
                 pushEvent(new EventPayload(
                         com.livingmods.common.event.CivilizationEventType.SIDECAR_DEGRADED,
                         0, 0, 0, 0,
@@ -260,6 +260,10 @@ public final class SidecarSimulationHost implements AutoCloseable {
         outboundEvents.offer(payload);
     }
 
+    public long outboundEventsDropped() {
+        return outboundEvents.dropped();
+    }
+
     public void syncTime(long minecraftGameTime, boolean jumped) {
         if (frozen.get() || failed.get()) {
             return;
@@ -273,14 +277,20 @@ public final class SidecarSimulationHost implements AutoCloseable {
         }
     }
 
-    /** detailLevel &lt; 0 unsubscribes. */
+    /** detailLevel &lt; 0 unsubscribes. Caps active subscriptions to avoid unbounded growth. */
     public void setRegionSubscription(int regionX, int regionZ, int detailLevel) {
         long key = (((long) regionX) << 32) ^ (regionZ & 0xffffffffL);
         if (detailLevel < 0) {
             regionSubscriptions.remove(key);
-        } else {
-            regionSubscriptions.put(key, detailLevel);
+            return;
         }
+        if (!regionSubscriptions.containsKey(key) && regionSubscriptions.size() >= MAX_REGION_SUBSCRIPTIONS) {
+            var it = regionSubscriptions.keySet().iterator();
+            if (it.hasNext()) {
+                regionSubscriptions.remove(it.next());
+            }
+        }
+        regionSubscriptions.put(key, Math.min(detailLevel, 3));
     }
 
     public boolean isRegionSubscribed(int regionX, int regionZ) {

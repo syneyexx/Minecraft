@@ -18,7 +18,7 @@ public final class SidecarMain {
         Long seed = null;
         Long planHash = null;
         int planRevision = 0;
-        int workers = Math.max(1, Runtime.getRuntime().availableProcessors() / 3);
+        int workers = com.livingmods.common.config.LivingModsConfig.defaultWorkerThreads();
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {

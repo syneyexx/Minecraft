@@ -1,5 +1,7 @@
 package com.livingmods.neoforge.sidecar;
 
+import com.livingmods.common.config.LivingModsConfig;
+import com.livingmods.common.version.LivingModsVersions;
 import com.livingmods.neoforge.LivingModsMod;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
@@ -27,7 +29,7 @@ public final class SidecarProcessManager {
     }
 
     public static int defaultWorkers() {
-        return Math.max(1, Runtime.getRuntime().availableProcessors() / 3);
+        return LivingModsConfig.defaultWorkerThreads();
     }
 
     public static synchronized int start(
@@ -191,12 +193,24 @@ public final class SidecarProcessManager {
     }
 
     private static Path extractSidecarJar(Path worldDir) throws IOException {
-        Path cached = worldDir.resolve("livingmods-sidecar.jar");
+        String versionedName = "livingmods-sidecar-" + LivingModsVersions.SIDECAR_VERSION + ".jar";
+        Path cached = worldDir.resolve(versionedName);
+        Path legacy = worldDir.resolve("livingmods-sidecar.jar");
+        Path tmp = worldDir.resolve(versionedName + ".tmp");
         try (InputStream in = SidecarProcessManager.class.getResourceAsStream("/livingmods-sidecar.jar")) {
             if (in == null) {
                 throw new IOException("Embedded sidecar jar missing from mod resources");
             }
-            Files.copy(in, cached, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+        }
+        try {
+            Files.move(tmp, cached, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException atomicUnsupported) {
+            Files.move(tmp, cached, StandardCopyOption.REPLACE_EXISTING);
+        }
+        try {
+            Files.deleteIfExists(legacy);
+        } catch (IOException ignored) {
         }
         return cached;
     }

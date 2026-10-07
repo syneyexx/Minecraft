@@ -12,9 +12,15 @@ import java.util.Map;
 
 /** Helpers for bounded request/response payloads. */
 public final class PayloadIo {
+    public static final int MAX_MAP_ENTRIES = 4096;
+    public static final int MAX_LIST_ENTRIES = 8192;
+
     private PayloadIo() {}
 
     public static byte[] encodeStrings(Map<String, String> map) throws IOException {
+        if (map.size() > MAX_MAP_ENTRIES) {
+            throw new IOException("string map too large: " + map.size());
+        }
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(bos);
         dos.writeInt(map.size());
@@ -27,7 +33,7 @@ public final class PayloadIo {
 
     public static Map<String, String> decodeStrings(byte[] payload) throws IOException {
         DataInputStream dis = new DataInputStream(new ByteArrayInputStream(payload));
-        int n = dis.readInt();
+        int n = readBoundedCount(dis, MAX_MAP_ENTRIES, "string map");
         Map<String, String> map = new LinkedHashMap<>();
         for (int i = 0; i < n; i++) {
             map.put(BinaryCodec.readString(dis), BinaryCodec.readString(dis));
@@ -36,6 +42,9 @@ public final class PayloadIo {
     }
 
     public static byte[] encodeStringList(List<String> list) throws IOException {
+        if (list.size() > MAX_LIST_ENTRIES) {
+            throw new IOException("string list too large: " + list.size());
+        }
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(bos);
         dos.writeInt(list.size());
@@ -47,7 +56,7 @@ public final class PayloadIo {
 
     public static List<String> decodeStringList(byte[] payload) throws IOException {
         DataInputStream dis = new DataInputStream(new ByteArrayInputStream(payload));
-        int n = dis.readInt();
+        int n = readBoundedCount(dis, MAX_LIST_ENTRIES, "string list");
         List<String> list = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             list.add(BinaryCodec.readString(dis));
@@ -56,6 +65,9 @@ public final class PayloadIo {
     }
 
     public static <T> byte[] encodeList(List<T> items, IoWriter<T> writer) throws IOException {
+        if (items.size() > MAX_LIST_ENTRIES) {
+            throw new IOException("list too large: " + items.size());
+        }
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(bos);
         dos.writeInt(items.size());
@@ -67,12 +79,20 @@ public final class PayloadIo {
 
     public static <T> List<T> decodeList(byte[] payload, IoReader<T> reader) throws IOException {
         DataInputStream dis = new DataInputStream(new ByteArrayInputStream(payload));
-        int n = dis.readInt();
+        int n = readBoundedCount(dis, MAX_LIST_ENTRIES, "list");
         List<T> list = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             list.add(reader.read(dis));
         }
         return list;
+    }
+
+    public static int readBoundedCount(DataInputStream dis, int max, String label) throws IOException {
+        int n = dis.readInt();
+        if (n < 0 || n > max) {
+            throw new IOException("invalid " + label + " count: " + n + " (max " + max + ")");
+        }
+        return n;
     }
 
     @FunctionalInterface

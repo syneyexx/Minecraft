@@ -2,6 +2,7 @@ package com.livingmods.simulation.engine;
 
 import com.livingmods.common.event.CivilizationEventType;
 import com.livingmods.common.event.HistoricalEvent;
+import com.livingmods.common.id.CitizenId;
 import com.livingmods.common.id.HistoricalEventId;
 import com.livingmods.common.id.KingdomId;
 import com.livingmods.common.model.Profession;
@@ -47,8 +48,9 @@ public final class TechnologyEngine implements SimulationSubsystem {
             int students = 0;
             double literacySum = 0.0;
             int alive = 0;
-            for (CitizenState c : state.citizens().values()) {
-                if (!c.alive() || !c.settlementId().equals(s.id())) continue;
+            for (CitizenId cid : state.citizensInSettlement(s.id())) {
+                CitizenState c = state.citizens().get(cid);
+                if (c == null || !c.alive()) continue;
                 alive++;
                 literacySum += c.literacy();
                 if (c.profession() == Profession.TEACHER) teachers++;
@@ -80,8 +82,9 @@ public final class TechnologyEngine implements SimulationSubsystem {
             });
 
             // Teach children / apprentices in schools.
-            for (CitizenState c : state.citizens().values()) {
-                if (!c.alive() || !c.settlementId().equals(s.id())) continue;
+            for (CitizenId cid : state.citizensInSettlement(s.id())) {
+                CitizenState c = state.citizens().get(cid);
+                if (c == null || !c.alive()) continue;
                 if (schoolCap <= 0) break;
                 if (c.isChild(ctx.time()) || c.profession() == Profession.TEACHER
                         || c.profession() == Profession.SCHOLAR) {

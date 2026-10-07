@@ -112,59 +112,70 @@ public record MapDataPayload(
         buf.writeLong(payload.revision);
     }
 
+    public static final int MAX_MARKERS = 512;
+    public static final int MAX_BORDER_POINTS = 2048;
+    public static final int MAX_TILE_DIM = 256;
+
     private static MapDataPayload decode(RegistryFriendlyByteBuf buf) {
         int originX = buf.readVarInt();
         int originZ = buf.readVarInt();
         int tileSize = buf.readVarInt();
-        int width = buf.readVarInt();
-        int height = buf.readVarInt();
+        int width = Math.min(MAX_TILE_DIM, Math.max(0, buf.readVarInt()));
+        int height = Math.min(MAX_TILE_DIM, Math.max(0, buf.readVarInt()));
         byte[] tiles = ByteBufCodecs.BYTE_ARRAY.decode(buf);
-        int sc = buf.readVarInt();
+        int sc = boundCount(buf.readVarInt(), MAX_MARKERS);
         List<SettlementMarker> settlements = new ArrayList<>(sc);
         for (int i = 0; i < sc; i++) {
             settlements.add(new SettlementMarker(
-                    buf.readUtf(), buf.readUtf(), buf.readUtf(), buf.readUtf(),
+                    buf.readUtf(256), buf.readUtf(256), buf.readUtf(256), buf.readUtf(64),
                     buf.readVarInt(), buf.readVarInt(), buf.readBoolean()));
         }
-        int rc = buf.readVarInt();
+        int rc = boundCount(buf.readVarInt(), MAX_MARKERS);
         List<RoadSegment> roads = new ArrayList<>(rc);
         for (int i = 0; i < rc; i++) {
-            roads.add(new RoadSegment(buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readUtf()));
+            roads.add(new RoadSegment(buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readUtf(64)));
         }
-        int kc = buf.readVarInt();
+        int kc = boundCount(buf.readVarInt(), MAX_MARKERS);
         List<KingdomOverlay> kingdoms = new ArrayList<>(kc);
         for (int i = 0; i < kc; i++) {
-            String id = buf.readUtf();
-            String name = buf.readUtf();
+            String id = buf.readUtf(256);
+            String name = buf.readUtf(256);
             int color = buf.readInt();
             int cx = buf.readVarInt();
             int cz = buf.readVarInt();
-            int bc = buf.readVarInt();
+            int bc = boundCount(buf.readVarInt(), MAX_BORDER_POINTS);
             List<Integer> border = new ArrayList<>(bc);
             for (int j = 0; j < bc; j++) {
                 border.add(buf.readVarInt());
             }
             kingdoms.add(new KingdomOverlay(id, name, color, cx, cz, border));
         }
-        int ac = buf.readVarInt();
+        int ac = boundCount(buf.readVarInt(), MAX_MARKERS);
         List<ArmyMarker> armies = new ArrayList<>(ac);
         for (int i = 0; i < ac; i++) {
-            armies.add(new ArmyMarker(buf.readUtf(), buf.readUtf(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt()));
+            armies.add(new ArmyMarker(buf.readUtf(256), buf.readUtf(256), buf.readVarInt(), buf.readVarInt(), buf.readVarInt()));
         }
-        int ec = buf.readVarInt();
+        int ec = boundCount(buf.readVarInt(), MAX_MARKERS);
         List<EpidemicMarker> epidemics = new ArrayList<>(ec);
         for (int i = 0; i < ec; i++) {
-            epidemics.add(new EpidemicMarker(buf.readUtf(), buf.readVarInt(), buf.readVarInt(), buf.readDouble()));
+            epidemics.add(new EpidemicMarker(buf.readUtf(128), buf.readVarInt(), buf.readVarInt(), buf.readDouble()));
         }
-        int mc = buf.readVarInt();
+        int mc = boundCount(buf.readVarInt(), MAX_MARKERS);
         List<MigrationMarker> migrations = new ArrayList<>(mc);
         for (int i = 0; i < mc; i++) {
-            migrations.add(new MigrationMarker(buf.readUtf(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt()));
+            migrations.add(new MigrationMarker(buf.readUtf(128), buf.readVarInt(), buf.readVarInt(), buf.readVarInt()));
         }
         int playerX = buf.readVarInt();
         int playerZ = buf.readVarInt();
         long revision = buf.readLong();
         return new MapDataPayload(originX, originZ, tileSize, width, height, tiles,
                 settlements, roads, kingdoms, armies, epidemics, migrations, playerX, playerZ, revision);
+    }
+
+    private static int boundCount(int n, int max) {
+        if (n < 0 || n > max) {
+            throw new IllegalArgumentException("map payload collection size out of bounds: " + n);
+        }
+        return n;
     }
 }

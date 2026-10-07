@@ -40,10 +40,13 @@ public final class DemographyEngine implements SimulationSubsystem {
         if (!ctx.schedule().runDemography()) return;
 
         List<CitizenState> regional = new ArrayList<>();
-        for (CitizenState c : state.citizens().values()) {
-            SettlementState s = state.settlements().get(c.settlementId());
-            if (s != null && s.region().equals(work.region())) {
-                regional.add(c);
+        for (SettlementState s : state.settlements().values()) {
+            if (!s.region().equals(work.region())) continue;
+            for (CitizenId cid : state.citizensInSettlement(s.id())) {
+                CitizenState c = state.citizens().get(cid);
+                if (c != null) {
+                    regional.add(c);
+                }
             }
         }
 
@@ -350,9 +353,9 @@ public final class DemographyEngine implements SimulationSubsystem {
                 return other;
             }
         }
-        for (CitizenState c : state.citizens().values()) {
-            if (!c.alive() || !c.isAdult(state.time())) continue;
-            if (!c.settlementId().equals(child.settlementId())) continue;
+        for (CitizenId cid : state.citizensInSettlement(child.settlementId())) {
+            CitizenState c = state.citizens().get(cid);
+            if (c == null || !c.alive() || !c.isAdult(state.time())) continue;
             if (c.id().equals(child.id())) continue;
             if (c.familyName().equals(child.familyName())) {
                 return c;

@@ -1,5 +1,6 @@
 package com.livingmods.neoforge;
 
+import com.livingmods.neoforge.client.ClientMapCache;
 import com.livingmods.neoforge.client.DashboardScreen;
 import com.livingmods.neoforge.client.LivingModsKeyMappings;
 import com.livingmods.neoforge.client.MapScreen;
@@ -7,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 
@@ -17,6 +19,11 @@ public final class LivingModsClientEvents {
     @SubscribeEvent
     public static void registerKeys(RegisterKeyMappingsEvent event) {
         LivingModsKeyMappings.register(event);
+    }
+
+    @SubscribeEvent
+    public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        ClientMapCache.clear();
     }
 
     @SubscribeEvent

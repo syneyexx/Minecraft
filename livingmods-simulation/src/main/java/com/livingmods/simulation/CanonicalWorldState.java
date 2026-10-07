@@ -61,6 +61,11 @@ import java.util.UUID;
  */
 public final class CanonicalWorldState {
     public static final int MAX_HISTORY_EVENTS = 4096;
+    public static final int MAX_RUMORS = 2048;
+    public static final int MAX_HISTORY_MARKERS = 1024;
+    public static final int MAX_EMERGENT_TASKS = 512;
+    public static final int MAX_CRIMES = 4096;
+    public static final int MAX_SHIPMENTS = 2048;
 
     private UUID worldId;
     private final long seed;
@@ -99,6 +104,8 @@ public final class CanonicalWorldState {
     private final Map<HouseholdId, Set<CitizenId>> citizensByHousehold = new LinkedHashMap<>();
     private final Map<KingdomId, Set<SettlementId>> settlementsByKingdom = new LinkedHashMap<>();
     private final SpatialIndex spatialIndex = new SpatialIndex(this);
+    /** Bumped when settlement spatial membership changes — SpatialIndex rebuilds only then. */
+    private long spatialEpoch;
 
     public CanonicalWorldState(long seed, SimulationTime time, long planContentHash) {
         this(new UUID(seed, planContentHash), seed, time, planContentHash);
@@ -174,6 +181,7 @@ public final class CanonicalWorldState {
     public Map<HouseholdId, Set<CitizenId>> citizensByHousehold() { return citizensByHousehold; }
     public Map<KingdomId, Set<SettlementId>> settlementsByKingdom() { return settlementsByKingdom; }
     public SpatialIndex spatialIndex() { return spatialIndex; }
+    public long spatialEpoch() { return spatialEpoch; }
 
     public Optional<KingdomState> kingdom(KingdomId id) {
         return Optional.ofNullable(kingdoms.get(id));
@@ -199,6 +207,7 @@ public final class CanonicalWorldState {
         }
         settlement.ownerKingdom().ifPresent(k ->
                 settlementsByKingdom.computeIfAbsent(k, id -> new LinkedHashSet<>()).add(settlement.id()));
+        spatialEpoch++;
     }
 
     public void putHousehold(HouseholdState household) {
@@ -270,6 +279,8 @@ public final class CanonicalWorldState {
             citizensBySettlement.computeIfAbsent(citizen.settlementId(), id -> new LinkedHashSet<>()).add(citizen.id());
             citizensByHousehold.computeIfAbsent(citizen.householdId(), id -> new LinkedHashSet<>()).add(citizen.id());
         }
+        spatialEpoch++;
+        pruneBoundedCollections();
     }
 
     public Set<CitizenId> citizensInSettlement(SettlementId settlementId) {
@@ -281,6 +292,44 @@ public final class CanonicalWorldState {
         history.addLast(event);
         while (history.size() > MAX_HISTORY_EVENTS) {
             history.removeFirst();
+        }
+    }
+
+    public void putRumor(RumorState rumor) {
+        rumors.put(rumor.id(), rumor);
+        while (rumors.size() > MAX_RUMORS) {
+            String oldest = rumors.keySet().iterator().next();
+            rumors.remove(oldest);
+        }
+    }
+
+    public void putHistoryMarker(HistoryMarkerState marker) {
+        historyMarkers.put(marker.id(), marker);
+        while (historyMarkers.size() > MAX_HISTORY_MARKERS) {
+            String oldest = historyMarkers.keySet().iterator().next();
+            historyMarkers.remove(oldest);
+        }
+    }
+
+    /** Drop oldest entries when soft caps are exceeded (after bulk load or long runs). */
+    public void pruneBoundedCollections() {
+        while (history.size() > MAX_HISTORY_EVENTS) {
+            history.removeFirst();
+        }
+        while (rumors.size() > MAX_RUMORS) {
+            rumors.remove(rumors.keySet().iterator().next());
+        }
+        while (historyMarkers.size() > MAX_HISTORY_MARKERS) {
+            historyMarkers.remove(historyMarkers.keySet().iterator().next());
+        }
+        while (emergentTasks.size() > MAX_EMERGENT_TASKS) {
+            emergentTasks.remove(emergentTasks.keySet().iterator().next());
+        }
+        while (crimes.size() > MAX_CRIMES) {
+            crimes.remove(crimes.keySet().iterator().next());
+        }
+        while (shipments.size() > MAX_SHIPMENTS) {
+            shipments.remove(shipments.keySet().iterator().next());
         }
     }
 

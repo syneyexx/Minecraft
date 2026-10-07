@@ -59,11 +59,11 @@ public final class HistoryEngine implements SimulationSubsystem {
             work.enqueueCommit(() -> {
                 rumor.tickAge();
                 rumor.setConfidence(rumor.confidence() * 0.998);
-                for (CitizenState c : state.citizens().values()) {
-                    if (!c.alive() || !c.settlementId().equals(rumor.origin())) continue;
-                    if (c.knownRumorIds().contains(rumor.id())) continue;
+                for (var cid : state.citizensInSettlement(rumor.origin())) {
+                    CitizenState c = state.citizens().get(cid);
+                    if (c == null || !c.alive()) continue;
                     if (ctx.random().chance(0.05 * rumor.confidence())) {
-                        c.knownRumorIds().add(rumor.id());
+                        c.learnRumor(rumor.id());
                     }
                 }
             });
@@ -101,28 +101,30 @@ public final class HistoryEngine implements SimulationSubsystem {
                     confidenceFor(event.type()),
                     event.when()
             );
-            state.rumors().put(rumorId, rumor);
+            state.putRumor(rumor);
 
             Optional<HistoryMarkerState> marker = markerFor(event);
-            marker.ifPresent(m -> state.historyMarkers().put(m.id(), m));
+            marker.ifPresent(state::putHistoryMarker);
         }
 
-        // Spread rumors along nearby settlements.
+        // Spread rumors along nearby settlements (spatial index, not full citizen scan).
         for (RumorState rumor : List.copyOf(state.rumors().values())) {
             if (rumor.confidence() < 0.05) continue;
             SettlementState origin = state.settlements().get(rumor.origin());
             if (origin == null) continue;
-            for (CitizenState c : state.citizens().values()) {
-                if (!c.alive() || c.knownRumorIds().contains(rumor.id())) continue;
-                SettlementState home = state.settlements().get(c.settlementId());
-                if (home == null) continue;
+            for (SettlementState home : state.spatialIndex().settlementsNear(origin.center(), 768)) {
                 double dist = home.center().distanceTo(origin.center());
                 double chance = dist < 256 ? 0.08 : dist < 768 ? 0.03 : 0.005;
-                if (ctx.random().chance(chance * rumor.confidence())) {
-                    c.knownRumorIds().add(rumor.id());
+                for (var cid : state.citizensInSettlement(home.id())) {
+                    CitizenState c = state.citizens().get(cid);
+                    if (c == null || !c.alive()) continue;
+                    if (ctx.random().chance(chance * rumor.confidence())) {
+                        c.learnRumor(rumor.id());
+                    }
                 }
             }
         }
+        state.pruneBoundedCollections();
     }
 
     public List<HistoricalEvent> recent(CanonicalWorldState state, int limit) {

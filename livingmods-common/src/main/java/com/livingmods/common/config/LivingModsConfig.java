@@ -10,6 +10,7 @@ import java.util.Properties;
 /**
  * Tunable user-facing configuration with validated ranges.
  * Loaded from {@code config/livingmods.properties} when present.
+ * File format is versioned via {@link #CONFIG_FORMAT_VERSION}.
  */
 public record LivingModsConfig(
         int surfaceKingdomCount,
@@ -30,13 +31,20 @@ public record LivingModsConfig(
         int mapDetailLevel,
         boolean debugMode
 ) {
+    /** Bump when property keys/semantics change; load migrates older files. */
+    public static final int CONFIG_FORMAT_VERSION = 1;
+
+    public static int defaultWorkerThreads() {
+        return Math.max(1, Runtime.getRuntime().availableProcessors() / 3);
+    }
+
     public static LivingModsConfig defaults() {
         return new LivingModsConfig(
                 12,
                 26,
                 true,
                 64,
-                Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
+                defaultWorkerThreads(),
                 64,
                 50L,
                 48,
@@ -82,7 +90,15 @@ public record LivingModsConfig(
         Properties props = new Properties();
         try (Reader reader = Files.newBufferedReader(file)) {
             props.load(reader);
-            return fromProperties(props);
+            LivingModsConfig loaded = fromProperties(props);
+            int fileVersion = parseInt(props, "configFormatVersion", 0);
+            if (fileVersion < CONFIG_FORMAT_VERSION) {
+                try {
+                    loaded.save(file);
+                } catch (IOException ignored) {
+                }
+            }
+            return loaded;
         } catch (IOException e) {
             return defaults();
         }
@@ -92,18 +108,21 @@ public record LivingModsConfig(
         Properties props = toProperties();
         Files.createDirectories(file.getParent());
         try (Writer writer = Files.newBufferedWriter(file)) {
-            props.store(writer, "LivingMods user configuration");
+            props.store(writer, "LivingMods user configuration (format v" + CONFIG_FORMAT_VERSION + ")");
         }
     }
 
     public static LivingModsConfig fromProperties(Properties props) {
         LivingModsConfig d = defaults();
+        // Legacy key migration: workers → simulationWorkerThreads
+        int workers = parseInt(props, "simulationWorkerThreads",
+                parseInt(props, "workers", d.simulationWorkerThreads));
         return new LivingModsConfig(
                 parseInt(props, "surfaceKingdomCount", d.surfaceKingdomCount),
                 parseInt(props, "settlementsPerMajorRealm", d.settlementsPerMajorRealm),
                 parseBool(props, "enableWizardTrees", d.enableWizardTrees),
                 parseInt(props, "planningRegionSizeChunks", d.planningRegionSizeChunks),
-                parseInt(props, "simulationWorkerThreads", d.simulationWorkerThreads),
+                workers,
                 parseInt(props, "maximumRegionalJobs", d.maximumRegionalJobs),
                 parseLong(props, "simulationBudgetMillis", d.simulationBudgetMillis),
                 parseInt(props, "physicalCitizenProjectionCap", d.physicalCitizenProjectionCap),
@@ -121,6 +140,7 @@ public record LivingModsConfig(
 
     public Properties toProperties() {
         Properties props = new Properties();
+        props.setProperty("configFormatVersion", String.valueOf(CONFIG_FORMAT_VERSION));
         props.setProperty("surfaceKingdomCount", String.valueOf(surfaceKingdomCount));
         props.setProperty("settlementsPerMajorRealm", String.valueOf(settlementsPerMajorRealm));
         props.setProperty("enableWizardTrees", String.valueOf(enableWizardTrees));

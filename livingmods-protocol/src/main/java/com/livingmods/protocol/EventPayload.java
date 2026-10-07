@@ -18,6 +18,20 @@ public record EventPayload(
         int blockZ,
         Map<String, String> data
 ) {
+    public static final int MAX_DATA_ENTRIES = 64;
+
+    public EventPayload {
+        LinkedHashMap<String, String> copy = new LinkedHashMap<>();
+        if (data != null) {
+            int i = 0;
+            for (Map.Entry<String, String> e : data.entrySet()) {
+                if (i++ >= MAX_DATA_ENTRIES) break;
+                copy.put(e.getKey(), e.getValue());
+            }
+        }
+        data = copy;
+    }
+
     public byte[] encode() throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(bos);
@@ -36,12 +50,18 @@ public record EventPayload(
 
     public static EventPayload decode(byte[] payload) throws IOException {
         DataInputStream dis = new DataInputStream(new ByteArrayInputStream(payload));
-        CivilizationEventType type = CivilizationEventType.valueOf(BinaryCodec.readString(dis));
+        String typeName = BinaryCodec.readString(dis, 128);
+        CivilizationEventType type;
+        try {
+            type = CivilizationEventType.valueOf(typeName);
+        } catch (RuntimeException e) {
+            throw new IOException("invalid CivilizationEventType: " + typeName);
+        }
         int rx = dis.readInt();
         int rz = dis.readInt();
         int bx = dis.readInt();
         int bz = dis.readInt();
-        int n = dis.readInt();
+        int n = PayloadIo.readBoundedCount(dis, MAX_DATA_ENTRIES, "event data");
         Map<String, String> data = new LinkedHashMap<>();
         for (int i = 0; i < n; i++) {
             data.put(BinaryCodec.readString(dis), BinaryCodec.readString(dis));

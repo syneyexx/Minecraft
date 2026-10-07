@@ -63,7 +63,7 @@ public final class SimulationEngine {
     private long tickCounter;
 
     public SimulationEngine(CanonicalWorldState state) {
-        this(state, Math.max(1, Runtime.getRuntime().availableProcessors()),
+        this(state, LivingModsConfig.defaultWorkerThreads(),
                 LivingModsConfig.defaults().maximumRegionalJobs());
     }
 

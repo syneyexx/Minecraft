@@ -9,6 +9,12 @@ import java.util.UUID;
 
 /** Bounded request payloads from Minecraft. */
 public final class RequestPayloads {
+    public static final int MAX_QUERY_RADIUS = 512;
+    public static final int MAX_QUERY_LIMIT = 256;
+    public static final int MAX_LOCATE_LIMIT = 64;
+    public static final int MAX_INTENT_LENGTH = 128;
+    public static final int MAX_CONTEXT_LENGTH = 512;
+
     private RequestPayloads() {}
 
     public record SettlementQuery(UUID settlementId) {
@@ -24,6 +30,11 @@ public final class RequestPayloads {
     }
 
     public record NearbyQuery(int blockX, int blockZ, int radius, int limit) {
+        public NearbyQuery {
+            radius = clamp(radius, 0, MAX_QUERY_RADIUS);
+            limit = clamp(limit, 1, MAX_QUERY_LIMIT);
+        }
+
         public byte[] encode() throws IOException {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             DataOutputStream dos = new DataOutputStream(bos);
@@ -40,6 +51,15 @@ public final class RequestPayloads {
     }
 
     public record DialogueQuery(UUID citizenId, UUID playerId, String intent, UUID settlementId, String recentContext) {
+        public DialogueQuery {
+            if (intent != null && intent.length() > MAX_INTENT_LENGTH) {
+                intent = intent.substring(0, MAX_INTENT_LENGTH);
+            }
+            if (recentContext != null && recentContext.length() > MAX_CONTEXT_LENGTH) {
+                recentContext = recentContext.substring(0, MAX_CONTEXT_LENGTH);
+            }
+        }
+
         public byte[] encode() throws IOException {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             DataOutputStream dos = new DataOutputStream(bos);
@@ -55,14 +75,24 @@ public final class RequestPayloads {
             return new DialogueQuery(
                     BinaryCodec.readUuid(dis),
                     BinaryCodec.readUuid(dis),
-                    BinaryCodec.readString(dis),
+                    BinaryCodec.readString(dis, MAX_INTENT_LENGTH),
                     BinaryCodec.readUuid(dis),
-                    BinaryCodec.readString(dis)
+                    BinaryCodec.readString(dis, MAX_CONTEXT_LENGTH)
             );
         }
     }
 
     public record LocateQuery(String category, String nameFilter, int originX, int originZ, int limit) {
+        public LocateQuery {
+            limit = clamp(limit, 1, MAX_LOCATE_LIMIT);
+            if (category != null && category.length() > MAX_INTENT_LENGTH) {
+                category = category.substring(0, MAX_INTENT_LENGTH);
+            }
+            if (nameFilter != null && nameFilter.length() > MAX_CONTEXT_LENGTH) {
+                nameFilter = nameFilter.substring(0, MAX_CONTEXT_LENGTH);
+            }
+        }
+
         public byte[] encode() throws IOException {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             DataOutputStream dos = new DataOutputStream(bos);
@@ -76,8 +106,8 @@ public final class RequestPayloads {
         public static LocateQuery decode(byte[] p) throws IOException {
             DataInputStream dis = new DataInputStream(new ByteArrayInputStream(p));
             return new LocateQuery(
-                    BinaryCodec.readString(dis),
-                    BinaryCodec.readString(dis),
+                    BinaryCodec.readString(dis, MAX_INTENT_LENGTH),
+                    BinaryCodec.readString(dis, MAX_CONTEXT_LENGTH),
                     dis.readInt(), dis.readInt(), dis.readInt()
             );
         }
@@ -99,6 +129,10 @@ public final class RequestPayloads {
     }
 
     public record RegionSubscription(int regionX, int regionZ, int detailLevel) {
+        public RegionSubscription {
+            detailLevel = clamp(detailLevel, -1, 3);
+        }
+
         public byte[] encode() throws IOException {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             DataOutputStream dos = new DataOutputStream(bos);
@@ -111,5 +145,9 @@ public final class RequestPayloads {
             DataInputStream dis = new DataInputStream(new ByteArrayInputStream(p));
             return new RegionSubscription(dis.readInt(), dis.readInt(), dis.readInt());
         }
+    }
+
+    private static int clamp(int v, int min, int max) {
+        return Math.max(min, Math.min(max, v));
     }
 }

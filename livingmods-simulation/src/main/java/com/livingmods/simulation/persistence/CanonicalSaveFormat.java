@@ -44,6 +44,7 @@ import com.livingmods.common.model.WarObjective;
 import com.livingmods.common.model.WealthClass;
 import com.livingmods.common.time.SimulationTime;
 import com.livingmods.protocol.BinaryCodec;
+import com.livingmods.protocol.ProtocolConstants;
 import com.livingmods.simulation.CanonicalWorldState;
 import com.livingmods.simulation.state.ArmyState;
 import com.livingmods.simulation.state.CitizenState;
@@ -90,8 +91,28 @@ import java.util.UUID;
 public final class CanonicalSaveFormat {
     public static final int SCHEMA_VERSION = 3;
     public static final int MAGIC = 0x4C4D4353; // LMCS
+    public static final int MAX_ENTITIES = 500_000;
+    public static final int MAX_NESTED = 65_536;
+    public static final int MAX_STRING = ProtocolConstants.MAX_STRING_LENGTH;
 
     private CanonicalSaveFormat() {}
+
+    private static int readCount(DataInputStream in, int max, String label) throws IOException {
+        int n = in.readInt();
+        if (n < 0 || n > max) {
+            throw new IOException("invalid " + label + " count: " + n + " (max " + max + ")");
+        }
+        return n;
+    }
+
+    private static <E extends Enum<E>> E readEnum(DataInputStream in, Class<E> type) throws IOException {
+        int ordinal = in.readInt();
+        E[] values = type.getEnumConstants();
+        if (ordinal < 0 || ordinal >= values.length) {
+            throw new IOException("invalid " + type.getSimpleName() + " ordinal: " + ordinal);
+        }
+        return values[ordinal];
+    }
 
     public record SnapshotMeta(
             int schemaVersion,
@@ -217,43 +238,53 @@ public final class CanonicalSaveFormat {
         CanonicalWorldState state = new CanonicalWorldState(worldId, seed, SimulationTime.ofTicks(ticks), planHash);
         state.setSaveRevision(revision);
 
-        int kingdomCount = in.readInt();
+        int kingdomCount = readCount(in, MAX_ENTITIES, "kingdoms");
         for (int i = 0; i < kingdomCount; i++) {
             KingdomState k = readKingdom(in);
-            state.kingdoms().put(k.id(), k);
+            if (state.kingdoms().put(k.id(), k) != null) {
+                throw new IOException("duplicate kingdom id: " + k.id());
+            }
         }
 
-        int settlementCount = in.readInt();
+        int settlementCount = readCount(in, MAX_ENTITIES, "settlements");
         for (int i = 0; i < settlementCount; i++) {
             SettlementState s = readSettlement(in);
-            state.settlements().put(s.id(), s);
+            if (state.settlements().put(s.id(), s) != null) {
+                throw new IOException("duplicate settlement id: " + s.id());
+            }
         }
 
-        int householdCount = in.readInt();
+        int householdCount = readCount(in, MAX_ENTITIES, "households");
         for (int i = 0; i < householdCount; i++) {
             HouseholdState h = readHousehold(in);
-            state.households().put(h.id(), h);
+            if (state.households().put(h.id(), h) != null) {
+                throw new IOException("duplicate household id: " + h.id());
+            }
         }
 
-        int citizenCount = in.readInt();
+        int citizenCount = readCount(in, MAX_ENTITIES, "citizens");
         for (int i = 0; i < citizenCount; i++) {
             CitizenState c = readCitizen(in);
-            state.citizens().put(c.id(), c);
+            if (state.citizens().put(c.id(), c) != null) {
+                throw new IOException("duplicate citizen id: " + c.id());
+            }
         }
 
-        int relationCount = in.readInt();
+        int relationCount = readCount(in, MAX_ENTITIES, "familyRelations");
         for (int i = 0; i < relationCount; i++) {
             FamilyRelationState rel = readFamilyRelation(in);
-            state.familyRelations().put(rel.id(), rel);
+            if (state.familyRelations().put(rel.id(), rel) != null) {
+                throw new IOException("duplicate family relation id: " + rel.id());
+            }
         }
 
-        int stockpileCount = in.readInt();
+        int stockpileCount = readCount(in, MAX_ENTITIES, "stockpiles");
         for (int i = 0; i < stockpileCount; i++) {
             StockpileState sp = readStockpile(in);
             state.stockpiles().put(sp.settlementId(), sp);
         }
 
-        int marketCount = in.readInt();
+        int marketCount = readCount(in, MAX_ENTITIES, "markets");
         for (int i = 0; i < marketCount; i++) {
             MarketState m = readMarket(in);
             state.markets().put(m.settlementId(), m);
@@ -261,34 +292,44 @@ public final class CanonicalSaveFormat {
 
         readDiplomacy(in, state.diplomacy());
 
-        int warCount = in.readInt();
+        int warCount = readCount(in, MAX_NESTED, "wars");
         for (int i = 0; i < warCount; i++) {
             WarState w = readWar(in);
-            state.wars().put(w.id(), w);
+            if (state.wars().put(w.id(), w) != null) {
+                throw new IOException("duplicate war id: " + w.id());
+            }
         }
 
-        int armyCount = in.readInt();
+        int armyCount = readCount(in, MAX_NESTED, "armies");
         for (int i = 0; i < armyCount; i++) {
             ArmyState a = readArmy(in);
-            state.armies().put(a.id(), a);
+            if (state.armies().put(a.id(), a) != null) {
+                throw new IOException("duplicate army id: " + a.id());
+            }
         }
 
-        int epidemicCount = in.readInt();
+        int epidemicCount = readCount(in, MAX_NESTED, "epidemics");
         for (int i = 0; i < epidemicCount; i++) {
             EpidemicState e = readEpidemic(in);
-            state.epidemics().put(e.id(), e);
+            if (state.epidemics().put(e.id(), e) != null) {
+                throw new IOException("duplicate epidemic id: " + e.id());
+            }
         }
 
-        int migrationCount = in.readInt();
+        int migrationCount = readCount(in, MAX_NESTED, "migrations");
         for (int i = 0; i < migrationCount; i++) {
             MigrationGroupState m = readMigration(in);
-            state.migrations().put(m.id(), m);
+            if (state.migrations().put(m.id(), m) != null) {
+                throw new IOException("duplicate migration id: " + m.id());
+            }
         }
 
-        int shipmentCount = in.readInt();
+        int shipmentCount = readCount(in, CanonicalWorldState.MAX_SHIPMENTS, "shipments");
         for (int i = 0; i < shipmentCount; i++) {
             ShipmentState s = readShipment(in);
-            state.shipments().put(s.id(), s);
+            if (state.shipments().put(s.id(), s) != null) {
+                throw new IOException("duplicate shipment id: " + s.id());
+            }
         }
 
         readEcology(in, state.ecology());
@@ -354,10 +395,10 @@ public final class CanonicalSaveFormat {
         KingdomId id = KingdomId.of(BinaryCodec.readUuid(in));
         String name = BinaryCodec.readString(in);
         CultureId cultureId = CultureId.of(BinaryCodec.readUuid(in));
-        GovernmentType gov = GovernmentType.values()[in.readInt()];
+        GovernmentType gov = readEnum(in, GovernmentType.class);
         SettlementId capitalId = SettlementId.of(BinaryCodec.readUuid(in));
         CitizenId rulerId = CitizenId.of(BinaryCodec.readUuid(in));
-        int n = in.readInt();
+        int n = readCount(in, MAX_NESTED, "kingdom.settlements");
         List<SettlementId> settlements = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             settlements.add(SettlementId.of(BinaryCodec.readUuid(in)));
@@ -369,7 +410,7 @@ public final class CanonicalSaveFormat {
         UUID dynasty = BinaryCodec.readUuid(in);
         if (dynasty != null) k.setDynastyId(DynastyId.of(dynasty));
         k.setReligionKey(BinaryCodec.readString(in));
-        int adjN = in.readInt();
+        int adjN = readCount(in, MAX_NESTED, "kingdom.adjacent");
         for (int i = 0; i < adjN; i++) {
             k.adjacentKingdoms().add(KingdomId.of(BinaryCodec.readUuid(in)));
         }
@@ -406,8 +447,8 @@ public final class CanonicalSaveFormat {
     private static SettlementState readSettlement(DataInputStream in) throws IOException {
         SettlementId id = SettlementId.of(BinaryCodec.readUuid(in));
         String name = BinaryCodec.readString(in);
-        SettlementTier tier = SettlementTier.values()[in.readInt()];
-        SettlementRole role = SettlementRole.values()[in.readInt()];
+        SettlementTier tier = readEnum(in, SettlementTier.class);
+        SettlementRole role = readEnum(in, SettlementRole.class);
         BlockPos2 center = BlockPos2.of(in.readInt(), in.readInt());
         Optional<KingdomId> owner = Optional.empty();
         if (in.readBoolean()) {
@@ -518,7 +559,7 @@ public final class CanonicalSaveFormat {
         CultureId cultureId = CultureId.of(BinaryCodec.readUuid(in));
         SettlementId settlementId = SettlementId.of(BinaryCodec.readUuid(in));
         HouseholdId householdId = HouseholdId.of(BinaryCodec.readUuid(in));
-        Profession profession = Profession.values()[in.readInt()];
+        Profession profession = readEnum(in, Profession.class);
         double health = in.readDouble();
         double wealth = in.readDouble();
         boolean alive = in.readBoolean();
@@ -542,9 +583,9 @@ public final class CanonicalSaveFormat {
         UUID work = BinaryCodec.readUuid(in);
         if (home != null) c.setHomeStructureId(StructureId.of(home));
         if (work != null) c.setWorkStructureId(StructureId.of(work));
-        c.setSchedule(ScheduleState.values()[in.readInt()]);
-        c.setWealthClass(WealthClass.values()[in.readInt()]);
-        c.setMilitaryRole(MilitaryRole.values()[in.readInt()]);
+        c.setSchedule(readEnum(in, ScheduleState.class));
+        c.setWealthClass(readEnum(in, WealthClass.class));
+        c.setMilitaryRole(readEnum(in, MilitaryRole.class));
         c.setEducationYears(in.readInt());
         c.setOrphanageResident(in.readBoolean());
         c.setProjectionRevision(in.readLong());
@@ -574,7 +615,7 @@ public final class CanonicalSaveFormat {
         UUID id = BinaryCodec.readUuid(in);
         CitizenId from = CitizenId.of(BinaryCodec.readUuid(in));
         CitizenId to = CitizenId.of(BinaryCodec.readUuid(in));
-        FamilyRelationType type = FamilyRelationType.values()[in.readInt()];
+        FamilyRelationType type = readEnum(in, FamilyRelationType.class);
         boolean active = in.readBoolean();
         return new FamilyRelationState(id, from, to, type, active);
     }
@@ -593,7 +634,7 @@ public final class CanonicalSaveFormat {
         int n = in.readInt();
         Map<ResourceType, Double> qty = new EnumMap<>(ResourceType.class);
         for (int i = 0; i < n; i++) {
-            qty.put(ResourceType.values()[in.readInt()], in.readDouble());
+            qty.put(readEnum(in, ResourceType.class), in.readDouble());
         }
         return new StockpileState(id, qty);
     }
@@ -620,7 +661,7 @@ public final class CanonicalSaveFormat {
         m.setCrisisSeverity(in.readDouble());
         int n = in.readInt();
         for (int i = 0; i < n; i++) {
-            m.setPrice(ResourceType.values()[in.readInt()], in.readDouble());
+            m.setPrice(readEnum(in, ResourceType.class), in.readDouble());
         }
         m.setTransportCostFactor(in.readDouble());
         m.setTaxPressure(in.readDouble());
@@ -669,7 +710,7 @@ public final class CanonicalSaveFormat {
         for (int i = 0; i < relCount; i++) {
             KingdomId a = KingdomId.of(BinaryCodec.readUuid(in));
             KingdomId b = KingdomId.of(BinaryCodec.readUuid(in));
-            DiplomaticRelation rel = DiplomaticRelation.values()[in.readInt()];
+            DiplomaticRelation rel = readEnum(in, DiplomaticRelation.class);
             dip.setRelation(a, b, rel);
         }
         int scoreCount = in.readInt();
@@ -689,7 +730,7 @@ public final class CanonicalSaveFormat {
             TreatyId id = TreatyId.of(BinaryCodec.readUuid(in));
             KingdomId a = KingdomId.of(BinaryCodec.readUuid(in));
             KingdomId b = KingdomId.of(BinaryCodec.readUuid(in));
-            TreatyType type = TreatyType.values()[in.readInt()];
+            TreatyType type = readEnum(in, TreatyType.class);
             long signedDay = in.readLong();
             long expiration = in.readLong();
             boolean active = in.readBoolean();
@@ -728,8 +769,8 @@ public final class CanonicalSaveFormat {
         for (int i = 0; i < n; i++) {
             w.participants().add(KingdomId.of(BinaryCodec.readUuid(in)));
         }
-        w.setCasusBelli(CasusBelli.values()[in.readInt()]);
-        w.setPrimaryObjective(WarObjective.values()[in.readInt()]);
+        w.setCasusBelli(readEnum(in, CasusBelli.class));
+        w.setPrimaryObjective(readEnum(in, WarObjective.class));
         UUID obj = BinaryCodec.readUuid(in);
         if (obj != null) w.setObjectiveSettlement(SettlementId.of(obj));
         w.setWarExhaustionAggressor(in.readDouble());
@@ -783,8 +824,8 @@ public final class CanonicalSaveFormat {
         a.setInfantry(in.readInt());
         a.setCavalry(in.readInt());
         a.setEquipment(in.readInt());
-        a.setStatus(ArmyStatus.values()[in.readInt()]);
-        a.setObjective(WarObjective.values()[in.readInt()]);
+        a.setStatus(readEnum(in, ArmyStatus.class));
+        a.setObjective(readEnum(in, WarObjective.class));
         UUID obj = BinaryCodec.readUuid(in);
         if (obj != null) a.setObjectiveSettlement(SettlementId.of(obj));
         UUID war = BinaryCodec.readUuid(in);
@@ -879,7 +920,7 @@ public final class CanonicalSaveFormat {
         ShipmentId id = ShipmentId.of(BinaryCodec.readUuid(in));
         SettlementId source = SettlementId.of(BinaryCodec.readUuid(in));
         SettlementId dest = SettlementId.of(BinaryCodec.readUuid(in));
-        ResourceType goods = ResourceType.values()[in.readInt()];
+        ResourceType goods = readEnum(in, ResourceType.class);
         double qty = in.readDouble();
         int routeLen = in.readInt();
         List<BlockPos2> route = new ArrayList<>(routeLen);
@@ -1029,10 +1070,10 @@ public final class CanonicalSaveFormat {
     }
 
     private static void readHistory(DataInputStream in, CanonicalWorldState state) throws IOException {
-        int count = in.readInt();
+        int count = readCount(in, CanonicalWorldState.MAX_HISTORY_EVENTS, "history");
         for (int i = 0; i < count; i++) {
             HistoricalEventId id = HistoricalEventId.of(BinaryCodec.readUuid(in));
-            CivilizationEventType type = CivilizationEventType.values()[in.readInt()];
+            CivilizationEventType type = readEnum(in, CivilizationEventType.class);
             SimulationTime when = SimulationTime.ofTicks(in.readLong());
             String title = BinaryCodec.readString(in);
             String summary = BinaryCodec.readString(in);
@@ -1040,7 +1081,7 @@ public final class CanonicalSaveFormat {
             if (in.readBoolean()) {
                 location = Optional.of(BlockPos2.of(in.readInt(), in.readInt()));
             }
-            int tagCount = in.readInt();
+            int tagCount = readCount(in, 64, "history.tags");
             Map<String, String> tags = new HashMap<>();
             for (int j = 0; j < tagCount; j++) {
                 tags.put(BinaryCodec.readString(in), BinaryCodec.readString(in));
@@ -1073,7 +1114,7 @@ public final class CanonicalSaveFormat {
     }
 
     private static void readDynasties(DataInputStream in, CanonicalWorldState state) throws IOException {
-        int count = in.readInt();
+        int count = readCount(in, MAX_NESTED, "dynasties");
         for (int i = 0; i < count; i++) {
             DynastyId id = DynastyId.of(BinaryCodec.readUuid(in));
             String name = BinaryCodec.readString(in);
@@ -1084,19 +1125,21 @@ public final class CanonicalSaveFormat {
                     founder == null ? null : CitizenId.of(founder),
                     head == null ? null : CitizenId.of(head));
             d.setPrestige(in.readDouble());
-            int members = in.readInt();
+            int members = readCount(in, MAX_NESTED, "dynasty.members");
             for (int j = 0; j < members; j++) {
                 d.members().add(CitizenId.of(BinaryCodec.readUuid(in)));
             }
-            int kc = in.readInt();
+            int kc = readCount(in, MAX_NESTED, "dynasty.kingdomClaims");
             for (int j = 0; j < kc; j++) {
                 d.kingdomClaims().add(KingdomId.of(BinaryCodec.readUuid(in)));
             }
-            int sc = in.readInt();
+            int sc = readCount(in, MAX_NESTED, "dynasty.settlementClaims");
             for (int j = 0; j < sc; j++) {
                 d.settlementClaims().add(SettlementId.of(BinaryCodec.readUuid(in)));
             }
-            state.dynasties().put(id, d);
+            if (state.dynasties().put(id, d) != null) {
+                throw new IOException("duplicate dynasty id: " + id);
+            }
         }
     }
 
@@ -1122,25 +1165,27 @@ public final class CanonicalSaveFormat {
     }
 
     private static void readCrimes(DataInputStream in, CanonicalWorldState state) throws IOException {
-        int count = in.readInt();
+        int count = readCount(in, CanonicalWorldState.MAX_CRIMES, "crimes");
         for (int i = 0; i < count; i++) {
             CrimeId id = CrimeId.of(BinaryCodec.readUuid(in));
-            CrimeType type = CrimeType.values()[in.readInt()];
+            CrimeType type = readEnum(in, CrimeType.class);
             CitizenId suspect = CitizenId.of(BinaryCodec.readUuid(in));
             CitizenId victim = CitizenId.of(BinaryCodec.readUuid(in));
             SettlementId jurisdiction = SettlementId.of(BinaryCodec.readUuid(in));
             long day = in.readLong();
             CrimeState c = new CrimeState(id, type, suspect, victim, jurisdiction, day);
-            int wn = in.readInt();
+            int wn = readCount(in, 64, "crime.witnesses");
             for (int j = 0; j < wn; j++) {
                 c.witnesses().add(CitizenId.of(BinaryCodec.readUuid(in)));
             }
             c.setEvidence(in.readDouble());
-            c.setStatus(CrimeStatus.values()[in.readInt()]);
-            c.setVerdict(CrimeVerdict.values()[in.readInt()]);
+            c.setStatus(readEnum(in, CrimeStatus.class));
+            c.setVerdict(readEnum(in, CrimeVerdict.class));
             c.setSentenceDays(in.readInt());
             c.setSentenceEndsDay(in.readLong());
-            state.crimes().put(id, c);
+            if (state.crimes().put(id, c) != null) {
+                throw new IOException("duplicate crime id: " + id);
+            }
         }
     }
 
@@ -1165,15 +1210,15 @@ public final class CanonicalSaveFormat {
     }
 
     private static void readSieges(DataInputStream in, CanonicalWorldState state) throws IOException {
-        int count = in.readInt();
+        int count = readCount(in, MAX_NESTED, "sieges");
         for (int i = 0; i < count; i++) {
             SiegeId id = SiegeId.of(BinaryCodec.readUuid(in));
             SettlementId target = SettlementId.of(BinaryCodec.readUuid(in));
             WarId warId = WarId.of(BinaryCodec.readUuid(in));
             SiegeState s = new SiegeState(id, target, warId);
-            int an = in.readInt();
+            int an = readCount(in, MAX_NESTED, "siege.attackers");
             for (int j = 0; j < an; j++) s.attackers().add(ArmyId.of(BinaryCodec.readUuid(in)));
-            int dn = in.readInt();
+            int dn = readCount(in, MAX_NESTED, "siege.defenders");
             for (int j = 0; j < dn; j++) s.defenders().add(ArmyId.of(BinaryCodec.readUuid(in)));
             s.setAttackerSupplies(in.readDouble());
             s.setDefenderSupplies(in.readDouble());
@@ -1182,7 +1227,9 @@ public final class CanonicalSaveFormat {
             s.setBreaches(in.readInt());
             s.setSurrendered(in.readBoolean());
             s.setActive(in.readBoolean());
-            state.sieges().put(id, s);
+            if (state.sieges().put(id, s) != null) {
+                throw new IOException("duplicate siege id: " + id);
+            }
         }
     }
 
@@ -1202,7 +1249,7 @@ public final class CanonicalSaveFormat {
     }
 
     private static void readFactions(DataInputStream in, CanonicalWorldState state) throws IOException {
-        int count = in.readInt();
+        int count = readCount(in, MAX_NESTED, "factions");
         for (int i = 0; i < count; i++) {
             FactionId id = FactionId.of(BinaryCodec.readUuid(in));
             String name = BinaryCodec.readString(in);
@@ -1215,7 +1262,9 @@ public final class CanonicalSaveFormat {
             if (army != null) f.setArmyId(ArmyId.of(army));
             f.setStrength(in.readDouble());
             f.setActive(in.readBoolean());
-            state.factions().put(id, f);
+            if (state.factions().put(id, f) != null) {
+                throw new IOException("duplicate faction id: " + id);
+            }
         }
     }
 
@@ -1232,10 +1281,10 @@ public final class CanonicalSaveFormat {
     }
 
     private static void readIntelligence(DataInputStream in, IntelligenceState intel) throws IOException {
-        int observers = in.readInt();
+        int observers = readCount(in, MAX_NESTED, "intelligence.observers");
         for (int i = 0; i < observers; i++) {
             KingdomId observer = KingdomId.of(BinaryCodec.readUuid(in));
-            int n = in.readInt();
+            int n = readCount(in, MAX_NESTED, "intelligence.subjects");
             for (int j = 0; j < n; j++) {
                 KingdomId subject = KingdomId.of(BinaryCodec.readUuid(in));
                 intel.setQuality(observer, subject, in.readDouble());

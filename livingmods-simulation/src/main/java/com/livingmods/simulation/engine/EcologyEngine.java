@@ -1,6 +1,7 @@
 package com.livingmods.simulation.engine;
 
 import com.livingmods.common.geo.RegionCoord;
+import com.livingmods.common.id.CitizenId;
 import com.livingmods.common.model.Profession;
 import com.livingmods.common.model.ResourceType;
 import com.livingmods.common.model.SpeciesArchetype;
@@ -38,8 +39,9 @@ public final class EcologyEngine implements SimulationSubsystem {
         for (SettlementState s : state.settlements().values()) {
             if (!s.region().equals(region)) continue;
             settlementsInRegion++;
-            for (CitizenState c : state.citizens().values()) {
-                if (!c.alive() || !c.settlementId().equals(s.id())) continue;
+            for (CitizenId cid : state.citizensInSettlement(s.id())) {
+                CitizenState c = state.citizens().get(cid);
+                if (c == null || !c.alive()) continue;
                 if (c.profession() == Profession.HUNTER) hunters++;
                 if (c.profession() == Profession.FARMER) farmers++;
             }

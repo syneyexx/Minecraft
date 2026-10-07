@@ -107,12 +107,12 @@ public final class GovernmentEngine implements SimulationSubsystem {
         }
         if (successor == null) return;
 
-        for (CitizenState c : state.citizens().values()) {
-            if (c.ruler() && kingdom.settlementIds().contains(c.settlementId())) {
-                c.setRuler(false);
-            }
-            if (c.heir() && kingdom.settlementIds().contains(c.settlementId())) {
-                c.setHeir(false);
+        for (SettlementId sid : kingdom.settlementIds()) {
+            for (CitizenId cid : state.citizensInSettlement(sid)) {
+                CitizenState c = state.citizens().get(cid);
+                if (c == null) continue;
+                if (c.ruler()) c.setRuler(false);
+                if (c.heir()) c.setHeir(false);
             }
         }
         successor.setRuler(true);
@@ -204,14 +204,15 @@ public final class GovernmentEngine implements SimulationSubsystem {
 
     private static List<CitizenState> candidates(CanonicalWorldState state, KingdomState kingdom, Profession... professions) {
         List<CitizenState> out = new ArrayList<>();
-        for (CitizenState c : state.citizens().values()) {
-            if (!c.alive() || c.incarcerated()) continue;
-            SettlementState s = state.settlements().get(c.settlementId());
-            if (s == null || s.ownerKingdom().isEmpty() || !s.ownerKingdom().get().equals(kingdom.id())) continue;
-            for (Profession p : professions) {
-                if (c.profession() == p) {
-                    out.add(c);
-                    break;
+        for (SettlementId sid : kingdom.settlementIds()) {
+            for (CitizenId cid : state.citizensInSettlement(sid)) {
+                CitizenState c = state.citizens().get(cid);
+                if (c == null || !c.alive() || c.incarcerated()) continue;
+                for (Profession p : professions) {
+                    if (c.profession() == p) {
+                        out.add(c);
+                        break;
+                    }
                 }
             }
         }
@@ -219,11 +220,12 @@ public final class GovernmentEngine implements SimulationSubsystem {
     }
 
     private static CitizenState anyAliveInKingdom(CanonicalWorldState state, KingdomState kingdom) {
-        for (CitizenState c : state.citizens().values()) {
-            if (!c.alive()) continue;
-            SettlementState s = state.settlements().get(c.settlementId());
-            if (s != null && s.ownerKingdom().isPresent() && s.ownerKingdom().get().equals(kingdom.id())) {
-                return c;
+        for (SettlementId sid : kingdom.settlementIds()) {
+            for (CitizenId cid : state.citizensInSettlement(sid)) {
+                CitizenState c = state.citizens().get(cid);
+                if (c != null && c.alive()) {
+                    return c;
+                }
             }
         }
         return null;
@@ -258,14 +260,16 @@ public final class GovernmentEngine implements SimulationSubsystem {
         if (!ctx.random().chance(0.08)) return;
 
         CitizenState local = null;
-        for (CitizenState c : state.citizens().values()) {
-            if (!c.alive() || c.spouseId() != null) continue;
-            if (!(c.ruler() || c.heir() || c.noble())) continue;
-            SettlementState s = state.settlements().get(c.settlementId());
-            if (s == null || s.ownerKingdom().isEmpty() || !s.ownerKingdom().get().equals(kingdom.id())) continue;
-            if (c.ageYears(ctx.time()) < 16) continue;
-            local = c;
-            break;
+        for (SettlementId sid : kingdom.settlementIds()) {
+            for (CitizenId cid : state.citizensInSettlement(sid)) {
+                CitizenState c = state.citizens().get(cid);
+                if (c == null || !c.alive() || c.spouseId() != null) continue;
+                if (!(c.ruler() || c.heir() || c.noble())) continue;
+                if (c.ageYears(ctx.time()) < 16) continue;
+                local = c;
+                break;
+            }
+            if (local != null) break;
         }
         if (local == null) return;
 
@@ -273,14 +277,16 @@ public final class GovernmentEngine implements SimulationSubsystem {
             KingdomState other = state.kingdoms().get(otherId);
             if (other == null) continue;
             CitizenState foreign = null;
-            for (CitizenState c : state.citizens().values()) {
-                if (!c.alive() || c.spouseId() != null || c.female() == local.female()) continue;
-                if (!(c.ruler() || c.heir() || c.noble())) continue;
-                SettlementState s = state.settlements().get(c.settlementId());
-                if (s == null || s.ownerKingdom().isEmpty() || !s.ownerKingdom().get().equals(otherId)) continue;
-                if (c.ageYears(ctx.time()) < 16) continue;
-                foreign = c;
-                break;
+            for (SettlementId sid : other.settlementIds()) {
+                for (CitizenId cid : state.citizensInSettlement(sid)) {
+                    CitizenState c = state.citizens().get(cid);
+                    if (c == null || !c.alive() || c.spouseId() != null || c.female() == local.female()) continue;
+                    if (!(c.ruler() || c.heir() || c.noble())) continue;
+                    if (c.ageYears(ctx.time()) < 16) continue;
+                    foreign = c;
+                    break;
+                }
+                if (foreign != null) break;
             }
             if (foreign == null) continue;
 
@@ -376,8 +382,9 @@ public final class GovernmentEngine implements SimulationSubsystem {
 
     private static int countAlive(CanonicalWorldState state, SettlementId id) {
         int n = 0;
-        for (CitizenState c : state.citizens().values()) {
-            if (c.alive() && c.settlementId().equals(id)) n++;
+        for (CitizenId cid : state.citizensInSettlement(id)) {
+            CitizenState c = state.citizens().get(cid);
+            if (c != null && c.alive()) n++;
         }
         return n;
     }

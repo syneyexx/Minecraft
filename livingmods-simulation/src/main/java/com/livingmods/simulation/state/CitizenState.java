@@ -53,6 +53,7 @@ public final class CitizenState {
     private double skill;
     private String knownDiseaseKey;
     private long immunityUntilDay;
+    public static final int MAX_KNOWN_RUMORS = 64;
     private final java.util.Set<String> knownRumorIds = new java.util.LinkedHashSet<>();
 
     public CitizenState(
@@ -188,6 +189,19 @@ public final class CitizenState {
     public long immunityUntilDay() { return immunityUntilDay; }
     public void setImmunityUntilDay(long immunityUntilDay) { this.immunityUntilDay = immunityUntilDay; }
     public java.util.Set<String> knownRumorIds() { return knownRumorIds; }
+
+    /** Learn a rumor, dropping the oldest when the per-citizen cap is hit. */
+    public boolean learnRumor(String rumorId) {
+        if (rumorId == null || rumorId.isBlank() || knownRumorIds.contains(rumorId)) {
+            return false;
+        }
+        knownRumorIds.add(rumorId);
+        while (knownRumorIds.size() > MAX_KNOWN_RUMORS) {
+            String oldest = knownRumorIds.iterator().next();
+            knownRumorIds.remove(oldest);
+        }
+        return true;
+    }
 
     public boolean immuneTo(String diseaseKey, long dayIndex) {
         return diseaseKey != null

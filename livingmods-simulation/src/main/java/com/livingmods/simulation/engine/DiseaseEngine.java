@@ -2,6 +2,7 @@ package com.livingmods.simulation.engine;
 
 import com.livingmods.common.event.CivilizationEventType;
 import com.livingmods.common.event.HistoricalEvent;
+import com.livingmods.common.id.CitizenId;
 import com.livingmods.common.id.EpidemicId;
 import com.livingmods.common.id.HistoricalEventId;
 import com.livingmods.common.id.SettlementId;
@@ -48,8 +49,9 @@ public final class DiseaseEngine implements SimulationSubsystem {
                 int pop = 0;
                 int healers = 0;
                 int infected = 0;
-                for (CitizenState c : state.citizens().values()) {
-                    if (!c.alive() || !c.settlementId().equals(sid)) continue;
+                for (CitizenId cid : state.citizensInSettlement(sid)) {
+                    CitizenState c = state.citizens().get(cid);
+                    if (c == null || !c.alive()) continue;
                     pop++;
                     if (c.profession() == Profession.HEALER) healers++;
                     if (def.key().equals(c.knownDiseaseKey()) && c.immunityUntilDay() <= ctx.time().dayIndex()) {
@@ -68,11 +70,10 @@ public final class DiseaseEngine implements SimulationSubsystem {
                         * (tradeExposed ? 1.0 + def.tradeSensitivity() : 1.0)
                         * (1.0 - healthcare * def.healthcareMitigation());
 
-                for (CitizenState c : state.citizens().values()) {
-                    if (!c.alive() || !c.settlementId().equals(sid)) continue;
+                for (CitizenId cid : state.citizensInSettlement(sid)) {
+                    CitizenState c = state.citizens().get(cid);
+                    if (c == null || !c.alive()) continue;
                     if (c.immuneTo(def.key(), ctx.time().dayIndex())) continue;
-                    boolean currentlySick = def.key().equals(c.knownDiseaseKey())
-                            && c.immunityUntilDay() > ctx.time().dayIndex();
                     // Use knownDiseaseKey + temporary negative-immunity window as "sick" marker:
                     // sick citizens have knownDiseaseKey set and immunityUntilDay in the near future
                     // while health is still dropping; after recovery immunityUntilDay is extended.
@@ -130,8 +131,9 @@ public final class DiseaseEngine implements SimulationSubsystem {
                 if (stock != null && heal.medicineUsed > 0) {
                     stock.add(ResourceType.MEDICINE, -heal.medicineUsed);
                 }
-                for (CitizenState c : state.citizens().values()) {
-                    if (!c.alive() || !c.settlementId().equals(heal.settlementId)) continue;
+                for (CitizenId cid : state.citizensInSettlement(heal.settlementId)) {
+                    CitizenState c = state.citizens().get(cid);
+                    if (c == null || !c.alive()) continue;
                     if (c.health() < 90) {
                         c.setHealth(c.health() + 0.5 * heal.healers + heal.medicineUsed);
                     }

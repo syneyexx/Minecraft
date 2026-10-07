@@ -1,5 +1,6 @@
 package com.livingmods.simulation.engine;
 
+import com.livingmods.common.id.CitizenId;
 import com.livingmods.common.model.Profession;
 import com.livingmods.common.model.ScheduleState;
 import com.livingmods.common.time.SimulationTime;
@@ -24,11 +25,13 @@ public final class ScheduleEngine implements SimulationSubsystem {
     public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
         int hour = hourOfDay(ctx.time());
         List<CitizenState> regional = new ArrayList<>();
-        for (CitizenState c : state.citizens().values()) {
-            if (!c.alive()) continue;
-            SettlementState s = state.settlements().get(c.settlementId());
-            if (s != null && s.region().equals(work.region())) {
-                regional.add(c);
+        for (SettlementState s : state.settlements().values()) {
+            if (!s.region().equals(work.region())) continue;
+            for (CitizenId cid : state.citizensInSettlement(s.id())) {
+                CitizenState c = state.citizens().get(cid);
+                if (c != null && c.alive()) {
+                    regional.add(c);
+                }
             }
         }
         work.enqueueCommit(() -> {

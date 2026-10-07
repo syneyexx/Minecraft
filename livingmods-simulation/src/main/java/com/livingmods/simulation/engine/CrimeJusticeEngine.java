@@ -38,15 +38,51 @@ public final class CrimeJusticeEngine implements SimulationSubsystem {
         List<Runnable> commits = new ArrayList<>();
         long day = ctx.time().dayIndex();
 
-        // Release prisoners whose sentences ended
-        for (CitizenState c : state.citizens().values()) {
-            if (!c.incarcerated()) continue;
-            SettlementState s = state.settlements().get(c.settlementId());
-            if (s == null || !s.region().equals(work.region())) continue;
-            if (c.sentenceEndsDay() > 0 && day >= c.sentenceEndsDay()) {
+        // Release prisoners / new offenses — indexed by settlement in this region
+        for (SettlementState s : state.settlements().values()) {
+            if (!s.region().equals(work.region())) continue;
+            for (CitizenId cid : state.citizensInSettlement(s.id())) {
+                CitizenState c = state.citizens().get(cid);
+                if (c == null) continue;
+                if (c.incarcerated()) {
+                    if (c.sentenceEndsDay() > 0 && day >= c.sentenceEndsDay()) {
+                        commits.add(() -> {
+                            c.setIncarcerated(false);
+                            c.setSentenceEndsDay(0);
+                        });
+                    }
+                    continue;
+                }
+                if (!c.alive()) continue;
+
+                double p = crimeProbability(state, c, s);
+                if (!rng.chance(p)) continue;
+
+                CitizenState victim = pickVictim(state, s, c, rng);
+                CrimeType type = pickType(c, s, rng);
+                CrimeId id = CrimeId.deterministic(state.seed(), state.crimes().size() + commits.size());
+                CitizenId victimId = victim != null ? victim.id() : c.id();
                 commits.add(() -> {
-                    c.setIncarcerated(false);
-                    c.setSentenceEndsDay(0);
+                    CrimeState crime = new CrimeState(id, type, c.id(), victimId, s.id(), day);
+                    crime.setEvidence(0.2 + rng.nextDouble() * 0.5);
+                    int witnessBudget = 1 + rng.nextInt(0, 3);
+                    for (CitizenId wid : state.citizensInSettlement(s.id())) {
+                        if (witnessBudget <= 0) break;
+                        CitizenState w = state.citizens().get(wid);
+                        if (w == null || !w.alive() || w.id().equals(c.id())) continue;
+                        if (rng.chance(0.15)) {
+                            crime.witnesses().add(w.id());
+                            witnessBudget--;
+                        }
+                    }
+                    crime.setStatus(CrimeStatus.INVESTIGATING);
+                    state.crimes().put(id, crime);
+                    c.setCrimeStrikes(c.crimeStrikes() + 1);
+                    if (type == CrimeType.THEFT || type == CrimeType.BANDITRY) {
+                        c.setWealth(c.wealth() + 2);
+                        if (victim != null) victim.setWealth(Math.max(0, victim.wealth() - 2));
+                    }
+                    s.setSecurity(Math.max(0, s.security() - 0.02));
                 });
             }
         }
@@ -61,43 +97,6 @@ public final class CrimeJusticeEngine implements SimulationSubsystem {
                 continue;
             }
             commits.add(() -> advanceCase(state, crime, day, rng));
-        }
-
-        // New offenses
-        for (CitizenState c : state.citizens().values()) {
-            if (!c.alive() || c.incarcerated()) continue;
-            SettlementState s = state.settlements().get(c.settlementId());
-            if (s == null || !s.region().equals(work.region())) continue;
-
-            double p = crimeProbability(state, c, s);
-            if (!rng.chance(p)) continue;
-
-            CitizenState victim = pickVictim(state, s, c, rng);
-            CrimeType type = pickType(c, s, rng);
-            CrimeId id = CrimeId.deterministic(state.seed(), state.crimes().size() + commits.size());
-            CitizenId victimId = victim != null ? victim.id() : c.id();
-            commits.add(() -> {
-                CrimeState crime = new CrimeState(id, type, c.id(), victimId, s.id(), day);
-                crime.setEvidence(0.2 + rng.nextDouble() * 0.5);
-                // Witnesses among locals
-                int witnessBudget = 1 + rng.nextInt(0, 3);
-                for (CitizenState w : state.citizens().values()) {
-                    if (witnessBudget <= 0) break;
-                    if (!w.alive() || w.id().equals(c.id()) || !w.settlementId().equals(s.id())) continue;
-                    if (rng.chance(0.15)) {
-                        crime.witnesses().add(w.id());
-                        witnessBudget--;
-                    }
-                }
-                crime.setStatus(CrimeStatus.INVESTIGATING);
-                state.crimes().put(id, crime);
-                c.setCrimeStrikes(c.crimeStrikes() + 1);
-                if (type == CrimeType.THEFT || type == CrimeType.BANDITRY) {
-                    c.setWealth(c.wealth() + 2);
-                    if (victim != null) victim.setWealth(Math.max(0, victim.wealth() - 2));
-                }
-                s.setSecurity(Math.max(0, s.security() - 0.02));
-            });
         }
 
         // Security response from markets after bandit pressure
@@ -131,8 +130,9 @@ public final class CrimeJusticeEngine implements SimulationSubsystem {
         }
         double opportunity = c.profession() == Profession.UNEMPLOYED ? 0.1 : 0.02;
         double guards = 0;
-        for (CitizenState other : state.citizens().values()) {
-            if (other.alive() && other.settlementId().equals(s.id())
+        for (CitizenId oid : state.citizensInSettlement(s.id())) {
+            CitizenState other = state.citizens().get(oid);
+            if (other != null && other.alive()
                     && (other.profession() == Profession.GUARD || other.profession() == Profession.SOLDIER)) {
                 guards += 0.02;
             }
@@ -155,8 +155,9 @@ public final class CrimeJusticeEngine implements SimulationSubsystem {
             CanonicalWorldState state, SettlementState s, CitizenState offender, DeterministicRandom rng
     ) {
         List<CitizenState> locals = new ArrayList<>();
-        for (CitizenState c : state.citizens().values()) {
-            if (c.alive() && !c.id().equals(offender.id()) && c.settlementId().equals(s.id())) {
+        for (CitizenId cid : state.citizensInSettlement(s.id())) {
+            CitizenState c = state.citizens().get(cid);
+            if (c != null && c.alive() && !c.id().equals(offender.id())) {
                 locals.add(c);
             }
         }

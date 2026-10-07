@@ -96,8 +96,9 @@ public final class ReligionEngine implements SimulationSubsystem {
             KingdomState k = state.kingdoms().get(settlement.ownerKingdom().get());
             if (k != null) return k.cultureId();
         }
-        for (var c : state.citizens().values()) {
-            if (c.settlementId().equals(settlement.id())) {
+        for (var cid : state.citizensInSettlement(settlement.id())) {
+            var c = state.citizens().get(cid);
+            if (c != null) {
                 return c.cultureId();
             }
         }
