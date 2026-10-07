@@ -1,10 +1,50 @@
 # Persistence
 
-| Artifact | Location | Notes |
-|----------|----------|-------|
-| World plan meta | `world/livingmods/worldplan/plan.bin` | Seed + content hash; full plan regenerated deterministically |
-| World seed marker | `world/livingmods/worldplan/seed.dat` | Written on server start |
-| Canonical save | `<sidecar-save>/canonical.bin` | Schema `CANONICAL_SAVE_SCHEMA` |
-| WAL | `<sidecar-save>/canonical.wal` | Append-only revision records |
+LivingMods persists three distinct artifacts. Do not conflate them.
 
-Save barriers are triggered by `SAVE_REQUEST` over IPC.
+## Artifacts
+
+| Artifact | Path | Format / notes |
+|----------|------|----------------|
+| Stable world id | `world/livingmods/world.id` | UUID text; created once per world |
+| World plan | `world/livingmods/worldplan/plan.bin` | Magic `LMPP`, format **2** (full plan), `WORLDGEN_VERSION`, seed, `contentHash`, counts, then `PlanBinaryCodec` payload |
+| Plan meta (optional quick check) | `world/livingmods/worldplan/meta.bin` | Seed/hash/version/counts without full payload |
+| Seed marker | `world/livingmods/worldplan/seed.dat` | `long` seed written on server start |
+| Canonical save | `world/livingmods/sidecar/canonical.bin` | Magic `LMCS`, schema **3**, full graph |
+| WAL | `world/livingmods/sidecar/canonical.wal` | Append-only revision + contentHash records |
+| Sidecar logs | `…/sidecar/livingmods-sidecar.log`, `livingmods-minecraft.log` | Process logs |
+
+Sidecar save directory is `server.getWorldPath(ROOT)/livingmods/sidecar` (same world folder tree).
+
+## World plan rules
+
+- On first create: plan with `MinecraftTerrainProvider` (in-game) or `TerrainAnalyzer` (tools), then save full `plan.bin`.
+- On later loads: **LOAD** the existing plan. Algorithms must not silently replace geometry for an existing world.
+- Sidecar and Minecraft must agree on `contentHash`. Sidecar startup compares `--plan-hash` to loaded plan; mismatch aborts.
+
+**Correction vs older docs:** the plan is **not** “regenerated every boot from seed.” Regeneration happens only when no readable full plan exists.
+
+## Canonical save (schema 3)
+
+`CanonicalSaveFormat` encodes/decodes:
+
+- kingdoms, settlements, households, citizens (family/housing/work ids, schedule)
+- family relations
+- stockpiles, markets, shipments
+- diplomacy pairs/treaties, wars, sieges, armies
+- crime, epidemics, migration groups
+- ecology, technology, dynasties, factions, player reputation
+- history markers / bounded event lists
+- time ticks, save revision, plan content hash, world/session UUIDs
+
+`CanonicalStore.saveBarrier` pauses the bound `SimulationEngine` at a phase boundary, writes snapshot, appends WAL.
+
+Triggered by IPC `SAVE_REQUEST` and host shutdown paths.
+
+## Chunk materialization provenance
+
+Not a separate file: NeoForge chunk attachments store applied `PHYSICAL_CONTENT_REVISION` + plan hash so rematerialization is idempotent when revision/hash unchanged.
+
+## Status honesty
+
+Full-graph encode/decode and WAL paths are **INTEGRATED** (unit round-trip test exists; **not run in this pass**). Save/reload preserving wars/citizens/identity across a real Minecraft session is a **RELEASE_CHECKLIST** item — not claimed RELEASE_READY here.
