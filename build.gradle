@@ -31,6 +31,13 @@ subprojects {
         useJUnitPlatform()
     }
 
+    tasks.withType(Jar).configureEach {
+        // Unique module names for NeoForge Jar-in-Jar embedding of subprojects.
+        manifest {
+            attributes('Automatic-Module-Name': "com.livingmods.${project.name.replace('livingmods-', '').replace('-', '_')}")
+        }
+    }
+
     dependencies {
         testImplementation platform('org.junit:junit-bom:5.11.4')
         testImplementation 'org.junit.jupiter:junit-jupiter'
