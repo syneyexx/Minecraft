@@ -34,7 +34,7 @@ public final class ProjectionPlan {
     public List<ArmyId> armies() { return armies; }
 
     public static ProjectionPlan near(CanonicalWorldState state, BlockPos2 center, int radius) {
-        SpatialIndex index = new SpatialIndex(state);
+        SpatialIndex index = state.spatialIndex();
         List<CitizenState> citizens = index.citizensNear(center, radius);
         List<CitizenId> citizenIds = new ArrayList<>();
         for (CitizenState c : citizens) {

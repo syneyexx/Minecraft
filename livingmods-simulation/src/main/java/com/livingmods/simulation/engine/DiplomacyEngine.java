@@ -12,7 +12,6 @@ import com.livingmods.simulation.state.DiplomacyState;
 import com.livingmods.simulation.state.KingdomState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,11 +23,11 @@ public final class DiplomacyEngine implements SimulationSubsystem {
     public String name() { return "diplomacy"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {}
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {}
 
     @Override
-    public void phase2Global(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunDiplomacyDaily(ctx.time())) return;
+    public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
+        if (!ctx.schedule().runDiplomacyDaily()) return;
 
         List<KingdomId> ids = new ArrayList<>(state.kingdoms().keySet());
         ids.sort(KingdomId::compareTo);
@@ -46,7 +45,7 @@ public final class DiplomacyEngine implements SimulationSubsystem {
             }
         }
 
-        if (scheduler.shouldRunDiplomacyWeekly(ctx.time()) && ids.size() >= 2) {
+        if (ctx.schedule().runDiplomacyWeekly() && ids.size() >= 2) {
             KingdomId a = ids.get(0);
             KingdomId b = ids.get(1);
             if (dip.relation(a, b) == DiplomaticRelation.NEUTRAL) {

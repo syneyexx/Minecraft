@@ -10,7 +10,6 @@ import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.state.StockpileState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,8 +20,8 @@ public final class MigrationEngine implements SimulationSubsystem {
     public String name() { return "migration"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunDemography(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runDemography()) return;
 
         List<MigrationGroupState> groups = new ArrayList<>();
         for (MigrationGroupState g : state.migrations().values()) {
@@ -53,8 +52,8 @@ public final class MigrationEngine implements SimulationSubsystem {
     }
 
     @Override
-    public void phase2Global(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunDemography(ctx.time())) return;
+    public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
+        if (!ctx.schedule().runDemography()) return;
 
         List<SettlementState> settlements = new ArrayList<>(state.settlements().values());
         settlements.sort(Comparator.comparing(s -> s.id().value()));

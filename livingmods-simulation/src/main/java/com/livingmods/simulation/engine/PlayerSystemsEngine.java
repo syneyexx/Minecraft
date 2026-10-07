@@ -9,7 +9,6 @@ import com.livingmods.simulation.CanonicalWorldState;
 import com.livingmods.simulation.state.KingdomState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.Map;
 import java.util.Optional;
@@ -20,11 +19,11 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
     public String name() { return "player_systems"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {}
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {}
 
     @Override
-    public void phase2Global(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunGovernment(ctx.time())) return;
+    public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
+        if (!ctx.schedule().runGovernment()) return;
         // Player realms use the same kingdom/settlement systems; decay reputation slowly toward neutral.
         for (var entry : state.playerReputation().reputationByPlayer().entrySet()) {
             for (Map.Entry<KingdomId, Double> rep : entry.getValue().entrySet()) {

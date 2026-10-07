@@ -13,20 +13,20 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Bounded spatial queries for settlements and citizens near a point.
+ * Maintained spatial queries over live {@link CanonicalWorldState} indexes.
+ * Does not copy entity maps on construction or query.
  */
 public final class SpatialIndex {
     public static final int MAX_RESULTS = 256;
     public static final int DEFAULT_QUERY_RADIUS = 512;
 
-    private final Map<SettlementId, SettlementState> settlements;
-    private final Map<CitizenId, CitizenState> citizens;
+    private final CanonicalWorldState state;
 
     public SpatialIndex(CanonicalWorldState state) {
-        this.settlements = Map.copyOf(state.settlements());
-        this.citizens = Map.copyOf(state.citizens());
+        this.state = state;
     }
 
     public List<SettlementState> settlementsNear(BlockPos2 center, int radius) {
@@ -35,14 +35,14 @@ public final class SpatialIndex {
                 center.x() - r, center.z() - r,
                 center.x() + r, center.z() + r);
         List<SettlementState> hits = new ArrayList<>();
-        for (SettlementState s : settlements.values()) {
+        for (SettlementState s : state.settlements().values()) {
             if (box.contains(s.center())) {
                 hits.add(s);
             }
         }
         hits.sort(Comparator.comparing(s -> s.center().distanceTo(center)));
         if (hits.size() > MAX_RESULTS) {
-            return hits.subList(0, MAX_RESULTS);
+            return new ArrayList<>(hits.subList(0, MAX_RESULTS));
         }
         return hits;
     }
@@ -55,16 +55,25 @@ public final class SpatialIndex {
         }
 
         List<CitizenState> hits = new ArrayList<>();
-        for (CitizenState c : citizens.values()) {
-            if (!c.alive()) continue;
-            Double d = settlementDist.get(c.settlementId());
-            if (d != null && d <= radius) {
-                hits.add(c);
+        for (SettlementState s : nearby) {
+            Set<CitizenId> ids = state.citizensBySettlement().get(s.id());
+            if (ids == null) {
+                continue;
+            }
+            Double d = settlementDist.get(s.id());
+            if (d == null || d > radius) {
+                continue;
+            }
+            for (CitizenId id : ids) {
+                CitizenState c = state.citizens().get(id);
+                if (c != null && c.alive()) {
+                    hits.add(c);
+                }
             }
         }
         hits.sort(Comparator.comparing(c -> settlementDist.get(c.settlementId())));
         if (hits.size() > MAX_RESULTS) {
-            return hits.subList(0, MAX_RESULTS);
+            return new ArrayList<>(hits.subList(0, MAX_RESULTS));
         }
         return hits;
     }

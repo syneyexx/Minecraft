@@ -12,6 +12,7 @@ import com.livingmods.common.id.ShipmentId;
 import com.livingmods.common.id.WarId;
 import com.livingmods.common.time.SimulationTime;
 import com.livingmods.common.util.Hashing;
+import com.livingmods.simulation.spatial.SpatialIndex;
 import com.livingmods.simulation.state.ArmyState;
 import com.livingmods.simulation.state.CitizenState;
 import com.livingmods.simulation.state.DiplomacyState;
@@ -30,12 +31,16 @@ import com.livingmods.simulation.state.WarState;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Authoritative canonical civilization state. No Minecraft types.
@@ -43,6 +48,7 @@ import java.util.Optional;
 public final class CanonicalWorldState {
     public static final int MAX_HISTORY_EVENTS = 4096;
 
+    private UUID worldId;
     private final long seed;
     private SimulationTime time;
     private long saveRevision;
@@ -65,11 +71,26 @@ public final class CanonicalWorldState {
     private final PlayerReputationState playerReputation = new PlayerReputationState();
     private final Deque<HistoricalEvent> history = new ArrayDeque<>();
 
+    private final Map<SettlementId, Set<CitizenId>> citizensBySettlement = new LinkedHashMap<>();
+    private final Map<HouseholdId, Set<CitizenId>> citizensByHousehold = new LinkedHashMap<>();
+    private final Map<KingdomId, Set<SettlementId>> settlementsByKingdom = new LinkedHashMap<>();
+    private final SpatialIndex spatialIndex = new SpatialIndex(this);
+
     public CanonicalWorldState(long seed, SimulationTime time, long planContentHash) {
+        this(new UUID(seed, planContentHash), seed, time, planContentHash);
+    }
+
+    public CanonicalWorldState(UUID worldId, long seed, SimulationTime time, long planContentHash) {
+        this.worldId = worldId == null ? new UUID(seed, planContentHash) : worldId;
         this.seed = seed;
         this.time = time;
         this.planContentHash = planContentHash;
         this.saveRevision = 0L;
+    }
+
+    public UUID worldId() { return worldId; }
+    public void setWorldId(UUID worldId) {
+        this.worldId = worldId == null ? new UUID(seed, planContentHash) : worldId;
     }
 
     public long seed() { return seed; }
@@ -77,6 +98,13 @@ public final class CanonicalWorldState {
     public void setTime(SimulationTime time) { this.time = time; }
     public long saveRevision() { return saveRevision; }
     public void bumpSaveRevision() { saveRevision++; }
+    /** Assign absolute save revision (used when freezing a snapshot before serialize). */
+    public void setSaveRevision(long saveRevision) {
+        if (saveRevision < 0) {
+            throw new IllegalArgumentException("negative save revision");
+        }
+        this.saveRevision = saveRevision;
+    }
     public long planContentHash() { return planContentHash; }
 
     public Map<KingdomId, KingdomState> kingdoms() { return kingdoms; }
@@ -96,6 +124,11 @@ public final class CanonicalWorldState {
     public PlayerReputationState playerReputation() { return playerReputation; }
     public Deque<HistoricalEvent> history() { return history; }
 
+    public Map<SettlementId, Set<CitizenId>> citizensBySettlement() { return citizensBySettlement; }
+    public Map<HouseholdId, Set<CitizenId>> citizensByHousehold() { return citizensByHousehold; }
+    public Map<KingdomId, Set<SettlementId>> settlementsByKingdom() { return settlementsByKingdom; }
+    public SpatialIndex spatialIndex() { return spatialIndex; }
+
     public Optional<KingdomState> kingdom(KingdomId id) {
         return Optional.ofNullable(kingdoms.get(id));
     }
@@ -106,6 +139,75 @@ public final class CanonicalWorldState {
 
     public Optional<CitizenState> citizen(CitizenId id) {
         return Optional.ofNullable(citizens.get(id));
+    }
+
+    public void putSettlement(SettlementState settlement) {
+        SettlementState previous = settlements.put(settlement.id(), settlement);
+        if (previous != null) {
+            previous.ownerKingdom().ifPresent(k -> {
+                Set<SettlementId> set = settlementsByKingdom.get(k);
+                if (set != null) {
+                    set.remove(previous.id());
+                }
+            });
+        }
+        settlement.ownerKingdom().ifPresent(k ->
+                settlementsByKingdom.computeIfAbsent(k, id -> new LinkedHashSet<>()).add(settlement.id()));
+    }
+
+    public void putHousehold(HouseholdState household) {
+        households.put(household.id(), household);
+        citizensByHousehold.computeIfAbsent(household.id(), id -> new LinkedHashSet<>());
+    }
+
+    public void putCitizen(CitizenState citizen) {
+        CitizenState previous = citizens.put(citizen.id(), citizen);
+        if (previous != null) {
+            removeCitizenFromIndexes(previous);
+        }
+        citizensBySettlement.computeIfAbsent(citizen.settlementId(), id -> new LinkedHashSet<>()).add(citizen.id());
+        citizensByHousehold.computeIfAbsent(citizen.householdId(), id -> new LinkedHashSet<>()).add(citizen.id());
+    }
+
+    public void removeCitizen(CitizenId id) {
+        CitizenState previous = citizens.remove(id);
+        if (previous != null) {
+            removeCitizenFromIndexes(previous);
+        }
+    }
+
+    private void removeCitizenFromIndexes(CitizenState citizen) {
+        Set<CitizenId> bySettlement = citizensBySettlement.get(citizen.settlementId());
+        if (bySettlement != null) {
+            bySettlement.remove(citizen.id());
+        }
+        Set<CitizenId> byHousehold = citizensByHousehold.get(citizen.householdId());
+        if (byHousehold != null) {
+            byHousehold.remove(citizen.id());
+        }
+    }
+
+    /** Rebuild secondary indexes from primary maps (call after bulk load). */
+    public void rebuildIndexes() {
+        citizensBySettlement.clear();
+        citizensByHousehold.clear();
+        settlementsByKingdom.clear();
+        for (SettlementState settlement : settlements.values()) {
+            settlement.ownerKingdom().ifPresent(k ->
+                    settlementsByKingdom.computeIfAbsent(k, id -> new LinkedHashSet<>()).add(settlement.id()));
+        }
+        for (HouseholdState household : households.values()) {
+            citizensByHousehold.computeIfAbsent(household.id(), id -> new LinkedHashSet<>());
+        }
+        for (CitizenState citizen : citizens.values()) {
+            citizensBySettlement.computeIfAbsent(citizen.settlementId(), id -> new LinkedHashSet<>()).add(citizen.id());
+            citizensByHousehold.computeIfAbsent(citizen.householdId(), id -> new LinkedHashSet<>()).add(citizen.id());
+        }
+    }
+
+    public Set<CitizenId> citizensInSettlement(SettlementId settlementId) {
+        Set<CitizenId> set = citizensBySettlement.get(settlementId);
+        return set == null ? Set.of() : Collections.unmodifiableSet(set);
     }
 
     public void appendHistory(HistoricalEvent event) {
@@ -122,11 +224,14 @@ public final class CanonicalWorldState {
     /** Deterministic fingerprint for tests and save verification. */
     public long contentHash() {
         long h = Hashing.mix(seed, time.absoluteTicks());
+        h = Hashing.mix(h, worldId.getMostSignificantBits());
+        h = Hashing.mix(h, worldId.getLeastSignificantBits());
         h = Hashing.mix(h, saveRevision);
         h = Hashing.mix(h, planContentHash);
         h = Hashing.mix(h, kingdoms.size());
         h = Hashing.mix(h, settlements.size());
         h = Hashing.mix(h, citizens.size());
+        h = Hashing.mix(h, households.size());
 
         List<CitizenId> citizenIds = new ArrayList<>(citizens.keySet());
         citizenIds.sort(Comparator.naturalOrder());
@@ -158,6 +263,9 @@ public final class CanonicalWorldState {
         }
         h = Hashing.mix(h, wars.size());
         h = Hashing.mix(h, epidemics.size());
+        h = Hashing.mix(h, armies.size());
+        h = Hashing.mix(h, migrations.size());
+        h = Hashing.mix(h, shipments.size());
         h = Hashing.mix(h, history.size());
         return h;
     }

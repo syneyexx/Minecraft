@@ -13,7 +13,6 @@ import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.state.WarState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.Map;
 import java.util.Optional;
@@ -23,8 +22,8 @@ public final class MilitaryEngine implements SimulationSubsystem {
     public String name() { return "military"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunGovernment(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runGovernment()) return;
 
         for (ArmyState army : state.armies().values()) {
             SettlementState s = nearestSettlement(state, army.position());
@@ -44,8 +43,8 @@ public final class MilitaryEngine implements SimulationSubsystem {
     }
 
     @Override
-    public void phase2Global(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunDiplomacyWeekly(ctx.time())) return;
+    public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
+        if (!ctx.schedule().runDiplomacyWeekly()) return;
 
         var kingdoms = state.kingdoms().values().stream().toList();
         if (kingdoms.size() < 2) return;

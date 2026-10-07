@@ -60,7 +60,7 @@ public final class InitialStateFactory {
                     Math.max(4, planned.plannedPopulation() / 4),
                     Math.max(2, planned.plannedPopulation() / 6)
             );
-            state.settlements().put(planned.id(), settlement);
+            state.putSettlement(settlement);
             state.stockpiles().put(planned.id(), initialStockpile(planned));
             state.markets().put(planned.id(), new MarketState(planned.id()));
 
@@ -69,7 +69,7 @@ public final class InitialStateFactory {
             int households = Math.max(1, (pop + householdSize - 1) / householdSize);
             for (int h = 0; h < households; h++) {
                 HouseholdId hhId = HouseholdId.deterministic(plan.seed(), householdOrdinal++);
-                state.households().put(hhId, new HouseholdState(hhId, planned.id(), 0, 10.0, 1));
+                state.putHousehold(new HouseholdState(hhId, planned.id(), 0, 10.0, 1));
 
                 int members = Math.min(householdSize, pop);
                 pop -= members;
@@ -95,7 +95,7 @@ public final class InitialStateFactory {
                             true,
                             false
                     );
-                    state.citizens().put(cid, citizen);
+                    state.putCitizen(citizen);
                     state.households().get(hhId).setMemberCount(
                             state.households().get(hhId).memberCount() + 1);
                 }
@@ -152,6 +152,7 @@ public final class InitialStateFactory {
             }
         }
 
+        state.rebuildIndexes();
         return state;
     }
 

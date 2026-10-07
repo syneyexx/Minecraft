@@ -6,7 +6,6 @@ import com.livingmods.simulation.state.CitizenState;
 import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,8 +15,8 @@ public final class CrimeJusticeEngine implements SimulationSubsystem {
     public String name() { return "crime_justice"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunGovernment(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runGovernment()) return;
 
         DeterministicRandom rng = ctx.forkRegion(work.region().x() * 31L + work.region().z());
         List<CitizenState> accused = new ArrayList<>();

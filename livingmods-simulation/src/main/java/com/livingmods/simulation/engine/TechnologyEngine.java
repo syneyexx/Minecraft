@@ -9,7 +9,6 @@ import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.state.TechnologyState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,8 +25,8 @@ public final class TechnologyEngine implements SimulationSubsystem {
     public String name() { return "technology"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunTechnology(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runTechnology()) return;
 
         List<SettlementState> regional = new ArrayList<>();
         for (SettlementState s : state.settlements().values()) {
@@ -55,8 +54,8 @@ public final class TechnologyEngine implements SimulationSubsystem {
     }
 
     @Override
-    public void phase2Global(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunTechnology(ctx.time())) return;
+    public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
+        if (!ctx.schedule().runTechnology()) return;
 
         List<SettlementState> settlements = new ArrayList<>(state.settlements().values());
         settlements.sort(Comparator.comparing(s -> s.id().value()));

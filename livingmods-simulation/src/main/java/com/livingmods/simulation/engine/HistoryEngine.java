@@ -4,7 +4,6 @@ import com.livingmods.common.event.HistoricalEvent;
 import com.livingmods.simulation.CanonicalWorldState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -16,11 +15,11 @@ public final class HistoryEngine implements SimulationSubsystem {
     public String name() { return "history"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {}
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {}
 
     @Override
-    public void phase3Independent(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunGovernment(ctx.time())) return;
+    public void phase3Independent(CanonicalWorldState state, SimulationContext ctx) {
+        if (!ctx.schedule().runGovernment()) return;
         List<HistoricalEvent> events = new ArrayList<>(state.historySnapshot());
         events.sort(Comparator.comparingLong(e -> e.when().absoluteTicks()));
         while (state.history().size() > CanonicalWorldState.MAX_HISTORY_EVENTS) {

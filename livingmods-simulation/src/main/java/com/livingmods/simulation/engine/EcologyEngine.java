@@ -6,7 +6,6 @@ import com.livingmods.simulation.CanonicalWorldState;
 import com.livingmods.simulation.state.EcologyState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 public final class EcologyEngine implements SimulationSubsystem {
     private static final SpeciesId PREY = SpeciesId.deterministic(1L, 0);
@@ -16,8 +15,8 @@ public final class EcologyEngine implements SimulationSubsystem {
     public String name() { return "ecology"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunDemography(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runDemography()) return;
 
         RegionCoord region = work.region();
         EcologyState.SpeciesCohort prey = state.ecology().cohort(region, PREY);

@@ -10,7 +10,6 @@ import com.livingmods.simulation.state.KingdomState;
 import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.tick.SimulationContext;
 import com.livingmods.simulation.tick.RegionalWork;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -23,11 +22,11 @@ public final class GovernmentEngine implements SimulationSubsystem {
     public String name() { return "government"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {}
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {}
 
     @Override
-    public void phase2Global(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunGovernment(ctx.time())) return;
+    public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
+        if (!ctx.schedule().runGovernment()) return;
 
         for (KingdomState kingdom : state.kingdoms().values()) {
             double taxIncome = 0.0;

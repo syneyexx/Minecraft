@@ -9,7 +9,6 @@ import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.state.StockpileState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 public final class EconomyEngine implements SimulationSubsystem {
     private static final double CONSUMPTION_PER_CAPITA = 0.15;
@@ -19,8 +18,8 @@ public final class EconomyEngine implements SimulationSubsystem {
     public String name() { return "economy"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunMarkets(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runMarkets()) return;
 
         for (SettlementState settlement : state.settlements().values()) {
             if (!settlement.region().equals(work.region())) continue;

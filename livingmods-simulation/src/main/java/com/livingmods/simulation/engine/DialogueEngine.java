@@ -11,7 +11,6 @@ import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.state.StockpileState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,10 +59,10 @@ public final class DialogueEngine implements SimulationSubsystem {
     public String name() { return "dialogue"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {}
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {}
 
     @Override
-    public void phase3Independent(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {}
+    public void phase3Independent(CanonicalWorldState state, SimulationContext ctx) {}
 
     public List<DialogueLine> respond(CanonicalWorldState state, CitizenId citizenId, String intent) {
         Topic topic = detectIntent(intent);
@@ -140,7 +139,7 @@ public final class DialogueEngine implements SimulationSubsystem {
             case FAMILY -> lines.add(new DialogueLine(name,
                     "My household keeps us together through hard seasons.", topic));
             case HEALTH -> lines.add(new DialogueLine(name,
-                    citizen.health() < 0.4 ? "I feel poorly of late." : "I am well enough.", topic));
+                    citizen.health() < 30.0 ? "I feel poorly of late." : "I am well enough.", topic));
             case SETTLEMENT -> lines.add(new DialogueLine(name,
                     settlement == null ? "I wander." :
                             settlement.name() + " is a " + settlement.tier().name().toLowerCase(Locale.ROOT) + ".",

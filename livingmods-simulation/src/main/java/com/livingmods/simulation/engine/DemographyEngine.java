@@ -11,7 +11,6 @@ import com.livingmods.simulation.state.HouseholdState;
 import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,8 +20,8 @@ public final class DemographyEngine implements SimulationSubsystem {
     public String name() { return "demography"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunDemography(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runDemography()) return;
 
         List<CitizenState> regional = new ArrayList<>();
         for (CitizenState c : state.citizens().values()) {
@@ -91,7 +90,7 @@ public final class DemographyEngine implements SimulationSubsystem {
                         true,
                         false
                 );
-                state.citizens().put(childId, child);
+                state.putCitizen(child);
                 HouseholdState hh = state.households().get(b.householdId);
                 if (hh != null) {
                     hh.setMemberCount(hh.memberCount() + 1);

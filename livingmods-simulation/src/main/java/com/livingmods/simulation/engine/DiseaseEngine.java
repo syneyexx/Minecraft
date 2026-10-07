@@ -12,7 +12,6 @@ import com.livingmods.simulation.state.MarketState;
 import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
-import com.livingmods.simulation.tick.SimulationScheduler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,8 +23,8 @@ public final class DiseaseEngine implements SimulationSubsystem {
     public String name() { return "disease"; }
 
     @Override
-    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunDemography(ctx.time())) return;
+    public void phase1Regional(CanonicalWorldState state, RegionalWork work, SimulationContext ctx) {
+        if (!ctx.schedule().runDemography()) return;
 
         List<CitizenState> infected = new ArrayList<>();
         for (EpidemicState ep : state.epidemics().values()) {
@@ -62,8 +61,8 @@ public final class DiseaseEngine implements SimulationSubsystem {
     }
 
     @Override
-    public void phase2Global(CanonicalWorldState state, SimulationContext ctx, SimulationScheduler scheduler) {
-        if (!scheduler.shouldRunDemography(ctx.time())) return;
+    public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
+        if (!ctx.schedule().runDemography()) return;
         if (!state.epidemics().isEmpty() || state.settlements().isEmpty()) return;
         if (!ctx.random().chance(0.001)) return;
 
