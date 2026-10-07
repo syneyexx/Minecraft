@@ -11,11 +11,14 @@ import com.livingmods.simulation.engine.DiseaseEngine;
 import com.livingmods.simulation.engine.DialogueEngine;
 import com.livingmods.simulation.engine.EcologyEngine;
 import com.livingmods.simulation.engine.EconomyEngine;
+import com.livingmods.simulation.engine.EmergentTaskEngine;
 import com.livingmods.simulation.engine.GovernmentEngine;
 import com.livingmods.simulation.engine.HistoryEngine;
 import com.livingmods.simulation.engine.MigrationEngine;
 import com.livingmods.simulation.engine.MilitaryEngine;
 import com.livingmods.simulation.engine.PlayerSystemsEngine;
+import com.livingmods.simulation.engine.ReligionEngine;
+import com.livingmods.simulation.engine.ScheduleEngine;
 import com.livingmods.simulation.engine.SimulationSubsystem;
 import com.livingmods.simulation.engine.TechnologyEngine;
 import com.livingmods.simulation.engine.TradeEngine;
@@ -75,9 +78,11 @@ public final class SimulationEngine {
         this.workers = Executors.newFixedThreadPool(this.workerCount);
         this.subsystems = List.of(
                 new DemographyEngine(),
+                new ScheduleEngine(),
                 new EconomyEngine(),
                 new TradeEngine(),
                 new GovernmentEngine(),
+                new ReligionEngine(),
                 new DiplomacyEngine(),
                 new MilitaryEngine(),
                 new CrimeJusticeEngine(),
@@ -88,6 +93,7 @@ public final class SimulationEngine {
                 new ConstructionEngine(),
                 new DialogueEngine(),
                 new HistoryEngine(),
+                new EmergentTaskEngine(),
                 new PlayerSystemsEngine()
         );
         this.tickCounter = 0L;

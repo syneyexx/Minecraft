@@ -3,30 +3,44 @@ package com.livingmods.simulation;
 import com.livingmods.common.event.HistoricalEvent;
 import com.livingmods.common.id.ArmyId;
 import com.livingmods.common.id.CitizenId;
+import com.livingmods.common.id.CrimeId;
+import com.livingmods.common.id.DynastyId;
 import com.livingmods.common.id.EpidemicId;
+import com.livingmods.common.id.FactionId;
 import com.livingmods.common.id.HouseholdId;
 import com.livingmods.common.id.KingdomId;
 import com.livingmods.common.id.MigrationGroupId;
 import com.livingmods.common.id.SettlementId;
 import com.livingmods.common.id.ShipmentId;
+import com.livingmods.common.id.SiegeId;
 import com.livingmods.common.id.WarId;
 import com.livingmods.common.time.SimulationTime;
 import com.livingmods.common.util.Hashing;
 import com.livingmods.simulation.spatial.SpatialIndex;
 import com.livingmods.simulation.state.ArmyState;
 import com.livingmods.simulation.state.CitizenState;
+import com.livingmods.simulation.state.CrimeState;
 import com.livingmods.simulation.state.DiplomacyState;
+import com.livingmods.simulation.state.DynastyState;
 import com.livingmods.simulation.state.EcologyState;
+import com.livingmods.simulation.state.EmergentTaskState;
 import com.livingmods.simulation.state.EpidemicState;
+import com.livingmods.simulation.state.FactionState;
+import com.livingmods.simulation.state.FamilyRelationState;
+import com.livingmods.simulation.state.HistoryMarkerState;
 import com.livingmods.simulation.state.HouseholdState;
+import com.livingmods.simulation.state.IntelligenceState;
 import com.livingmods.simulation.state.KingdomState;
 import com.livingmods.simulation.state.MarketState;
 import com.livingmods.simulation.state.MigrationGroupState;
 import com.livingmods.simulation.state.PlayerReputationState;
+import com.livingmods.simulation.state.RumorState;
 import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.state.ShipmentState;
+import com.livingmods.simulation.state.SiegeState;
 import com.livingmods.simulation.state.StockpileState;
 import com.livingmods.simulation.state.TechnologyState;
+import com.livingmods.simulation.state.TradeNetwork;
 import com.livingmods.simulation.state.WarState;
 
 import java.util.ArrayDeque;
@@ -58,6 +72,7 @@ public final class CanonicalWorldState {
     private final Map<SettlementId, SettlementState> settlements = new LinkedHashMap<>();
     private final Map<CitizenId, CitizenState> citizens = new LinkedHashMap<>();
     private final Map<HouseholdId, HouseholdState> households = new LinkedHashMap<>();
+    private final Map<UUID, FamilyRelationState> familyRelations = new LinkedHashMap<>();
     private final Map<SettlementId, StockpileState> stockpiles = new LinkedHashMap<>();
     private final Map<SettlementId, MarketState> markets = new LinkedHashMap<>();
     private final DiplomacyState diplomacy = new DiplomacyState();
@@ -66,10 +81,19 @@ public final class CanonicalWorldState {
     private final Map<EpidemicId, EpidemicState> epidemics = new LinkedHashMap<>();
     private final Map<MigrationGroupId, MigrationGroupState> migrations = new LinkedHashMap<>();
     private final Map<ShipmentId, ShipmentState> shipments = new LinkedHashMap<>();
+    private final Map<DynastyId, DynastyState> dynasties = new LinkedHashMap<>();
+    private final Map<CrimeId, CrimeState> crimes = new LinkedHashMap<>();
+    private final Map<SiegeId, SiegeState> sieges = new LinkedHashMap<>();
+    private final Map<FactionId, FactionState> factions = new LinkedHashMap<>();
+    private final IntelligenceState intelligence = new IntelligenceState();
+    private final TradeNetwork tradeNetwork = new TradeNetwork();
     private final EcologyState ecology = new EcologyState();
     private final TechnologyState technology = new TechnologyState();
     private final PlayerReputationState playerReputation = new PlayerReputationState();
     private final Deque<HistoricalEvent> history = new ArrayDeque<>();
+    private final Map<String, RumorState> rumors = new LinkedHashMap<>();
+    private final Map<UUID, EmergentTaskState> emergentTasks = new LinkedHashMap<>();
+    private final Map<String, HistoryMarkerState> historyMarkers = new LinkedHashMap<>();
 
     private final Map<SettlementId, Set<CitizenId>> citizensBySettlement = new LinkedHashMap<>();
     private final Map<HouseholdId, Set<CitizenId>> citizensByHousehold = new LinkedHashMap<>();
@@ -111,6 +135,7 @@ public final class CanonicalWorldState {
     public Map<SettlementId, SettlementState> settlements() { return settlements; }
     public Map<CitizenId, CitizenState> citizens() { return citizens; }
     public Map<HouseholdId, HouseholdState> households() { return households; }
+    public Map<UUID, FamilyRelationState> familyRelations() { return familyRelations; }
     public Map<SettlementId, StockpileState> stockpiles() { return stockpiles; }
     public Map<SettlementId, MarketState> markets() { return markets; }
     public DiplomacyState diplomacy() { return diplomacy; }
@@ -119,10 +144,31 @@ public final class CanonicalWorldState {
     public Map<EpidemicId, EpidemicState> epidemics() { return epidemics; }
     public Map<MigrationGroupId, MigrationGroupState> migrations() { return migrations; }
     public Map<ShipmentId, ShipmentState> shipments() { return shipments; }
+    public Map<DynastyId, DynastyState> dynasties() { return dynasties; }
+    public Map<CrimeId, CrimeState> crimes() { return crimes; }
+    public Map<SiegeId, SiegeState> sieges() { return sieges; }
+    public Map<FactionId, FactionState> factions() { return factions; }
+    public IntelligenceState intelligence() { return intelligence; }
+    public TradeNetwork tradeNetwork() { return tradeNetwork; }
     public EcologyState ecology() { return ecology; }
     public TechnologyState technology() { return technology; }
     public PlayerReputationState playerReputation() { return playerReputation; }
     public Deque<HistoricalEvent> history() { return history; }
+    public Map<String, RumorState> rumors() { return rumors; }
+    public Map<UUID, EmergentTaskState> emergentTasks() { return emergentTasks; }
+    public Map<String, HistoryMarkerState> historyMarkers() { return historyMarkers; }
+
+    public void transferCitizen(
+            CitizenState citizen,
+            SettlementId newSettlement,
+            HouseholdId newHousehold
+    ) {
+        SettlementId prevSettlement = citizen.settlementId();
+        HouseholdId prevHousehold = citizen.householdId();
+        citizen.setSettlementId(newSettlement);
+        citizen.setHouseholdId(newHousehold);
+        reindexCitizen(citizen, prevSettlement, prevHousehold);
+    }
 
     public Map<SettlementId, Set<CitizenId>> citizensBySettlement() { return citizensBySettlement; }
     public Map<HouseholdId, Set<CitizenId>> citizensByHousehold() { return citizensByHousehold; }
@@ -167,6 +213,27 @@ public final class CanonicalWorldState {
         }
         citizensBySettlement.computeIfAbsent(citizen.settlementId(), id -> new LinkedHashSet<>()).add(citizen.id());
         citizensByHousehold.computeIfAbsent(citizen.householdId(), id -> new LinkedHashSet<>()).add(citizen.id());
+    }
+
+    public void reindexCitizen(CitizenState citizen, SettlementId previousSettlement, HouseholdId previousHousehold) {
+        if (previousSettlement != null) {
+            Set<CitizenId> bySettlement = citizensBySettlement.get(previousSettlement);
+            if (bySettlement != null) {
+                bySettlement.remove(citizen.id());
+            }
+        }
+        if (previousHousehold != null) {
+            Set<CitizenId> byHousehold = citizensByHousehold.get(previousHousehold);
+            if (byHousehold != null) {
+                byHousehold.remove(citizen.id());
+            }
+        }
+        citizensBySettlement.computeIfAbsent(citizen.settlementId(), id -> new LinkedHashSet<>()).add(citizen.id());
+        citizensByHousehold.computeIfAbsent(citizen.householdId(), id -> new LinkedHashSet<>()).add(citizen.id());
+    }
+
+    public void putFamilyRelation(FamilyRelationState relation) {
+        familyRelations.put(relation.id(), relation);
     }
 
     public void removeCitizen(CitizenId id) {
@@ -266,7 +333,12 @@ public final class CanonicalWorldState {
         h = Hashing.mix(h, armies.size());
         h = Hashing.mix(h, migrations.size());
         h = Hashing.mix(h, shipments.size());
+        h = Hashing.mix(h, dynasties.size());
+        h = Hashing.mix(h, crimes.size());
+        h = Hashing.mix(h, sieges.size());
+        h = Hashing.mix(h, factions.size());
         h = Hashing.mix(h, history.size());
         return h;
     }
 }
+

@@ -37,8 +37,8 @@ public final class ResourceSiteMaterializer {
 
     private static Kind classify(ResourceType type) {
         return switch (type) {
-            case GRAIN, VEGETABLES, LIVESTOCK, MEAT -> Kind.FARM;
-            case IRON, COAL, GOLD, STONE -> Kind.MINE;
+            case GRAIN, VEGETABLES, LIVESTOCK, MEAT, FOOD -> Kind.FARM;
+            case IRON, IRON_ORE, COAL, FUEL, GOLD, STONE -> Kind.MINE;
             case FISH, WATER -> Kind.PORT;
             default -> Kind.CAMP;
         };

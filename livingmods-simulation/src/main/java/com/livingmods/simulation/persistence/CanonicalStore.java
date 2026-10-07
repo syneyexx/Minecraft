@@ -109,6 +109,7 @@ public final class CanonicalStore {
         if (loaded == null) {
             return InitialStateFactory.fromWorldPlan(plan);
         }
+        InitialStateFactory.attachWorldPlan(loaded, plan);
         return loaded;
     }
 

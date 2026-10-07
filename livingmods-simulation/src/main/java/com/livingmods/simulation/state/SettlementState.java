@@ -24,6 +24,9 @@ public final class SettlementState {
     private double physicalCapacity;
     private int housingUnits;
     private int employedSlots;
+    private double unrest;
+    private double security;
+    private double hunger;
 
     public SettlementState(
             SettlementId id,
@@ -53,6 +56,9 @@ public final class SettlementState {
         this.physicalCapacity = physicalCapacity;
         this.housingUnits = housingUnits;
         this.employedSlots = employedSlots;
+        this.unrest = 0.0;
+        this.security = 0.4;
+        this.hunger = 0.0;
     }
 
     public SettlementId id() { return id; }
@@ -74,6 +80,12 @@ public final class SettlementState {
     public void setHousingUnits(int housingUnits) { this.housingUnits = housingUnits; }
     public int employedSlots() { return employedSlots; }
     public void setEmployedSlots(int employedSlots) { this.employedSlots = employedSlots; }
+    public double unrest() { return unrest; }
+    public void setUnrest(double unrest) { this.unrest = Math.max(0, Math.min(1, unrest)); }
+    public double security() { return security; }
+    public void setSecurity(double security) { this.security = Math.max(0, Math.min(1, security)); }
+    public double hunger() { return hunger; }
+    public void setHunger(double hunger) { this.hunger = Math.max(0, Math.min(1, hunger)); }
 
     public RegionCoord region() {
         int regionBlocks = RegionCoord.DEFAULT_SIZE_CHUNKS * 16;

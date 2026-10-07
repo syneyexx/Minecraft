@@ -84,6 +84,7 @@ public final class SidecarSimulationHost implements AutoCloseable {
         CanonicalWorldState loaded = persistence.loadOrNull();
         if (loaded != null && loaded.planContentHash() == worldPlan.contentHash()) {
             this.state = loaded;
+            InitialStateFactory.attachWorldPlan(state, worldPlan);
             LOG.info("Loaded canonical state revision=" + state.saveRevision());
         } else {
             this.state = InitialStateFactory.fromWorldPlan(worldPlan);
