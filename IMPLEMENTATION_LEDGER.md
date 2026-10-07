@@ -19,7 +19,7 @@ A system is `VERIFIED` only when model + simulation + persistence + IPC + physic
 | Road graph + bridges | VERIFIED | Terrain-aware A* |
 | Urban districts / lots / buildings | VERIFIED | Procedural architecture grammar |
 | Wizard Trees underground civ | FUNCTIONAL | Theocratic cavern settlements |
-| Chunk materialization | FUNCTIONAL | Plan slice → blocks without sidecar |
+| Chunk materialization | FUNCTIONAL | Hollow buildings, roads/bridges/walls/gates, farms/mines/ports, ruins, bandits, Wizard Trees caverns; chunk attachment idempotency |
 | Initial canonical state handoff | VERIFIED | `InitialStateFactory` |
 | Citizens / households / professions | FUNCTIONAL | Projection-capped physical entities |
 | Economy / markets / trade | VERIFIED | Famine → price unit test |

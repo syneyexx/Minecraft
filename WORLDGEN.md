@@ -6,4 +6,7 @@ Output is an immutable `WorldPlan` keyed by settlement ID. Chunks call `WorldPla
 
 On disk, worlds store metadata under `world/livingmods/worldplan/` (`plan.bin`, `seed.dat`). The NeoForge `WorldPlanCache` loads or regenerates from the level seed.
 
-Chunk materialization is implemented in `CivilizationMaterializer` (roads, building footprints, simple walls).
+Chunk materialization (`CivilizationMaterializer` + specialists) places roads, bridges, hollow
+buildings from architecture grammar, walls/gates, farms/mines/ports, ruins, bandit camps, and
+Wizard Trees caverns. Per-chunk attachment provenance (`PHYSICAL_CONTENT_REVISION`) makes
+generation idempotent — already-applied chunks are never rewritten over player edits.

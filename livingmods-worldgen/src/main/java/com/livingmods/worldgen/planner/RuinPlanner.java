@@ -1,5 +1,6 @@
 package com.livingmods.worldgen.planner;
 
+import com.livingmods.common.config.LivingModsConfig;
 import com.livingmods.common.culture.CultureDefinition;
 import com.livingmods.common.culture.CultureRegistry;
 import com.livingmods.common.geo.BlockPos2;
@@ -10,7 +11,7 @@ import com.livingmods.common.util.Hashing;
 import com.livingmods.worldgen.plan.PlannedKingdom;
 import com.livingmods.worldgen.plan.PlannedRuin;
 import com.livingmods.worldgen.plan.PlannedSettlement;
-import com.livingmods.worldgen.terrain.TerrainAnalyzer;
+import com.livingmods.worldgen.terrain.TerrainProvider;
 import com.livingmods.worldgen.terrain.TerrainSample;
 
 import java.util.ArrayList;
@@ -18,12 +19,19 @@ import java.util.List;
 
 /**
  * Places historically motivated ruins (fallen keeps, abandoned shrines) — not random rubble.
+ * Frontier ancient sites are bounded by {@link LivingModsConfig#civilizationRadiusBlocks()}.
  */
 public final class RuinPlanner {
-    private final TerrainAnalyzer terrain;
+    private final LivingModsConfig config;
+    private final TerrainProvider terrain;
     private final CultureRegistry cultures;
 
-    public RuinPlanner(TerrainAnalyzer terrain, CultureRegistry cultures) {
+    public RuinPlanner(TerrainProvider terrain, CultureRegistry cultures) {
+        this(LivingModsConfig.defaults(), terrain, cultures);
+    }
+
+    public RuinPlanner(LivingModsConfig config, TerrainProvider terrain, CultureRegistry cultures) {
+        this.config = config;
         this.terrain = terrain;
         this.cultures = cultures;
     }
@@ -59,22 +67,26 @@ public final class RuinPlanner {
             }
         }
 
-        // Ancient sites unrelated to current polities
-        DeterministicRandom ancient = new DeterministicRandom(Hashing.mix(ruinSeed, 0x414E4349L));
-        for (int i = 0; i < 8; i++) {
-            int x = ancient.nextInt(-4500, 4500);
-            int z = ancient.nextInt(-4500, 4500);
-            TerrainSample s = terrain.sample(x, z);
-            if (!s.buildable() || s.water()) continue;
-            String cultureKey = cultures.surfaceCultures().get(ancient.nextInt(cultures.surfaceCultures().size())).key();
-            BuildingRole role = ancient.chance(0.5) ? BuildingRole.TEMPLE : BuildingRole.CASTLE_KEEP;
-            ruins.add(new PlannedRuin(
-                    BoundingBox2.around(BlockPos2.of(x, z), 16 + ancient.nextInt(12)),
-                    role,
-                    cultureKey,
-                    (int) (Hashing.mix(ruinSeed, i + 1000) & 0x7fffffff),
-                    "pre-dynastic collapse"
-            ));
+        if (config.frontierEnabled()) {
+            DeterministicRandom ancient = new DeterministicRandom(Hashing.mix(ruinSeed, 0x414E4349L));
+            int radius = config.civilizationRadiusBlocks();
+            for (int i = 0; i < 8; i++) {
+                int x = ancient.nextInt(-radius, radius);
+                int z = ancient.nextInt(-radius, radius);
+                if (Math.hypot(x, z) > radius) continue;
+                TerrainSample s = terrain.sample(x, z);
+                if (!s.buildable() || s.water()) continue;
+                String cultureKey = cultures.surfaceCultures()
+                        .get(ancient.nextInt(cultures.surfaceCultures().size())).key();
+                BuildingRole role = ancient.chance(0.5) ? BuildingRole.TEMPLE : BuildingRole.CASTLE_KEEP;
+                ruins.add(new PlannedRuin(
+                        BoundingBox2.around(BlockPos2.of(x, z), 16 + ancient.nextInt(12)),
+                        role,
+                        cultureKey,
+                        (int) (Hashing.mix(ruinSeed, i + 1000) & 0x7fffffff),
+                        "pre-dynastic collapse"
+                ));
+            }
         }
         return ruins;
     }
@@ -85,6 +97,7 @@ public final class RuinPlanner {
             int dist = 600 + index * 200 + random.nextInt(900);
             int x = capital.x() + (int) (Math.cos(angle) * dist);
             int z = capital.z() + (int) (Math.sin(angle) * dist);
+            if (Math.hypot(x, z) > config.civilizationRadiusBlocks()) continue;
             TerrainSample s = terrain.sample(x, z);
             if (s.defensive() || s.river()) {
                 return BlockPos2.of(x, z);

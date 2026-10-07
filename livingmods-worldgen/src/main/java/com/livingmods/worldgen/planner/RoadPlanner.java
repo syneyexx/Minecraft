@@ -12,7 +12,7 @@ import com.livingmods.worldgen.plan.PlannedBridge;
 import com.livingmods.worldgen.plan.PlannedKingdom;
 import com.livingmods.worldgen.plan.PlannedRoad;
 import com.livingmods.worldgen.plan.PlannedSettlement;
-import com.livingmods.worldgen.terrain.TerrainAnalyzer;
+import com.livingmods.worldgen.terrain.TerrainProvider;
 import com.livingmods.worldgen.terrain.TerrainSample;
 
 import java.util.ArrayList;
@@ -32,9 +32,9 @@ public final class RoadPlanner {
             {STEP, STEP}, {STEP, -STEP}, {-STEP, STEP}, {-STEP, -STEP}
     };
 
-    private final TerrainAnalyzer terrain;
+    private final TerrainProvider terrain;
 
-    public RoadPlanner(TerrainAnalyzer terrain) {
+    public RoadPlanner(TerrainProvider terrain) {
         this.terrain = terrain;
     }
 
@@ -86,7 +86,6 @@ public final class RoadPlanner {
                 }
             }
 
-            // Connect any stragglers to nearest connected settlement
             for (PlannedSettlement s : realm) {
                 if (connected.contains(s.id())) continue;
                 PlannedSettlement anchor = nearestConnected(s, realm, connected);
@@ -97,6 +96,78 @@ public final class RoadPlanner {
             }
         }
         return roads;
+    }
+
+    /**
+     * After urban layout: snap road endpoints to settlement gates / street entries
+     * so external road → gate → primary urban street.
+     */
+    public List<PlannedRoad> connectRoadsToUrbanFabric(
+            long seed, List<PlannedRoad> roads, List<PlannedSettlement> settlements
+    ) {
+        Map<SettlementId, PlannedSettlement> byId = new HashMap<>();
+        for (PlannedSettlement s : settlements) {
+            byId.put(s.id(), s);
+        }
+        List<PlannedRoad> out = new ArrayList<>(roads.size());
+        int ordinal = 0;
+        for (PlannedRoad road : roads) {
+            List<BlockPos2> path = new ArrayList<>(road.path());
+            if (path.size() >= 2) {
+                road.fromSettlement().map(byId::get).ifPresent(s ->
+                        snapEndpoint(path, true, s));
+                road.toSettlement().map(byId::get).ifPresent(s ->
+                        snapEndpoint(path, false, s));
+            }
+            out.add(new PlannedRoad(
+                    road.id() != null ? road.id() : RoadId.deterministic(seed, ordinal),
+                    road.roadClass(),
+                    path,
+                    road.fromSettlement(),
+                    road.toSettlement(),
+                    road.bridges(),
+                    road.cultureKey()
+            ));
+            ordinal++;
+        }
+        return out;
+    }
+
+    private void snapEndpoint(List<BlockPos2> path, boolean fromStart, PlannedSettlement s) {
+        BlockPos2 target = pickGateOrEdge(s, fromStart ? path.get(0) : path.get(path.size() - 1));
+        if (fromStart) {
+            path.set(0, target);
+            if (path.size() > 1) {
+                path.add(1, BlockPos2.of(
+                        (target.x() + s.center().x()) / 2,
+                        (target.z() + s.center().z()) / 2
+                ));
+            }
+        } else {
+            path.set(path.size() - 1, target);
+            path.add(BlockPos2.of(
+                    (target.x() + s.center().x()) / 2,
+                    (target.z() + s.center().z()) / 2
+            ));
+        }
+    }
+
+    private BlockPos2 pickGateOrEdge(PlannedSettlement s, BlockPos2 approach) {
+        if (!s.gatePositions().isEmpty()) {
+            return s.gatePositions().stream()
+                    .min(Comparator.comparingDouble(g -> g.distanceTo(approach)))
+                    .orElse(approach);
+        }
+        // Project approach onto footprint boundary.
+        double dx = approach.x() - s.center().x();
+        double dz = approach.z() - s.center().z();
+        double len = Math.hypot(dx, dz);
+        int radius = Math.max(s.bounds().width(), s.bounds().depth()) / 2;
+        if (len < 1) return approach;
+        return BlockPos2.of(
+                s.center().x() + (int) (dx / len * radius),
+                s.center().z() + (int) (dz / len * radius)
+        );
     }
 
     private void addRoad(long seed, int ordinal, List<PlannedRoad> roads,
