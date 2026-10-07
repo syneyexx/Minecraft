@@ -1,0 +1,5 @@
+dependencies {
+    api project(':livingmods-common')
+    api project(':livingmods-protocol')
+    api project(':livingmods-worldgen')
+}
