@@ -54,10 +54,17 @@ configurations {
 }
 
 dependencies {
+    // Compile against modules + embed them via Jar-in-Jar so standalone mods/
+    // installs have Envelope and the rest of the LivingMods classpath.
     implementation project(':livingmods-common')
     implementation project(':livingmods-protocol')
     implementation project(':livingmods-worldgen')
     implementation project(':livingmods-simulation')
+
+    jarJar project(':livingmods-common')
+    jarJar project(':livingmods-protocol')
+    jarJar project(':livingmods-worldgen')
+    jarJar project(':livingmods-simulation')
 
     // Sidecar fat jar is packaged into resources for process launch.
 }
