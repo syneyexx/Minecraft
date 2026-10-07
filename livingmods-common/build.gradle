@@ -1,0 +1,3 @@
+dependencies {
+    // Pure shared domain — no Minecraft, no networking stack.
+}

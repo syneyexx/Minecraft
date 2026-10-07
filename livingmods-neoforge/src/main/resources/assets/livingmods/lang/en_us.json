@@ -1,0 +1,7 @@
+{
+  "key.categories.livingmods": "LivingMods",
+  "key.livingmods.map": "LivingMods Map",
+  "key.livingmods.dashboard": "LivingMods Dashboard",
+  "entity.livingmods.citizen": "Citizen",
+  "commands.livingmods.locate.success": "Found %s at %s, %s (%s)"
+}

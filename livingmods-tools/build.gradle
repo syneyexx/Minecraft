@@ -1,0 +1,15 @@
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':livingmods-common')
+    implementation project(':livingmods-protocol')
+    implementation project(':livingmods-worldgen')
+    implementation project(':livingmods-simulation')
+    implementation project(':livingmods-testkit')
+}
+
+application {
+    mainClass = 'com.livingmods.tools.LivingModsTools'
+}

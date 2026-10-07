@@ -1,0 +1,8 @@
+dependencies {
+    api project(':livingmods-common')
+    api project(':livingmods-protocol')
+    api project(':livingmods-worldgen')
+    api project(':livingmods-simulation')
+    api platform('org.junit:junit-bom:5.11.4')
+    api 'org.junit.jupiter:junit-jupiter'
+}
