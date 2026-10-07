@@ -146,6 +146,7 @@ public final class SidecarSimulationHost implements AutoCloseable {
             if (gap <= 0) {
                 return;
             }
+            long started = System.nanoTime();
             if (gap <= SMALL_GAP_TICKS) {
                 engine.tickHour();
             } else if (gap <= MEDIUM_GAP_TICKS) {
@@ -157,7 +158,23 @@ public final class SidecarSimulationHost implements AutoCloseable {
                 long steps = Math.min(MONTH_HOUR_STEPS, gap / SimulationScheduler.TICKS_PER_HOUR);
                 engine.catchUpBounded(Math.max(1L, steps));
             }
+            // Host keeps a DiagnosticsExporter via SidecarMain; step timing recorded when available.
+            lastStepNanos = System.nanoTime() - started;
         }
+    }
+
+    private volatile long lastStepNanos;
+
+    public long lastStepNanos() {
+        return lastStepNanos;
+    }
+
+    public int subscriptionCount() {
+        return regionSubscriptions.size();
+    }
+
+    public int outboundEventQueueDepth() {
+        return outboundEvents.size();
     }
 
     public UUID worldId() {

@@ -83,9 +83,8 @@ public final class ReligionEngine implements SimulationSubsystem {
         if (kingdom != null && kingdom.religionKey() != null && !"none".equals(kingdom.religionKey())) {
             return ReligionDefinition.byKey(kingdom.religionKey());
         }
-        CultureDefinition culture = cultures.get(
-                settlement == null ? null : findCulture(state, settlement)
-        ).orElse(null);
+        com.livingmods.common.id.CultureId cultureId = settlement == null ? null : findCulture(state, settlement);
+        CultureDefinition culture = cultureId == null ? null : cultures.get(cultureId).orElse(null);
         if (culture != null) {
             return ReligionDefinition.byKey(culture.religionKey());
         }

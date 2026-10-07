@@ -58,6 +58,9 @@ public final class SessionHandler implements Runnable {
             while (!socket.isClosed()) {
                 Envelope envelope = BinaryCodec.readEnvelope(in);
                 diagnostics.recordInbound(envelope.payloadLength() + ProtocolConstants.HEADER_SIZE);
+                diagnostics.recordStepNanos(host.lastStepNanos());
+                diagnostics.setQueuedIpc(host.outboundEventQueueDepth());
+                diagnostics.setSubscriptions(host.subscriptionCount());
                 handle(envelope, out);
                 EventPayload event;
                 while ((event = host.pollEvent()) != null) {
@@ -325,6 +328,10 @@ public final class SessionHandler implements Runnable {
         List<LocateHit> hits = new ArrayList<>();
         String cat = q.category().toLowerCase();
         int limit = Math.max(1, q.limit());
+        Map<String, String> kingdomNames = new LinkedHashMap<>();
+        for (var k : host.worldPlan().kingdoms()) {
+            kingdomNames.put(k.id().toString(), k.name());
+        }
 
         for (PlannedSettlement s : host.worldPlan().settlements().values()) {
             if (!matchesSettlementCategory(cat, s)) continue;
@@ -332,33 +339,38 @@ public final class SessionHandler implements Runnable {
                     && !s.name().toLowerCase().contains(q.nameFilter().toLowerCase())) {
                 continue;
             }
-            hits.add(hit(s.name(), s.center().x(), s.center().z(), s.tier().name(), q.originX(), q.originZ()));
+            String kingdom = s.ownerKingdom()
+                    .map(id -> kingdomNames.getOrDefault(id.toString(), "-"))
+                    .orElse("-");
+            hits.add(hit(s.name(), s.tier().name(), kingdom,
+                    s.center().x(), s.center().z(), q.originX(), q.originZ()));
         }
         if (cat.contains("kingdom")) {
             for (var k : host.worldPlan().kingdoms()) {
-                hits.add(hit(k.name(), k.capitalCenter().x(), k.capitalCenter().z(),
-                        "KINGDOM", q.originX(), q.originZ()));
+                hits.add(hit(k.name(), "KINGDOM", k.name(),
+                        k.capitalCenter().x(), k.capitalCenter().z(), q.originX(), q.originZ()));
             }
         }
         if (cat.contains("mine") || cat.contains("port") || cat.contains("ruin")) {
             if (cat.contains("mine")) {
                 for (PlannedResourceSite site : host.worldPlan().resourceSites()) {
-                    hits.add(hit(site.resource().name(), site.center().x(), site.center().z(),
-                            "MINE", q.originX(), q.originZ()));
+                    hits.add(hit(site.resource().name(), "MINE", "-",
+                            site.center().x(), site.center().z(), q.originX(), q.originZ()));
                 }
             }
             if (cat.contains("ruin")) {
                 for (PlannedRuin ruin : host.worldPlan().ruins()) {
                     BlockPos2 c = ruin.bounds().center();
-                    hits.add(hit(ruin.historicalNote(), c.x(), c.z(), "RUIN", q.originX(), q.originZ()));
+                    hits.add(hit(ruin.historicalNote(), "RUIN", "-", c.x(), c.z(),
+                            q.originX(), q.originZ()));
                 }
             }
         }
         if (cat.contains("wizard")) {
             for (PlannedSettlement s : host.worldPlan().settlements().values()) {
                 if (s.role() == com.livingmods.common.model.SettlementRole.WIZARD_TREES) {
-                    hits.add(hit(s.name(), s.center().x(), s.center().z(), "WIZARD",
-                            q.originX(), q.originZ()));
+                    hits.add(hit(s.name(), "WIZARD", "-",
+                            s.center().x(), s.center().z(), q.originX(), q.originZ()));
                 }
             }
         }

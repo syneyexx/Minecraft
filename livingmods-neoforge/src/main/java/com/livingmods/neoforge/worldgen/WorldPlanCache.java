@@ -55,7 +55,12 @@ public final class WorldPlanCache {
         MinecraftTerrainProvider minecraftTerrain = new MinecraftTerrainProvider(overworld);
         terrainProvider = minecraftTerrain;
 
-        LivingModsConfig config = LivingModsConfig.defaults();
+        Path configDir = worldDir.resolve("livingmods/config");
+        // Also accept game config/livingmods.properties when present.
+        Path gameConfig = server.getServerDirectory().resolve("config");
+        LivingModsConfig config = Files.isRegularFile(gameConfig.resolve("livingmods.properties"))
+                ? LivingModsConfig.loadOrDefaults(gameConfig)
+                : LivingModsConfig.loadOrDefaults(configDir);
         // Pass Minecraft terrain into planner only when generating; load path restores plan as-is.
         cached = WorldPlanStore.loadOrGenerate(worldDir, config, seed, minecraftTerrain);
         return cached;

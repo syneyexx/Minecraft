@@ -27,13 +27,17 @@ A system is `VERIFIED` only when model + simulation + persistence + IPC + physic
 | Diplomacy / treaties | FUNCTIONAL | Relation matrix + treaty types |
 | Law / crime / justice | FUNCTIONAL | Crime→sentence pipeline engine |
 | Military / war / sieges | FUNCTIONAL | Abstract armies + causes |
-| Disease / migration / refugees | FUNCTIONAL | Engines present; physical projection partial |
-| Ecology | FUNCTIONAL | Scalable cohort model |
-| Technology / education | FUNCTIONAL | Local knowledge spread |
-| No-LLM dialogue | FUNCTIONAL | Intent detection + state-grounded templates |
-| Player reputation / realms | FUNCTIONAL | Same systems path |
-| Map (M) / Dashboard (F12) | FUNCTIONAL | Client screens wired |
-| Locate commands | FUNCTIONAL | `/livingmods locate <category>` |
+| Disease / migration / refugees | FUNCTIONAL | Infectivity/severity/immunity; real citizen migration + refugee outcomes |
+| Ecology | FUNCTIONAL | Data-driven multi-archetype species (not Lotka–Volterra toy) |
+| Technology / education | FUNCTIONAL | Tech tree with prereqs; schools; advanced_agriculture reachable |
+| Religion | FUNCTIONAL | Festivals, legitimacy, diplomacy leanings from ReligionDefinition |
+| History / rumors | FUNCTIONAL | Meaningful events → markers + citizen-learned rumors |
+| Emergent tasks | FUNCTIONAL | Spawned from canonical problems; completion mutates state |
+| No-LLM dialogue | FUNCTIONAL | EN/NL intents; citizen knowledge (no omniscience) |
+| Player reputation / realms | FUNCTIONAL | Faction standing ladder + player-founded kingdom workflow |
+| Map (M) / Dashboard (F12) | FUNCTIONAL | MapDataPayload networking; tabbed SidecarClient diagnostics |
+| Locate commands | FUNCTIONAL | Distance-sorted name/type/kingdom/coords/distance |
+| User configuration | FUNCTIONAL | config/livingmods.properties with validated ranges |
 | Optional mod integrations | IMPLEMENTING | Soft detection adapters only |
 | Determinism tests | VERIFIED | Simulation + worldgen (worldgen slow) |
 | Long-term accelerated sim | FUNCTIONAL | `catchUpBounded` / tools bench |
