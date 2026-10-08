@@ -1,51 +1,81 @@
 ---
-description: Player agency / gameplay integration notes for MineLife agents (M4)
+description: Player agency / gameplay integration notes for MineLife agents (M4/M5)
 globs:
   - "**/PlayerGameplay*"
   - "**/CitizenDialogue*"
   - "**/FactionDisposition*"
   - "**/ResourceItemMapping*"
   - "**/CitizenInteractionPayloads*"
+  - "**/ServerInventoryTransaction*"
+  - "**/PlayerKnowledgeCache*"
+  - "**/MarketQuote*"
 alwaysApply: false
 ---
 
-# Player gameplay rules
+# Player gameplay rules (M4/M5)
 
 ## Authority
 
 - Commands: `PlayerGameplayBridge` → typed `PlayerActionRequest` → `PlayerGameplayService`
 - Physical evidence: `PhysicalInteractionBridge` → `PhysicalOutcomePayload`
-- Do not scatter sidecar calls from client screens
+- **Never** call `SidecarClient` / `MessageType` from client screens
+- Dashboard/journal/map: C2S request → server → async sidecar / LiveStateCache → S2C
+
+## Positions
+
+Authoritative actions use `ServerPlayer.blockPosition()`. Client x/z must not decide discovery, founding, jurisdiction, or market proximity.
 
 ## Interaction sessions
 
 `PlayerInteractionSessions` binds player + citizen + settlement + expiry/distance.
-Subsequent UI choices reference the session. Max interact distance: 8 blocks.
+Market/fine/dialogue/join require a valid session. Max interact distance: 8 blocks.
+Own-realm governance (F12/realm panel) may be remote; validate rulership canonically.
 
-## Typed actions only if handled
+## Market
 
-`PlayerActionType` enumerates only actions with real handlers. No unused catalogue.
-
-## Reputation / standing
-
-Single number: `PlayerReputationState`. UI attitude labels derive from standing/reputation/legal — no second fame system.
-`FactionStanding`: NEUTRAL → CITIZEN → TRUSTED → OFFICIAL → RULER.
+Quote → inventory validate → commit (quoteId single-use). Exact `GOLD_INGOT` amount from quote.
+Use `ServerInventoryTransaction` for exact slot rollback. No inventing a second currency.
 
 ## Tasks
 
 Lifecycle: OPEN → DISCOVERED → ACCEPTED → COMPLETED (also FAILED/ABANDONED/EXPIRED).
-Completion requires server-verified evidence (inventory delivery, camp clear, caravan arrival).
+Player completion requires `status == ACCEPTED` AND `acceptedBy == player`.
+Missing `serverVerified` is **false**. Simulation auto-complete is a separate path.
 
-## Trade
+## Founding
 
-Buy/sell: NeoForge consumes/refunds items + gold, then canonical stockpile/market update.
-Reject unverified (`serverVerified`) transactions.
+Preview → consume exact gold → atomic commit. Treasury comes from paid contribution.
+Failed founding must not leave orphan settlement/kingdom/steward/stockpile.
 
-## Crime / guards
+## Policies
 
-Player offences create `CrimeState` with `playerOffender` + legal record.
-Guards use cached wanted/hostile flags — never IPC inside AI predicates.
+Durable inputs only (`playerReputation.policy` / kingdom taxRate). Engines read them over time.
+No instant unrest/security/deficit farming from button presses.
+
+## Diplomacy
+
+Player requests; NPC evaluates deterministically (`DiplomacyProposalEvaluator`). Only ACCEPTED mutates.
+
+## Disposition / guards
+
+`FactionDispositionCache` is jurisdiction-aware (`PlayerKingdomKey`). Wanted in A ≠ hostile in B.
+No IPC inside targeting predicates. Re-evaluate from cache so spawned entities react to changes.
+
+## Map knowledge
+
+Filter civilization markers server-side by `PlayerKnowledgeState` / `PlayerKnowledgeCache`.
+Map click is selection only — never grants remote discovery.
+
+## Reputation / standing
+
+Single number: `PlayerReputationState`. UI attitude labels derive from standing/reputation/legal.
+`FactionStanding`: NEUTRAL → CITIZEN → TRUSTED → OFFICIAL → RULER.
+
+## Crime
+
+Player offences create `CrimeState` with `playerOffender` via physical outcome path.
+Do not double-report through PlayerGameplayBridge.
 
 ## Multi-world
 
-Clear `FactionDispositionCache` and `PlayerInteractionSessions` on server stop with other session caches.
+Clear `FactionDispositionCache`, `PlayerKnowledgeCache`, and `PlayerInteractionSessions` on server stop.

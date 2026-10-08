@@ -78,6 +78,18 @@ public final class LivingModsNetwork {
         registrar.playToServer(CitizenInteractionPayloads.RealmAction.TYPE,
                 CitizenInteractionPayloads.RealmAction.STREAM_CODEC,
                 CitizenInteractionPayloads.RealmAction::handle);
+        registrar.playToServer(CitizenInteractionPayloads.DashboardRequest.TYPE,
+                CitizenInteractionPayloads.DashboardRequest.STREAM_CODEC,
+                CitizenInteractionPayloads.DashboardRequest::handle);
+        registrar.playToClient(CitizenInteractionPayloads.DashboardContext.TYPE,
+                CitizenInteractionPayloads.DashboardContext.STREAM_CODEC,
+                (payload, ctx) -> {
+                    if (!FMLEnvironment.dist.isClient()) return;
+                    ctx.enqueueWork(() -> ClientNetworkBridge.acceptDashboardContext(payload.data()));
+                });
+        registrar.playToServer(CitizenInteractionPayloads.JournalRequest.TYPE,
+                CitizenInteractionPayloads.JournalRequest.STREAM_CODEC,
+                CitizenInteractionPayloads.JournalRequest::handle);
     }
 
     private static void handleMapRequest(MapDataRequestPayload request, IPayloadContext context) {
@@ -182,16 +194,32 @@ public final class LivingModsNetwork {
         List<MapDataPayload.SettlementMarker> settlements = new ArrayList<>();
         List<MapDataPayload.KingdomOverlay> kingdoms = new ArrayList<>();
         List<MapDataPayload.RoadSegment> roads = new ArrayList<>();
+        // Refresh knowledge async; filter with current cache (never send hidden metadata).
+        com.livingmods.neoforge.gameplay.PlayerKnowledgeCache knowledge =
+                com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.get();
+        knowledge.tickRefresh(player.getUUID(), (int) player.getX(), (int) player.getY(), (int) player.getZ());
+        int playerX = (int) player.getX();
+        int playerZ = (int) player.getZ();
         if (plan != null) {
             Map<String, String> kingdomNames = new LinkedHashMap<>();
             int colorIdx = 0;
             for (PlannedKingdom k : plan.kingdoms()) {
                 kingdomNames.put(k.id().toString(), k.name());
+                java.util.UUID kid = k.id().value();
+                var kLevel = knowledge.kingdomLevel(player.getUUID(), kid);
+                boolean owns = knowledge.ownsKingdom(player.getUUID(), kid);
+                if (!owns && kLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.UNKNOWN) {
+                    colorIdx++;
+                    continue; // no political border / name for unknown kingdoms
+                }
                 List<Integer> border = new ArrayList<>();
-                if (k.territoryPolygon() != null) {
-                    for (var p : k.territoryPolygon()) {
-                        border.add(p.x());
-                        border.add(p.z());
+                // Precise borders only for KNOWN/OBSERVED or owned; RUMORED gets capital hint only.
+                if (owns || kLevel.ordinal() >= com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.KNOWN.ordinal()) {
+                    if (k.territoryPolygon() != null) {
+                        for (var p : k.territoryPolygon()) {
+                            border.add(p.x());
+                            border.add(p.z());
+                        }
                     }
                 }
                 int color = switch (colorIdx++ % 6) {
@@ -202,51 +230,109 @@ public final class LivingModsNetwork {
                     case 4 -> 0x6B5B2E;
                     default -> 0x4A4A6A;
                 };
+                String displayName = kLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.RUMORED
+                        ? "Rumored realm" : k.name();
                 kingdoms.add(new MapDataPayload.KingdomOverlay(
                         k.id().toString(),
-                        k.name(),
+                        owns ? k.name() : displayName,
                         color,
                         k.capitalCenter().x(),
                         k.capitalCenter().z(),
-                        border
+                        border,
+                        owns ? "OBSERVED" : kLevel.name()
                 ));
             }
             for (PlannedSettlement s : plan.settlements().values()) {
-                String kingdom = s.ownerKingdom()
-                        .map(id -> kingdomNames.getOrDefault(id.toString(), ""))
-                        .orElse("");
+                java.util.UUID sid = s.id().value();
+                var sLevel = knowledge.settlementLevel(player.getUUID(), sid);
+                // Nearby observation from server player position — treat as OBSERVED for this payload.
+                int dx = s.center().x() - playerX;
+                int dz = s.center().z() - playerZ;
+                boolean nearby = dx * dx + dz * dz <= 48 * 48;
+                if (nearby && sLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.UNKNOWN) {
+                    sLevel = com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.OBSERVED;
+                    knowledge.putSettlement(player.getUUID(), sid, sLevel);
+                    s.ownerKingdom().ifPresent(oid ->
+                            knowledge.putKingdom(player.getUUID(), oid.value(),
+                                    com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.KNOWN));
+                }
+                if (sLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.UNKNOWN) {
+                    continue; // do not leak settlement metadata
+                }
+                boolean ownedRealm = s.ownerKingdom().map(oid ->
+                        knowledge.ownsKingdom(player.getUUID(), oid.value())).orElse(false);
+                String kingdom = "";
+                if (ownedRealm || sLevel.ordinal() >= com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.KNOWN.ordinal()) {
+                    kingdom = s.ownerKingdom()
+                            .map(id -> kingdomNames.getOrDefault(id.toString(), ""))
+                            .orElse("");
+                }
+                String name = sLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.RUMORED
+                        ? "Settlement?" : s.name();
+                String tier = sLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.RUMORED
+                        ? "UNKNOWN" : s.tier().name();
+                // Approximate coords for RUMORED (±32 quantization).
+                int mx = s.center().x();
+                int mz = s.center().z();
+                if (sLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.RUMORED) {
+                    mx = (mx / 32) * 32;
+                    mz = (mz / 32) * 32;
+                }
                 settlements.add(new MapDataPayload.SettlementMarker(
                         s.id().toString(),
-                        s.name(),
+                        name,
                         kingdom,
-                        s.tier().name(),
-                        s.center().x(),
-                        s.center().z(),
-                        s.capital()
+                        tier,
+                        mx,
+                        mz,
+                        ownedRealm || sLevel.ordinal() >= com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.KNOWN.ordinal()
+                                && s.capital(),
+                        ownedRealm ? "OBSERVED" : sLevel.name()
                 ));
             }
             // Overlay dynamic / player-founded settlements from live cache (never mutate WorldPlan).
             for (var dyn : com.livingmods.neoforge.physical.LiveStateCache.get().dynamicSettlements()) {
+                java.util.UUID dynId;
+                try {
+                    dynId = java.util.UUID.fromString(dyn.id());
+                } catch (Exception e) {
+                    continue;
+                }
+                var dLevel = knowledge.settlementLevel(player.getUUID(), dynId);
+                int dx = dyn.x() - playerX;
+                int dz = dyn.z() - playerZ;
+                if (dx * dx + dz * dz <= 48 * 48) {
+                    dLevel = com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.OBSERVED;
+                    knowledge.putSettlement(player.getUUID(), dynId, dLevel);
+                }
+                if (dLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.UNKNOWN) continue;
                 boolean exists = settlements.stream().anyMatch(s -> s.id().equals(dyn.id()));
                 if (!exists) {
                     settlements.add(new MapDataPayload.SettlementMarker(
-                            dyn.id(), dyn.label(), "", "VILLAGE", dyn.x(), dyn.z(), false));
+                            dyn.id(),
+                            dLevel == com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.Level.RUMORED
+                                    ? "Settlement?" : dyn.label(),
+                            "", "VILLAGE", dyn.x(), dyn.z(), false, dLevel.name()));
                 }
             }
             for (var road : com.livingmods.neoforge.physical.LiveStateCache.get().dynamicRoads()) {
                 roads.add(new MapDataPayload.RoadSegment(
                         road.x(), road.z(), road.x() + 8, road.z(), "DYNAMIC"));
             }
-            for (PlannedRoad road : plan.roads()) {
-                var pts = road.path();
-                if (pts == null || pts.size() < 2) continue;
-                int stride = Math.max(1, pts.size() / 10);
-                for (int i = 0; i + 1 < pts.size(); i += stride) {
-                    var a = pts.get(i);
-                    var b = pts.get(Math.min(pts.size() - 1, i + stride));
-                    roads.add(new MapDataPayload.RoadSegment(
-                            a.x(), a.z(), b.x(), b.z(),
-                            road.roadClass() == null ? "ROAD" : road.roadClass().name()));
+            // Roads only when player has some civilization knowledge (not full fog, but reduce leakage).
+            boolean anyKnown = !settlements.isEmpty() || !kingdoms.isEmpty();
+            if (anyKnown) {
+                for (PlannedRoad road : plan.roads()) {
+                    var pts = road.path();
+                    if (pts == null || pts.size() < 2) continue;
+                    int stride = Math.max(1, pts.size() / 10);
+                    for (int i = 0; i + 1 < pts.size(); i += stride) {
+                        var a = pts.get(i);
+                        var b = pts.get(Math.min(pts.size() - 1, i + stride));
+                        roads.add(new MapDataPayload.RoadSegment(
+                                a.x(), a.z(), b.x(), b.z(),
+                                road.roadClass() == null ? "ROAD" : road.roadClass().name()));
+                    }
                 }
             }
         }

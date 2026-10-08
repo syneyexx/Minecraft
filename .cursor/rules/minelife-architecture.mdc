@@ -84,10 +84,18 @@ Player intent → Minecraft client UI
 - Client screens: `CitizenDialogueScreen`, `MarketScreen`, `TaskJournalScreen`, `RealmManagementScreen`, playerized `DashboardScreen` / `MapScreen`
 
 ### Protocol / versions (`LivingModsVersions`)
-- `PROTOCOL_VERSION = 4` (`PlayerActionRequest`/`Response` + retained physical payloads)
+- `PROTOCOL_VERSION = 4` (`PlayerActionRequest`/`Response` + M5 append-only action types; retained physical payloads)
 - `CANONICAL_SAVE_SCHEMA = 5` (full player reputation/legal/knowledge/policies, emergent tasks, player crime offenders; reads ≥3)
 - `PHYSICAL_CONTENT_REVISION = 2` (initial chunk materialization only)
 - `WORLDGEN_VERSION = 2`
+
+### M5 authority notes
+- Client screens never hold `SidecarClient` or issue `MessageType` requests
+- Authoritative positions from `ServerPlayer.blockPosition()` only
+- Map civilization markers filtered server-side by player knowledge
+- `FactionDispositionCache` is jurisdiction-aware (`playerId` + `kingdomId`)
+- Market uses quote/commit + `ServerInventoryTransaction`
+- Task completion requires accepted ownership; missing `serverVerified` = false
 
 ## Persistence artifacts
 

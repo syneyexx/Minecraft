@@ -22,7 +22,7 @@ Status legend (mandatory):
 | IPC protocol (binary, versioned) | INTEGRATED | `BinaryCodec`, handshake identity fields, unit tests present (not run here) |
 | Sidecar process lifecycle | INTEGRATED | Auto-start/stop, embed jar, bounded restart (3), loopback bind |
 | Sidecar ↔ Minecraft handshake | INTEGRATED | Version/seed/plan-hash checks; reject paths coded |
-| Coordinated save + WAL | INTEGRATED | Schema 4 full graph + DynamicPhysicalState + WAL; save barrier pauses engine |
+| Coordinated save + WAL | INTEGRATED | Schema 5 full graph + DynamicPhysicalState + player gameplay + WAL |
 | Dynamic physical reconciliation | INTEGRATED | PhysicalIntent lifecycle, ConstructionEngine intents, BanditryEngine, NeoForge PhysicalReconciliationEngine, outcome applier |
 | Caravan / army projection | INTEGRATED | CaravanProjectionBinder + ArmyProjectionBinder (LOD, not 1:1) |
 | Physical interaction bridge | INTEGRATED | Verified death/interact → typed PhysicalOutcomePayload |
@@ -50,10 +50,13 @@ Status legend (mandatory):
 | Technology / education | FUNCTIONAL | Tech tree with prereqs; schools |
 | Religion | FUNCTIONAL | Festivals, legitimacy, diplomacy leanings |
 | History / rumors | FUNCTIONAL | Events → markers + citizen-learned rumors |
-| Emergent tasks | FUNCTIONAL | Spawned from canonical problems |
+| Emergent tasks | FUNCTIONAL | Ownership/evidence gates (M5); typed journal DTOs — runtime unverified |
 | No-LLM dialogue | FUNCTIONAL | EN/NL intents; knowledge-bounded lines; IPC context |
-| Player reputation / realms | FUNCTIONAL | Standing ladder + player-founded kingdom workflow in engine |
-| Map (M) / Dashboard (F12) | INTEGRATED | Server payloads + tabbed diagnostics (live client fields) |
+| Player reputation / realms | FUNCTIONAL | Standing + founding with gold cost + policy-as-inputs (M5) — runtime unverified |
+| Market quote/commit | FUNCTIONAL | Session-bound quote + exact GOLD_INGOT + inventory transaction helper (M5) |
+| Diplomacy proposals | FUNCTIONAL | Deterministic NPC evaluation of player proposals (M5) |
+| Jurisdiction disposition cache | FUNCTIONAL | Per-(player,kingdom) hostility; no IPC in AI (M5) |
+| Map (M) / Dashboard (F12) | INTEGRATED | Knowledge-filtered map; dashboard via C2S (no client sidecar) |
 | Locate commands | INTEGRATED | Sidecar path + offline plan-cache fallback |
 | Time sync / catch-up | INTEGRATED | `TIME_SYNC` + bounded catch-up in host |
 | User configuration | INTEGRATED | `livingmods.properties` format v1 + clamped ranges + legacy key migrate |
@@ -82,9 +85,9 @@ A subsystem may be promoted to RELEASE_READY only after the relevant sections of
 
 | Axis | Current | Source |
 |------|---------|--------|
-| Protocol | 3 | `LivingModsVersions.PROTOCOL_VERSION` (typed intents + outcomes) |
+| Protocol | 4 | `LivingModsVersions.PROTOCOL_VERSION` (typed player actions; M5 append-only types) |
 | Worldgen | 2 | `WORLDGEN_VERSION` |
-| Canonical save schema | 4 | `CANONICAL_SAVE_SCHEMA` (DynamicPhysicalState) |
+| Canonical save schema | 5 | `CANONICAL_SAVE_SCHEMA` (player gameplay + DynamicPhysicalState) |
 | Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` (initial materialization only) |
 | Mod / sidecar | 0.1.0 | `MOD_VERSION` / `SIDECAR_VERSION` |
 
@@ -101,6 +104,8 @@ Also recorded in `gradle.properties` for clarity; **Java constants win at runtim
 | E+F | Multi-resource economy, road-routed trade, politics/war/justice | yes |
 | G+H | Society systems + player experience UI (map/dashboard) | yes |
 | I | Release hardening (perf, multi-world, security bounds, packaging) + docs | yes |
+| M4 | Player agency vertical slice | yes (merged) |
+| M5 | Gameplay integrity / consequences / authority hardening | yes (source-complete; runtime unverified) |
 
 ## Local commands (reference only — not run here)
 
