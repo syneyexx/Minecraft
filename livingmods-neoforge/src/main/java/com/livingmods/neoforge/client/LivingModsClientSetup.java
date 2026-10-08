@@ -11,5 +11,6 @@ public final class LivingModsClientSetup {
 
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(LivingModsEntities.CITIZEN.get(), CitizenRenderer::new);
+        event.registerEntityRenderer(LivingModsEntities.PROJECTED_HUMANOID.get(), ProjectedHumanoidRenderer::new);
     }
 }

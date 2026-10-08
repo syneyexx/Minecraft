@@ -20,6 +20,7 @@ public final class SafeChunkWriter {
     private final int chunkX;
     private final int chunkZ;
     private int placed;
+    private int protectedCollisions;
     /** When true, vanilla crafted blocks (planks/cobble/etc.) are treated conservatively. */
     private boolean dynamicMode;
 
@@ -59,11 +60,38 @@ public final class SafeChunkWriter {
             return false;
         }
         if (!canReplace(pos)) {
+            protectedCollisions++;
             return false;
         }
         chunk.setBlockState(pos, state, false);
         placed++;
         return true;
+    }
+
+    /**
+     * Replace only blocks that look like LivingMods placeholders / dynamic content.
+     * Never touches foreign/player/protected geometry.
+     */
+    public boolean trySetLivingModsOnly(BlockPos pos, BlockState state) {
+        if (!inChunk(pos)) {
+            return false;
+        }
+        BlockState existing = chunk.getBlockState(pos);
+        if (chunk.getBlockEntity(pos) != null || isForeignProtected(existing)) {
+            protectedCollisions++;
+            return false;
+        }
+        if (!(existing.isAir() || isLivingModsPlaceholder(existing))) {
+            protectedCollisions++;
+            return false;
+        }
+        chunk.setBlockState(pos, state, false);
+        placed++;
+        return true;
+    }
+
+    public boolean chunkContains(int x, int z) {
+        return inChunk(x, z);
     }
 
     public boolean trySetAirPreferred(BlockPos pos, BlockState state) {
@@ -203,5 +231,13 @@ public final class SafeChunkWriter {
 
     public int placed() {
         return placed;
+    }
+
+    public int placedCount() {
+        return placed;
+    }
+
+    public int protectedCollisionCount() {
+        return protectedCollisions;
     }
 }

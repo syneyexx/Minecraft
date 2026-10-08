@@ -110,6 +110,106 @@ public final class DynamicPhysicalState {
         return false;
     }
 
+    /**
+     * Spatial intent discovery for player-founded / dynamic settlements that may lack
+     * immutable WorldPlan identity. Bounded by radius and result limit.
+     */
+    public List<PhysicalIntent> readyNear(int blockX, int blockZ, int radius, int limit) {
+        long r2 = (long) radius * radius;
+        List<PhysicalIntent> result = new ArrayList<>();
+        for (PhysicalIntent intent : intents.values()) {
+            if (intent.status() != PhysicalIntentStatus.READY
+                    && intent.status() != PhysicalIntentStatus.MATERIALIZING
+                    && intent.status() != PhysicalIntentStatus.FAILED_RETRYABLE) {
+                continue;
+            }
+            if (intent.type().isTransientProjection()) {
+                continue;
+            }
+            var pos = intent.targetPosition();
+            if (pos == null) continue;
+            long dx = (long) pos.x() - blockX;
+            long dz = (long) pos.z() - blockZ;
+            if (dx * dx + dz * dz > r2) continue;
+            // Also accept footprints that cover the query point.
+            if (intent.footprint() != null && intent.footprint().contains(blockX, blockZ)) {
+                result.add(intent);
+            } else if (dx * dx + dz * dz <= r2) {
+                result.add(intent);
+            }
+            if (result.size() >= limit) break;
+        }
+        result.sort(Comparator.comparingInt(PhysicalIntent::priority).thenComparing(i -> i.id().value()));
+        return result;
+    }
+
+    /**
+     * Settlements whose dynamic geometry or center falls within radius of (x,z).
+     */
+    public List<SettlementId> settlementsNear(int blockX, int blockZ, int radius) {
+        long r2 = (long) radius * radius;
+        List<SettlementId> ids = new ArrayList<>();
+        for (DynamicSettlementGeometry geo : settlementGeometry.values()) {
+            long dx = (long) geo.center().x() - blockX;
+            long dz = (long) geo.center().z() - blockZ;
+            if (dx * dx + dz * dz <= r2 || geo.boundary().contains(blockX, blockZ)) {
+                ids.add(geo.settlementId());
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Central dependency evaluation. An intent is physically executable only when
+     * all dependencies have reached an acceptable terminal success state.
+     */
+    public DependencyResult evaluateDependencies(PhysicalIntent intent) {
+        if (intent.dependencies().isEmpty()) {
+            return DependencyResult.ready();
+        }
+        java.util.Set<PhysicalIntentId> visiting = new java.util.LinkedHashSet<>();
+        return evaluateDependenciesRecursive(intent, visiting);
+    }
+
+    private DependencyResult evaluateDependenciesRecursive(
+            PhysicalIntent intent,
+            java.util.Set<PhysicalIntentId> visiting
+    ) {
+        if (!visiting.add(intent.id())) {
+            return DependencyResult.blocked("circular_dependencies");
+        }
+        for (PhysicalIntentId depId : intent.dependencies()) {
+            PhysicalIntent dep = intents.get(depId);
+            if (dep == null) {
+                return DependencyResult.blocked("missing_dependencies");
+            }
+            if (dep.status() == PhysicalIntentStatus.FAILED_TERMINAL
+                    || dep.status() == PhysicalIntentStatus.SUPERSEDED
+                    || dep.status() == PhysicalIntentStatus.REMOVED) {
+                return DependencyResult.failed("dependency_failed:" + depId);
+            }
+            if (dep.status() != PhysicalIntentStatus.MATERIALIZED) {
+                // Planning-meta deps may be MATERIALIZED after child emission; otherwise wait.
+                if (dep.status().isActive()) {
+                    DependencyResult nested = evaluateDependenciesRecursive(dep, visiting);
+                    if (!nested.satisfied()) {
+                        return nested;
+                    }
+                    return DependencyResult.blocked("dependency_pending");
+                }
+                return DependencyResult.blocked("dependency_pending");
+            }
+        }
+        visiting.remove(intent.id());
+        return DependencyResult.ready();
+    }
+
+    public record DependencyResult(boolean satisfied, boolean failed, String reason) {
+        public static DependencyResult ready() { return new DependencyResult(true, false, ""); }
+        public static DependencyResult blocked(String reason) { return new DependencyResult(false, false, reason); }
+        public static DependencyResult failed(String reason) { return new DependencyResult(false, true, reason); }
+    }
+
     public int activeHousingUnits(SettlementId settlementId) {
         int units = 0;
         for (DynamicStructureRecord rec : structures.values()) {

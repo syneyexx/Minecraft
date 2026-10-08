@@ -13,7 +13,7 @@ Legend for notes: write `pass` / `fail` / `blocked` + short evidence (seed, coor
 - [ ] `./gradlew buildAll -x test` completes
 - [ ] `./gradlew :livingmods-sidecar:sidecarJar` produces embeddable jar
 - [ ] NeoForge mod loads on 1.21.1 / loader 21.1.x without crash on title screen
-- [ ] `LivingModsVersions` axes match `gradle.properties` documentation (protocol 1, worldgen 2, save schema 3, physical revision 2, mod 0.1.0)
+- [ ] `LivingModsVersions` axes match `gradle.properties` documentation (protocol 3, worldgen 2, save schema 4, physical revision 2, mod 0.1.0)
 
 ## B. World creates
 

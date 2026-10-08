@@ -3,6 +3,7 @@ package com.livingmods.neoforge;
 import com.livingmods.neoforge.command.LivingModsCommands;
 import com.livingmods.neoforge.entity.CitizenEntity;
 import com.livingmods.neoforge.entity.LivingModsEntities;
+import com.livingmods.neoforge.entity.ProjectedHumanoidEntity;
 import com.livingmods.neoforge.integrations.ModIntegrations;
 import com.livingmods.neoforge.physical.PhysicalInteractionBridge;
 import com.livingmods.neoforge.sidecar.WorldSessionLifecycle;
@@ -25,8 +26,10 @@ public final class LivingModsMod {
     public LivingModsMod(IEventBus modBus) {
         LivingModsEntities.register(modBus);
         MaterializationAttachments.register(modBus);
-        modBus.addListener((EntityAttributeCreationEvent event) ->
-                event.put(LivingModsEntities.CITIZEN.get(), CitizenEntity.createAttributes().build()));
+        modBus.addListener((EntityAttributeCreationEvent event) -> {
+            event.put(LivingModsEntities.CITIZEN.get(), CitizenEntity.createAttributes().build());
+            event.put(LivingModsEntities.PROJECTED_HUMANOID.get(), ProjectedHumanoidEntity.createAttributes().build());
+        });
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modBus.addListener(com.livingmods.neoforge.client.LivingModsClientSetup::registerRenderers);
         }

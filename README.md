@@ -43,9 +43,9 @@ Worldgen and chunk materialization do **not** wait on the sidecar. The sidecar l
 
 | Axis | Value | Constant |
 |------|-------|----------|
-| Protocol | 1 | `LivingModsVersions.PROTOCOL_VERSION` |
+| Protocol | 3 | `LivingModsVersions.PROTOCOL_VERSION` |
 | Worldgen | 2 | `WORLDGEN_VERSION` |
-| Canonical save schema | 3 | `CANONICAL_SAVE_SCHEMA` |
+| Canonical save schema | 4 | `CANONICAL_SAVE_SCHEMA` |
 | Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` |
 | Mod / sidecar | 0.1.0 | `MOD_VERSION` / `SIDECAR_VERSION` |
 

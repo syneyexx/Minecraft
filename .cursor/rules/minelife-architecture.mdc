@@ -15,9 +15,11 @@ Source code is authoritative if this file drifts.
 | Immutable initial world geometry | `WorldPlan` / `plan.bin` | `livingmods-worldgen` |
 | Live simulation | `CanonicalWorldState` | `livingmods-simulation` |
 | Physical changes AFTER initial gen | `DynamicPhysicalState` | `CanonicalWorldState.dynamicPhysical()` |
+| Dynamic urban planning | `DynamicUrbanPlanner` | simulation (geometry only) |
 | Block placement | Minecraft server thread materializers | `livingmods-neoforge` |
-| Citizen / army / caravan entities | NeoForge binders (interest LOD) | `CitizenProjectionBinder`, `ArmyProjectionBinder`, `CaravanProjectionBinder` |
+| Citizen / army / caravan / bandit / guard entities | NeoForge binders (interest LOD) | `*ProjectionBinder`, `ProjectedHumanoidEntity` |
 | Physical intent realization | `PhysicalReconciliationEngine` | NeoForge |
+| Live map/dashboard cache | `LiveStateCache` (async) | NeoForge — never block server thread on IPC |
 | Verified Minecraft → canonical | `PhysicalInteractionBridge` → `PhysicalOutcomeApplier` | NeoForge → sidecar |
 
 ## Central live loop
@@ -33,25 +35,26 @@ CanonicalWorldState → PhysicalIntent → PhysicalReconciliation → Minecraft
 ## Key classes
 
 ### Simulation
-- `ConstructionEngine` — demand → resource reservation → `PhysicalIntent` (not abstract deficit-only)
-- `BanditryEngine` — dynamic camps from security/trade/unrest/war
-- `PhysicalIntent` / `PhysicalIntentStatus` / `PhysicalIntentType`
-- `DynamicPhysicalState` / `DynamicStructureRecord` / `DynamicSettlementGeometry`
+- `ConstructionEngine` — demand → reservation → `PhysicalIntent` (culture via `CultureResolver`)
+- `DynamicUrbanPlanner` — district/founding/plot/road/wall/camp site planning
+- `BanditryEngine` — scored camp sites + REMOVE_BANDIT_CAMP lifecycle
+- `PhysicalIntent` / `PhysicalIntentStatus` / `PhysicalIntentType` (category helpers)
+- `DynamicPhysicalState` — intents, structures, geometry, spatial query, dependency eval
 - `PhysicalOutcomeApplier` — typed outcome application
-- `EmergentTaskEngine.completeTaskWithEvidence` — no bare `completeTask` production path
-- `PlayerSystemsEngine.foundKingdom` — seeds founding physical intents
+- `PlayerSystemsEngine.foundKingdom` — founding plan + persisted culture key
 
 ### NeoForge
-- `PhysicalReconciliationEngine` — bounded per-tick, chunk-local, reload-safe
-- `SafeChunkWriter` — `dynamicMode` conservative replaceability; protects containers/mods/Waystones
-- `LivingModsStructureIndex` — initial + dynamic structures with provenance
-- `PhysicalInteractionBridge` — single death/interact → outcome bridge
-- `CitizenScheduleGoal` — POI destinations from structure index
+- `PhysicalReconciliationEngine` — exhaustive intent switch, slice resume, RealizationResult
+- `SafeChunkWriter` — dynamicMode, protected collision counting, LivingMods-only damage
+- `LiveStateCache` — async world summary + terrain tile + dynamic geometry overlay
+- `ArmyProjectionBinder` / `CaravanProjectionBinder` / `BanditProjectionBinder` / `GuardProjectionBinder`
+- `ProjectedHumanoidEntity` — shared military/trade/bandit/guard projection entity
+- `PhysicalInteractionBridge` — inventory-verified task delivery; real player UUIDs only
 
 ### Protocol / versions (`LivingModsVersions`)
-- `PROTOCOL_VERSION = 2` (typed `PhysicalOutcomePayload`)
+- `PROTOCOL_VERSION = 3` (`PhysicalIntentPayload` + `ConstructionQuery`)
 - `CANONICAL_SAVE_SCHEMA = 4` (DynamicPhysicalState; reads schema 3)
-- `PHYSICAL_CONTENT_REVISION = 2` (initial chunk materialization only — do not conflate with intent revisions)
+- `PHYSICAL_CONTENT_REVISION = 2` (initial chunk materialization only)
 - `WORLDGEN_VERSION = 2`
 
 ## Persistence artifacts
@@ -63,7 +66,11 @@ CanonicalWorldState → PhysicalIntent → PhysicalReconciliation → Minecraft
 
 ## Player UUID rule
 
-Production paths must use real Minecraft player UUID. `PlayerSystemsEngine.demoPlayer()` is test/demo only — never silent production fallback.
+Production paths must use real Minecraft player UUID. `PlayerSystemsEngine.demoPlayer()` is test/demo only — never silent production fallback. Zero UUID skips reputation changes.
+
+## Culture rule
+
+Physical intents carry CultureRegistry keys (`avalon`, `nordheim`, …). Kingdom UUID strings are never culture keys (`CultureKeys.sanitize` / `CultureResolver`).
 
 ## Projection Y rule
 

@@ -5,6 +5,7 @@ globs:
   - "**/ConstructionEngine.java"
   - "**/SafeChunkWriter.java"
   - "**/SessionHandler.java"
+  - "**/DynamicUrbanPlanner.java"
 alwaysApply: false
 ---
 
@@ -17,30 +18,42 @@ Also: `BLOCKED`, `FAILED_RETRYABLE` (bounded retries), `FAILED_TERMINAL`, `SUPER
 
 Status is explicit on the intent record — never infer from missing map entries.
 
+## Intent categories (`PhysicalIntentType`)
+
+| Category | Types | Consumer |
+|----------|-------|----------|
+| Persistent geometry | CONSTRUCT_BUILDING, EXTEND_ROAD, BUILD_BRIDGE, BUILD_WALL, BUILD_GATE, REPAIR/DAMAGE/DESTROY_STRUCTURE, CREATE_RUIN, CREATE_RESOURCE_SITE, CREATE_BANDIT_CAMP, UPGRADE_BANDIT_CAMP, REMOVE_BANDIT_CAMP, CREATE_FORTIFICATION, SIEGE_DAMAGE | `PhysicalReconciliationEngine` materializers |
+| Planning meta | EXPAND_SETTLEMENT, CREATE_DISTRICT, FOUND_PLAYER_SETTLEMENT | `DynamicUrbanPlanner` → child intents; never one giant building |
+| Transient projection | PROJECT_CARAVAN, PROJECT_ARMY, PROJECT_GUARDS, PROJECT_REFUGEES, PROJECT_MIGRANTS | Interest binders — never block-slice success |
+
+Exhaustive switch in `materializeSlice()` — no `default -> true`.
+
 ## Realization constraints
 
 - Chunk-local slices; intent stays pending while destination chunks unloaded
-- No force-load of large areas
-- Bounded ops per server tick (`maxReconciliationOpsPerTick`)
-- Idempotent: completed intents must not re-materialize after restart
-- Failures log intentId/type/settlement/chunk/reason/retryCount — no per-block spam
+- Canonical `pendingChunkKeys` / `appliedChunkKeys` are authority (not NeoForge process-local maps alone)
+- Typed `PhysicalIntentPayload` (protocol v3) carries pending/applied slices + route geometry
+- Location-based queries via `ConstructionQuery` MODE_SETTLEMENT / MODE_REGION
+- Dependencies evaluated centrally in `DynamicPhysicalState.evaluateDependencies`
+- Bounded ops + block-placement budget per tick
+- Failures log intentId/type/settlement/chunk/reason/retryCount
+- `RealizationResult` (required/placed/protected/critical/completionRatio) — partial placement is not success
+
+## Dynamic planning
+
+`DynamicUrbanPlanner` — terrain-aware plots, district/founding plans, road routes, walls/gates, bandit site scoring.
+Culture keys via `CultureResolver` / `CultureKeys` — never kingdom UUID strings.
+
+## Projection binders
+
+- `CitizenProjectionBinder`, `ArmyProjectionBinder`, `CaravanProjectionBinder`
+- `BanditProjectionBinder`, `GuardProjectionBinder`
+- Shared entity: `ProjectedHumanoidEntity` (not vanilla villagers as soldiers)
 
 ## Provenance
 
-`BlockProvenance`: LIVINGMODS_ORIGINAL, LIVINGMODS_DYNAMIC, VANILLA_NATURAL, FOREIGN_MOD, PLAYER_MODIFIED, UNKNOWN_PROTECTED
-
-Unknown/protected → plan around, replan, or block intent. Never destructive overwrite.
+`SafeChunkWriter` dynamicMode + `trySetLivingModsOnly`. Unknown/protected → replan or block.
 
 ## Outcomes
 
-Use `PhysicalOutcomePayload` / `PhysicalOutcomeType`. Sidecar applies via `PhysicalOutcomeApplier`.
-Client reputation deltas and arbitrary task completion are not authoritative.
-
-## Construction flow
-
-population/housing/profession/security/war damage
-→ ConstructionEngine reserves stockpile resources + labour check
-→ PhysicalIntent READY
-→ PhysicalReconciliationEngine materializes with BuildingMaterializer
-→ INTENT_MATERIALIZED outcome
-→ housingUnits / physicalCapacity / DynamicStructureRecord updated
+`PhysicalOutcomePayload` / `PhysicalOutcomeApplier`. Structure records only for `createsStructureRecord()` types. No `UUID.randomUUID()` for missing structure IDs.

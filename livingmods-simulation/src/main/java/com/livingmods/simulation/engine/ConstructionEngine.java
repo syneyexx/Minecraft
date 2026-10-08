@@ -17,6 +17,7 @@ import com.livingmods.common.model.SettlementTier;
 import com.livingmods.simulation.CanonicalWorldState;
 import com.livingmods.simulation.physical.DynamicPhysicalState;
 import com.livingmods.simulation.physical.DynamicSettlementGeometry;
+import com.livingmods.simulation.physical.DynamicUrbanPlanner;
 import com.livingmods.simulation.physical.PhysicalIntent;
 import com.livingmods.simulation.state.CitizenState;
 import com.livingmods.simulation.state.SettlementState;
@@ -25,6 +26,7 @@ import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
 
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -81,7 +83,7 @@ public final class ConstructionEngine implements SimulationSubsystem {
                     PRIORITY_NORMAL, labour, ctx);
         }
         if (settlement.tier().ordinal() >= SettlementTier.CITY.ordinal() && occupancy > 1.15) {
-            maybeOfferBuilding(state, settlement, BuildingRole.MANOR, PhysicalIntentType.EXPAND_SETTLEMENT,
+            maybeOfferBuilding(state, settlement, BuildingRole.MANOR, PhysicalIntentType.CONSTRUCT_BUILDING,
                     PRIORITY_NORMAL, labour, ctx);
         }
 
@@ -117,13 +119,13 @@ public final class ConstructionEngine implements SimulationSubsystem {
                     PRIORITY_CRITICAL, labour, ctx);
         }
 
-        // Security / fortification.
-        if (settlement.security() < 0.35 || settlement.unrest() > 0.5
-                || settlement.tier().ordinal() >= SettlementTier.TOWN.ordinal()) {
-            maybeOfferBuilding(state, settlement, BuildingRole.GUARDHOUSE, PhysicalIntentType.CREATE_FORTIFICATION,
+        // Security / fortification — distinct intent set, not a single generic building.
+        if (settlement.security() < 0.35 || settlement.unrest() > 0.5) {
+            maybeOfferBuilding(state, settlement, BuildingRole.GUARDHOUSE, PhysicalIntentType.CONSTRUCT_BUILDING,
                     PRIORITY_DEFENSE, labour, ctx);
         }
         if (settlement.tier().ordinal() >= SettlementTier.TOWN.ordinal() && settlement.security() < 0.55) {
+            maybeOfferFortification(state, settlement, labour, ctx);
             maybeOfferWall(state, settlement, labour, ctx);
         }
 
@@ -183,11 +185,44 @@ public final class ConstructionEngine implements SimulationSubsystem {
                 state.seed(),
                 state.dynamicPhysical().structures().size()
                         + state.dynamicPhysical().intents().size() + 50_000L + role.ordinal());
-        BlockPos2 plot = nextPlot(state, settlement, role);
-        BoundingBox2 footprint = footprintFor(role, plot);
+        String culture = CultureResolver.forSettlement(state, settlement);
+        DynamicUrbanPlanner planner = new DynamicUrbanPlanner(state.seed());
+        Optional<DynamicUrbanPlanner.PlotCandidate> plotOpt = planner.chooseBuildingPlot(
+                state, settlement, role, culture, physical.intents().size() + role.ordinal());
+        if (plotOpt.isEmpty()) {
+            // Bounded replan: try expansion edge once, then block demand.
+            DynamicSettlementGeometry geo = physical.settlementGeometry().get(settlement.id());
+            if (geo != null) {
+                geo.setBoundary(geo.boundary().expand(8));
+                plotOpt = planner.chooseBuildingPlot(
+                        state, settlement, role, culture, physical.intents().size() + 7_000L + role.ordinal());
+            }
+            if (plotOpt.isEmpty()) {
+                refundReservation(stock, costs);
+                settlement.setDevelopmentDeficit(Math.max(settlement.developmentDeficit(), 0.9));
+                return;
+            }
+        }
+        DynamicUrbanPlanner.PlotCandidate plot = plotOpt.get();
+        BlockPos2 plotPos = plot.center();
+        BoundingBox2 footprint = plot.footprint();
         PhysicalIntentId intentId = PhysicalIntentId.deterministic(
                 state.seed(),
                 physical.intents().size() + 90_000L + role.ordinal() * 17L);
+
+        Map<String, String> provenance = new LinkedHashMap<>();
+        provenance.put("demandTag", tag);
+        provenance.put("cause", occupancyCause(state, settlement));
+        provenance.put("role", role.name());
+        provenance.put("entranceFacing", plot.entranceFacing());
+        provenance.put("accessX", String.valueOf(plot.accessRoadPoint().x()));
+        provenance.put("accessZ", String.valueOf(plot.accessRoadPoint().z()));
+        provenance.put("reservationState", "RESERVED");
+        if (plot.blueprint() != null) {
+            provenance.put("floors", String.valueOf(plot.blueprint().interior().floorCount()));
+            provenance.put("template", plot.blueprint().building().paletteKey() == null
+                    ? "default" : plot.blueprint().building().paletteKey());
+        }
 
         PhysicalIntent intent = new PhysicalIntent(
                 intentId,
@@ -198,26 +233,53 @@ public final class ConstructionEngine implements SimulationSubsystem {
                 settlement.ownerKingdom(),
                 Optional.of(structureId),
                 Optional.of(role),
-                plot,
+                plotPos,
                 footprint,
                 1,
                 PhysicalIntentStatus.PLANNED,
                 ctx.time(),
                 priority,
-                Map.of(
-                        "demandTag", tag,
-                        "cause", occupancyCause(state, settlement),
-                        "role", role.name()
-                ),
+                provenance,
                 costs,
-                cultureHint(settlement)
+                culture
         );
         seedChunkSlices(intent, footprint);
-        if (resourcesFullyReserved(costs)) {
-            intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), null);
-        } else {
-            intent.transitionTo(PhysicalIntentStatus.BLOCKED, ctx.time().absoluteTicks(), "awaiting_resources");
+        // Access path stub if building is distant from circulation.
+        if (plot.accessRoadPoint().distanceTo(plotPos) > 6) {
+            PhysicalIntentId pathId = PhysicalIntentId.deterministic(
+                    state.seed(), physical.intents().size() + 91_000L + role.ordinal());
+            PhysicalIntent access = new PhysicalIntent(
+                    pathId,
+                    PhysicalIntentType.EXTEND_ROAD,
+                    "construction",
+                    settlement.id().value(),
+                    Optional.of(settlement.id()),
+                    settlement.ownerKingdom(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    plot.accessRoadPoint(),
+                    BoundingBox2.of(
+                            Math.min(plot.accessRoadPoint().x(), plotPos.x()) - 1,
+                            Math.min(plot.accessRoadPoint().z(), plotPos.z()) - 1,
+                            Math.max(plot.accessRoadPoint().x(), plotPos.x()) + 1,
+                            Math.max(plot.accessRoadPoint().z(), plotPos.z()) + 1
+                    ),
+                    1,
+                    PhysicalIntentStatus.READY,
+                    ctx.time(),
+                    priority,
+                    Map.of("cause", "building_access", "reservationState", "NONE"),
+                    Map.of(),
+                    culture
+            );
+            DynamicUrbanPlanner.RoadRoute route = planner.planRoad(
+                    state, settlement, plot.accessRoadPoint(), plotPos, culture);
+            encodeRoute(access, route);
+            seedChunkSlices(access, access.footprint());
+            physical.putIntent(access);
+            intent.addDependency(pathId);
         }
+        intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), null);
         physical.putIntent(intent);
         settlement.setDevelopmentDeficit(Math.max(0, settlement.developmentDeficit() - 0.15));
     }
@@ -243,8 +305,18 @@ public final class ConstructionEngine implements SimulationSubsystem {
             return;
         }
         DynamicSettlementGeometry geo = physical.settlementGeometry().get(settlement.id());
-        BoundingBox2 boundary = geo != null ? geo.boundary() : BoundingBox2.around(settlement.center(), 48);
+        String culture = CultureResolver.forSettlement(state, settlement);
+        DynamicUrbanPlanner.WallPlan wallPlan = new DynamicUrbanPlanner(state.seed())
+                .planWall(settlement, geo, culture);
+        BoundingBox2 boundary = wallPlan.boundary();
         PhysicalIntentId intentId = PhysicalIntentId.deterministic(state.seed(), physical.intents().size() + 120_000L);
+        Map<String, String> provenance = new LinkedHashMap<>();
+        provenance.put("cause", "security");
+        provenance.put("role", BuildingRole.WALL_SEGMENT.name());
+        provenance.put("reservationState", "RESERVED");
+        provenance.put("perimeterPoints", String.valueOf(wallPlan.perimeter().size()));
+        provenance.put("gateCount", String.valueOf(wallPlan.gatePositions().size()));
+        encodePoints(provenance, "wall", wallPlan.perimeter());
         PhysicalIntent intent = new PhysicalIntent(
                 intentId,
                 PhysicalIntentType.BUILD_WALL,
@@ -260,12 +332,128 @@ public final class ConstructionEngine implements SimulationSubsystem {
                 PhysicalIntentStatus.READY,
                 ctx.time(),
                 PRIORITY_DEFENSE,
-                Map.of("cause", "security", "role", BuildingRole.WALL_SEGMENT.name()),
+                provenance,
                 new EnumMap<>(costs),
-                cultureHint(settlement)
+                culture
         );
         seedChunkSlices(intent, intent.footprint());
         physical.putIntent(intent);
+
+        // Every major road/wall crossing needs an explicit gate intent dependent on the wall.
+        int gateOrdinal = 0;
+        for (BlockPos2 gate : wallPlan.gatePositions()) {
+            PhysicalIntentId gateId = PhysicalIntentId.deterministic(
+                    state.seed(), physical.intents().size() + 121_000L + gateOrdinal++);
+            String orientation = gateOrientation(boundary, gate);
+            PhysicalIntent gateIntent = new PhysicalIntent(
+                    gateId,
+                    PhysicalIntentType.BUILD_GATE,
+                    "construction",
+                    settlement.id().value(),
+                    Optional.of(settlement.id()),
+                    settlement.ownerKingdom(),
+                    Optional.empty(),
+                    Optional.of(BuildingRole.GATEHOUSE),
+                    gate,
+                    BoundingBox2.around(gate, 3),
+                    1,
+                    PhysicalIntentStatus.READY,
+                    ctx.time(),
+                    PRIORITY_DEFENSE,
+                    Map.of(
+                            "cause", "wall_crossing",
+                            "orientation", orientation,
+                            "reservationState", "NONE",
+                            "parentWall", intentId.value().toString()
+                    ),
+                    Map.of(),
+                    culture
+            );
+            gateIntent.addDependency(intentId);
+            seedChunkSlices(gateIntent, gateIntent.footprint());
+            physical.putIntent(gateIntent);
+        }
+    }
+
+    private static void maybeOfferFortification(
+            CanonicalWorldState state,
+            SettlementState settlement,
+            double labour,
+            SimulationContext ctx
+    ) {
+        DynamicPhysicalState physical = state.dynamicPhysical();
+        if (physical.hasOpenIntent(settlement.id(), PhysicalIntentType.CREATE_FORTIFICATION)) {
+            return;
+        }
+        if (labour < 3.5) return;
+        Map<ResourceType, Double> costs = Map.of(
+                ResourceType.STONE, 35.0,
+                ResourceType.WOOD, 18.0,
+                ResourceType.IRON, 6.0
+        );
+        StockpileState stock = state.stockpiles().get(settlement.id());
+        if (stock == null || !reserveResources(stock, costs)) {
+            return;
+        }
+        String culture = CultureResolver.forSettlement(state, settlement);
+        DynamicUrbanPlanner planner = new DynamicUrbanPlanner(state.seed());
+        Optional<DynamicUrbanPlanner.PlotCandidate> plot = planner.chooseBuildingPlot(
+                state, settlement, BuildingRole.BARRACKS, culture, physical.intents().size() + 130_000L);
+        BlockPos2 center = plot.map(DynamicUrbanPlanner.PlotCandidate::center)
+                .orElse(BlockPos2.of(settlement.center().x() + 20, settlement.center().z() - 16));
+        BoundingBox2 keep = BoundingBox2.around(center, 8);
+        StructureId structureId = StructureId.deterministic(state.seed(), physical.intents().size() + 131_000L);
+        PhysicalIntentId intentId = PhysicalIntentId.deterministic(state.seed(), physical.intents().size() + 132_000L);
+        PhysicalIntent fort = new PhysicalIntent(
+                intentId,
+                PhysicalIntentType.CREATE_FORTIFICATION,
+                "construction",
+                structureId.value(),
+                Optional.of(settlement.id()),
+                settlement.ownerKingdom(),
+                Optional.of(structureId),
+                Optional.of(BuildingRole.BARRACKS),
+                center,
+                keep,
+                1,
+                PhysicalIntentStatus.READY,
+                ctx.time(),
+                PRIORITY_DEFENSE,
+                Map.of(
+                        "cause", "security",
+                        "components", "guardhouse,wall,gatehouse,tower,keep",
+                        "reservationState", "RESERVED"
+                ),
+                new EnumMap<>(costs),
+                culture
+        );
+        seedChunkSlices(fort, keep);
+        physical.putIntent(fort);
+
+        // Child tower intent.
+        PhysicalIntentId towerId = PhysicalIntentId.deterministic(state.seed(), physical.intents().size() + 133_000L);
+        PhysicalIntent tower = new PhysicalIntent(
+                towerId,
+                PhysicalIntentType.CONSTRUCT_BUILDING,
+                "construction",
+                StructureId.deterministic(state.seed(), physical.intents().size() + 134_000L).value(),
+                Optional.of(settlement.id()),
+                settlement.ownerKingdom(),
+                Optional.of(StructureId.deterministic(state.seed(), physical.intents().size() + 134_000L)),
+                Optional.of(BuildingRole.TOWER),
+                BlockPos2.of(center.x() + 10, center.z()),
+                BoundingBox2.around(BlockPos2.of(center.x() + 10, center.z()), 2),
+                1,
+                PhysicalIntentStatus.READY,
+                ctx.time(),
+                PRIORITY_DEFENSE,
+                Map.of("cause", "fortification_tower", "reservationState", "NONE"),
+                Map.of(),
+                culture
+        );
+        tower.addDependency(intentId);
+        seedChunkSlices(tower, tower.footprint());
+        physical.putIntent(tower);
     }
 
     private static void maybeOfferRepair(
@@ -343,18 +531,73 @@ public final class ConstructionEngine implements SimulationSubsystem {
             return;
         }
         int gen = geo.expansionGeneration() + 1;
-        BlockPos2 anchor = BlockPos2.of(
+        String culture = CultureResolver.forSettlement(state, settlement);
+        DynamicUrbanPlanner planner = new DynamicUrbanPlanner(state.seed());
+
+        // EXPAND_SETTLEMENT: coherent urban geometry extension (not one structure).
+        BlockPos2 direction = BlockPos2.of(
                 settlement.center().x() + (gen % 2 == 0 ? 32 : -32),
                 settlement.center().z() + (gen % 3 == 0 ? 32 : -24)
         );
+        DynamicUrbanPlanner.TerrainMetrics terrain = planner.sampleTerrain(BoundingBox2.around(direction, 20));
+        if (!terrain.suitable(20)) {
+            // Alternate expansion direction once.
+            direction = BlockPos2.of(
+                    settlement.center().x() + (gen % 2 == 0 ? -36 : 36),
+                    settlement.center().z() + (gen % 3 == 0 ? -28 : 28)
+            );
+            terrain = planner.sampleTerrain(BoundingBox2.around(direction, 20));
+            if (!terrain.suitable(20)) {
+                refundReservation(stock, costs);
+                return;
+            }
+        }
+        BlockPos2 anchor = direction;
         geo.expansionAnchors().add(anchor);
         geo.bumpExpansionGeneration();
         BoundingBox2 expanded = geo.boundary().expand(16);
         geo.setBoundary(expanded);
 
-        PhysicalIntentId intentId = PhysicalIntentId.deterministic(state.seed(), physical.intents().size() + 150_000L);
-        PhysicalIntent intent = new PhysicalIntent(
-                intentId,
+        PhysicalIntentId expandId = PhysicalIntentId.deterministic(state.seed(), physical.intents().size() + 149_000L);
+        PhysicalIntent expand = new PhysicalIntent(
+                expandId,
+                PhysicalIntentType.EXPAND_SETTLEMENT,
+                "construction",
+                settlement.id().value(),
+                Optional.of(settlement.id()),
+                settlement.ownerKingdom(),
+                Optional.empty(),
+                Optional.empty(),
+                anchor,
+                expanded,
+                gen,
+                PhysicalIntentStatus.READY,
+                ctx.time(),
+                PRIORITY_NORMAL,
+                Map.of(
+                        "cause", "population_growth",
+                        "generation", String.valueOf(gen),
+                        "reservationState", "RESERVED",
+                        "planning", "boundary_extension"
+                ),
+                new EnumMap<>(costs),
+                culture
+        );
+        // Planning-meta: no block slices required for the expand intent itself.
+        physical.putIntent(expand);
+
+        DynamicUrbanPlanner.DistrictPlan districtPlan = planner.planDistrict(
+                state, settlement, anchor, culture, gen);
+        PhysicalIntentId districtId = PhysicalIntentId.deterministic(state.seed(), physical.intents().size() + 150_000L);
+        Map<String, String> districtMeta = new LinkedHashMap<>();
+        districtMeta.put("cause", "population_growth");
+        districtMeta.put("generation", String.valueOf(gen));
+        districtMeta.put("reservationState", "NONE");
+        districtMeta.put("lotCount", String.valueOf(districtPlan.lots().size()));
+        districtMeta.put("planning", "district");
+        encodePoints(districtMeta, "street", districtPlan.secondaryStreets());
+        PhysicalIntent district = new PhysicalIntent(
+                districtId,
                 PhysicalIntentType.CREATE_DISTRICT,
                 "construction",
                 settlement.id().value(),
@@ -363,19 +606,21 @@ public final class ConstructionEngine implements SimulationSubsystem {
                 Optional.empty(),
                 Optional.empty(),
                 anchor,
-                BoundingBox2.around(anchor, 20),
+                districtPlan.boundary(),
                 gen,
                 PhysicalIntentStatus.READY,
                 ctx.time(),
                 PRIORITY_NORMAL,
-                Map.of("cause", "population_growth", "generation", String.valueOf(gen)),
-                new EnumMap<>(costs),
-                cultureHint(settlement)
+                districtMeta,
+                Map.of(),
+                culture
         );
-        seedChunkSlices(intent, intent.footprint());
-        physical.putIntent(intent);
+        district.addDependency(expandId);
+        physical.putIntent(district);
 
-        // Accompanying road stub.
+        // Road from existing network → junction → district (depends on district plan).
+        DynamicUrbanPlanner.RoadRoute route = planner.planRoad(
+                state, settlement, districtPlan.primaryConnection(), anchor, culture);
         PhysicalIntentId roadId = PhysicalIntentId.deterministic(state.seed(), physical.intents().size() + 151_000L);
         PhysicalIntent road = new PhysicalIntent(
                 roadId,
@@ -387,23 +632,100 @@ public final class ConstructionEngine implements SimulationSubsystem {
                 Optional.empty(),
                 Optional.empty(),
                 settlement.center(),
-                BoundingBox2.of(
-                        Math.min(settlement.center().x(), anchor.x()) - 2,
-                        Math.min(settlement.center().z(), anchor.z()) - 2,
-                        Math.max(settlement.center().x(), anchor.x()) + 2,
-                        Math.max(settlement.center().z(), anchor.z()) + 2
-                ),
+                routeBoundingBox(route),
                 gen,
                 PhysicalIntentStatus.READY,
                 ctx.time(),
                 PRIORITY_NORMAL,
-                Map.of("cause", "district_access", "from", "center", "to", "anchor"),
+                Map.of(
+                        "cause", "district_access",
+                        "from", "network",
+                        "to", "anchor",
+                        "connected", String.valueOf(route.connectedToExisting()),
+                        "reservationState", "NONE"
+                ),
                 Map.of(ResourceType.STONE, 6.0, ResourceType.WOOD, 4.0),
-                cultureHint(settlement)
+                culture
         );
-        road.addDependency(intentId);
+        encodeRoute(road, route);
+        road.addDependency(districtId);
         seedChunkSlices(road, road.footprint());
         physical.putIntent(road);
+
+        // Bridge intents for water crossings on the route.
+        int bridgeOrdinal = 0;
+        for (BoundingBox2 span : route.bridgeSpans()) {
+            PhysicalIntentId bridgeId = PhysicalIntentId.deterministic(
+                    state.seed(), physical.intents().size() + 152_000L + bridgeOrdinal++);
+            PhysicalIntent bridge = new PhysicalIntent(
+                    bridgeId,
+                    PhysicalIntentType.BUILD_BRIDGE,
+                    "construction",
+                    settlement.id().value(),
+                    Optional.of(settlement.id()),
+                    settlement.ownerKingdom(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    span.center(),
+                    span,
+                    gen,
+                    PhysicalIntentStatus.READY,
+                    ctx.time(),
+                    PRIORITY_NORMAL,
+                    Map.of("cause", "road_crossing", "reservationState", "NONE"),
+                    Map.of(ResourceType.WOOD, 8.0, ResourceType.STONE, 4.0),
+                    culture
+            );
+            bridge.addDependency(roadId);
+            seedChunkSlices(bridge, span);
+            physical.putIntent(bridge);
+        }
+
+        // Child building intents on district lots (depend on road).
+        int lotOrdinal = 0;
+        for (BoundingBox2 lot : districtPlan.lots()) {
+            if (lotOrdinal >= 4) break;
+            BuildingRole role = lotOrdinal == 0 ? BuildingRole.HOUSE
+                    : lotOrdinal == 1 ? BuildingRole.WORKSHOP : BuildingRole.HOUSE;
+            StructureId structureId = StructureId.deterministic(
+                    state.seed(), physical.intents().size() + 160_000L + lotOrdinal);
+            PhysicalIntentId buildingId = PhysicalIntentId.deterministic(
+                    state.seed(), physical.intents().size() + 161_000L + lotOrdinal);
+            PhysicalIntent building = new PhysicalIntent(
+                    buildingId,
+                    PhysicalIntentType.CONSTRUCT_BUILDING,
+                    "construction",
+                    structureId.value(),
+                    Optional.of(settlement.id()),
+                    settlement.ownerKingdom(),
+                    Optional.of(structureId),
+                    Optional.of(role),
+                    lot.center(),
+                    lot,
+                    gen,
+                    PhysicalIntentStatus.READY,
+                    ctx.time(),
+                    PRIORITY_NORMAL,
+                    Map.of(
+                            "cause", "district_lot",
+                            "role", role.name(),
+                            "reservationState", "NONE",
+                            "entranceFacing", "south"
+                    ),
+                    Map.of(ResourceType.WOOD, 8.0, ResourceType.STONE, 4.0),
+                    culture
+            );
+            building.addDependency(roadId);
+            seedChunkSlices(building, lot);
+            physical.putIntent(building);
+            lotOrdinal++;
+        }
+
+        // Mark district planning intent materialized once children are emitted.
+        district.transitionTo(PhysicalIntentStatus.MATERIALIZING, ctx.time().absoluteTicks(), null);
+        district.transitionTo(PhysicalIntentStatus.MATERIALIZED, ctx.time().absoluteTicks(), "plan_committed");
+        expand.transitionTo(PhysicalIntentStatus.MATERIALIZING, ctx.time().absoluteTicks(), null);
+        expand.transitionTo(PhysicalIntentStatus.MATERIALIZED, ctx.time().absoluteTicks(), "plan_committed");
 
         state.appendHistory(new HistoricalEvent(
                 HistoricalEventId.deterministic(state.seed(), state.history().size()),
@@ -420,26 +742,59 @@ public final class ConstructionEngine implements SimulationSubsystem {
         DynamicPhysicalState physical = state.dynamicPhysical();
         for (PhysicalIntent intent : physical.intents().values()) {
             if (intent.status() == PhysicalIntentStatus.PLANNED) {
-                StockpileState stock = intent.settlementId()
-                        .map(state.stockpiles()::get)
-                        .orElse(null);
-                if (stock != null && resourcesAvailable(stock, intent.reservedCosts())) {
-                    reserveResources(stock, intent.reservedCosts());
+                String reservation = intent.provenance().getOrDefault("reservationState", "");
+                if ("RESERVED".equals(reservation) || intent.reservedCosts().isEmpty()) {
                     intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), null);
                 } else {
-                    intent.transitionTo(PhysicalIntentStatus.BLOCKED, ctx.time().absoluteTicks(), "awaiting_resources");
+                    StockpileState stock = intent.settlementId()
+                            .map(state.stockpiles()::get)
+                            .orElse(null);
+                    if (stock != null && reserveResources(stock, intent.reservedCosts())) {
+                        intent.provenance().put("reservationState", "RESERVED");
+                        intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), null);
+                    } else {
+                        intent.transitionTo(PhysicalIntentStatus.BLOCKED, ctx.time().absoluteTicks(), "awaiting_resources");
+                    }
                 }
             } else if (intent.status() == PhysicalIntentStatus.BLOCKED) {
+                if ("dependency_pending".equals(intent.failureReason())
+                        || intent.failureReason().startsWith("dependency_")) {
+                    DynamicPhysicalState.DependencyResult deps = physical.evaluateDependencies(intent);
+                    if (deps.satisfied()) {
+                        intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), null);
+                    } else if (deps.failed()) {
+                        intent.transitionTo(PhysicalIntentStatus.FAILED_TERMINAL,
+                                ctx.time().absoluteTicks(), deps.reason());
+                    }
+                    continue;
+                }
+                String reservation = intent.provenance().getOrDefault("reservationState", "");
+                if ("RESERVED".equals(reservation)) {
+                    intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), null);
+                    continue;
+                }
                 StockpileState stock = intent.settlementId()
                         .map(state.stockpiles()::get)
                         .orElse(null);
-                if (stock != null && resourcesAvailable(stock, intent.reservedCosts())) {
-                    reserveResources(stock, intent.reservedCosts());
+                if (stock != null && !"RESERVED".equals(reservation)
+                        && reserveResources(stock, intent.reservedCosts())) {
+                    intent.provenance().put("reservationState", "RESERVED");
                     intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), null);
                 }
-            } else if (intent.status() == PhysicalIntentStatus.FAILED_RETRYABLE
-                    && intent.retryCount() < PhysicalIntent.MAX_RETRIES) {
-                intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), "retry");
+            } else if (intent.status() == PhysicalIntentStatus.READY
+                    || intent.status() == PhysicalIntentStatus.FAILED_RETRYABLE) {
+                DynamicPhysicalState.DependencyResult deps = physical.evaluateDependencies(intent);
+                if (deps.failed()) {
+                    intent.transitionTo(PhysicalIntentStatus.FAILED_TERMINAL,
+                            ctx.time().absoluteTicks(), deps.reason());
+                    refundIfReserved(state, intent, 1.0);
+                } else if (!deps.satisfied()) {
+                    intent.transitionTo(PhysicalIntentStatus.BLOCKED,
+                            ctx.time().absoluteTicks(), deps.reason());
+                } else if (intent.status() == PhysicalIntentStatus.FAILED_RETRYABLE
+                        && intent.retryCount() < PhysicalIntent.MAX_RETRIES) {
+                    intent.transitionTo(PhysicalIntentStatus.READY, ctx.time().absoluteTicks(), "retry");
+                }
             }
         }
     }
@@ -552,41 +907,6 @@ public final class ConstructionEngine implements SimulationSubsystem {
         return true;
     }
 
-    private static boolean resourcesFullyReserved(Map<ResourceType, Double> costs) {
-        return costs != null && !costs.isEmpty();
-    }
-
-    private static BlockPos2 nextPlot(CanonicalWorldState state, SettlementState settlement, BuildingRole role) {
-        DynamicSettlementGeometry geo = state.dynamicPhysical().settlementGeometry().get(settlement.id());
-        long h = settlement.id().value().getMostSignificantBits()
-                ^ ((long) role.ordinal() << 8)
-                ^ state.dynamicPhysical().intents().size();
-        int ring = 18 + (int) (Math.abs(h) % 28);
-        int angle = (int) (Math.abs(h >> 8) % 360);
-        double rad = Math.toRadians(angle);
-        int x = settlement.center().x() + (int) Math.round(Math.cos(rad) * ring);
-        int z = settlement.center().z() + (int) Math.round(Math.sin(rad) * ring);
-        if (geo != null && !geo.boundary().contains(x, z)) {
-            // Prefer inside expanded boundary; push toward edge instead of far outside.
-            BoundingBox2 b = geo.boundary();
-            x = Math.max(b.minX() + 4, Math.min(b.maxX() - 4, x));
-            z = Math.max(b.minZ() + 4, Math.min(b.maxZ() - 4, z));
-        }
-        return BlockPos2.of(x, z);
-    }
-
-    private static BoundingBox2 footprintFor(BuildingRole role, BlockPos2 plot) {
-        int half = switch (role) {
-            case HOUSE, MARKET_STALL, WELL -> 3;
-            case TOWNHOUSE, SHOP, WORKSHOP, GUARDHOUSE, CLINIC -> 4;
-            case WAREHOUSE, TEMPLE, SCHOOL, BARRACKS, SMITHY -> 5;
-            case MANOR, MARKET_HALL, GATEHOUSE -> 6;
-            case WALL_SEGMENT, TOWER -> 2;
-            default -> 4;
-        };
-        return BoundingBox2.around(plot, half);
-    }
-
     private static void seedChunkSlices(PhysicalIntent intent, BoundingBox2 footprint) {
         int minCx = footprint.minX() >> 4;
         int maxCx = footprint.maxX() >> 4;
@@ -606,7 +926,81 @@ public final class ConstructionEngine implements SimulationSubsystem {
         return "growth";
     }
 
-    private static String cultureHint(SettlementState settlement) {
-        return settlement.ownerKingdom().map(k -> k.value().toString()).orElse("avalon");
+    private static void refundReservation(StockpileState stock, Map<ResourceType, Double> costs) {
+        if (stock == null || costs == null) return;
+        for (Map.Entry<ResourceType, Double> e : costs.entrySet()) {
+            stock.add(e.getKey(), e.getValue());
+        }
+    }
+
+    private static void refundIfReserved(CanonicalWorldState state, PhysicalIntent intent, double fraction) {
+        if (!"RESERVED".equals(intent.provenance().get("reservationState"))) {
+            return;
+        }
+        StockpileState stock = intent.settlementId().map(state.stockpiles()::get).orElse(null);
+        if (stock == null) return;
+        for (Map.Entry<ResourceType, Double> e : intent.reservedCosts().entrySet()) {
+            stock.add(e.getKey(), e.getValue() * fraction);
+        }
+        intent.provenance().put("reservationState", "RELEASED");
+    }
+
+    private static void encodeRoute(PhysicalIntent intent, DynamicUrbanPlanner.RoadRoute route) {
+        StringBuilder xs = new StringBuilder();
+        StringBuilder zs = new StringBuilder();
+        int n = Math.min(route.path().size(), DynamicUrbanPlanner.MAX_ROUTE_POINTS);
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                xs.append(',');
+                zs.append(',');
+            }
+            xs.append(route.path().get(i).x());
+            zs.append(route.path().get(i).z());
+        }
+        intent.provenance().put("routeX", xs.toString());
+        intent.provenance().put("routeZ", zs.toString());
+        intent.provenance().put("routePoints", String.valueOf(n));
+        intent.provenance().put("bridgeSpans", String.valueOf(route.bridgeSpans().size()));
+    }
+
+    private static void encodePoints(Map<String, String> meta, String prefix, java.util.List<BlockPos2> points) {
+        StringBuilder xs = new StringBuilder();
+        StringBuilder zs = new StringBuilder();
+        int n = Math.min(points.size(), 64);
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                xs.append(',');
+                zs.append(',');
+            }
+            xs.append(points.get(i).x());
+            zs.append(points.get(i).z());
+        }
+        meta.put(prefix + "X", xs.toString());
+        meta.put(prefix + "Z", zs.toString());
+        meta.put(prefix + "Count", String.valueOf(n));
+    }
+
+    private static BoundingBox2 routeBoundingBox(DynamicUrbanPlanner.RoadRoute route) {
+        if (route.path().isEmpty()) {
+            return BoundingBox2.around(BlockPos2.of(0, 0), 2);
+        }
+        int minX = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (BlockPos2 p : route.path()) {
+            minX = Math.min(minX, p.x());
+            minZ = Math.min(minZ, p.z());
+            maxX = Math.max(maxX, p.x());
+            maxZ = Math.max(maxZ, p.z());
+        }
+        return BoundingBox2.of(minX - 2, minZ - 2, maxX + 2, maxZ + 2);
+    }
+
+    private static String gateOrientation(BoundingBox2 boundary, BlockPos2 gate) {
+        if (gate.z() == boundary.minZ() || gate.z() == boundary.maxZ()) {
+            return "north_south";
+        }
+        return "east_west";
     }
 }

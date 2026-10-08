@@ -10,6 +10,7 @@ import com.livingmods.common.id.SettlementId;
 import com.livingmods.common.model.PhysicalIntentStatus;
 import com.livingmods.common.model.PhysicalIntentType;
 import com.livingmods.simulation.CanonicalWorldState;
+import com.livingmods.simulation.physical.DynamicUrbanPlanner;
 import com.livingmods.simulation.physical.PhysicalIntent;
 import com.livingmods.simulation.state.MarketState;
 import com.livingmods.simulation.state.SettlementState;
@@ -17,6 +18,7 @@ import com.livingmods.simulation.state.ShipmentState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -39,11 +41,16 @@ public final class BanditryEngine implements SimulationSubsystem {
         for (PhysicalIntent intent : state.dynamicPhysical().intents().values()) {
             if ((intent.type() == PhysicalIntentType.CREATE_BANDIT_CAMP
                     || intent.type() == PhysicalIntentType.UPGRADE_BANDIT_CAMP)
-                    && intent.status().isActive()) {
-                activeCamps++;
+                    && (intent.status().isActive() || intent.status() == PhysicalIntentStatus.MATERIALIZED)) {
+                if (intent.status() != PhysicalIntentStatus.REMOVED
+                        && intent.status() != PhysicalIntentStatus.SUPERSEDED) {
+                    activeCamps++;
+                }
             }
         }
         if (activeCamps >= 12) return;
+
+        DynamicUrbanPlanner planner = new DynamicUrbanPlanner(state.seed());
 
         for (SettlementState s : state.settlements().values()) {
             double risk = banditRisk(state, s);
@@ -51,15 +58,12 @@ public final class BanditryEngine implements SimulationSubsystem {
             if (state.dynamicPhysical().hasOpenIntent(s.id(), PhysicalIntentType.CREATE_BANDIT_CAMP)) {
                 continue;
             }
-            long h = s.id().value().getMostSignificantBits() ^ state.time().absoluteTicks();
-            int dist = 48 + (int) (Math.abs(h) % 40);
-            int angle = (int) (Math.abs(h >> 11) % 360);
-            double rad = Math.toRadians(angle);
-            BlockPos2 site = BlockPos2.of(
-                    s.center().x() + (int) Math.round(Math.cos(rad) * dist),
-                    s.center().z() + (int) Math.round(Math.sin(rad) * dist)
-            );
-            String variant = risk > 0.75 ? "STRONGHOLD" : risk > 0.6 ? "FOREST_CAMP" : "ROAD_CAMP";
+            String preferred = risk > 0.75 ? "STRONGHOLD" : risk > 0.6 ? "FOREST_CAMP" : "ROAD_CAMP";
+            Optional<DynamicUrbanPlanner.CampSite> siteOpt = planner.chooseBanditSite(
+                    state, s, preferred, state.dynamicPhysical().intents().size() + s.id().hashCode());
+            if (siteOpt.isEmpty()) continue;
+            DynamicUrbanPlanner.CampSite site = siteOpt.get();
+
             PhysicalIntentId id = PhysicalIntentId.deterministic(
                     state.seed(), state.dynamicPhysical().intents().size() + 300_000L + s.id().hashCode());
             PhysicalIntent intent = new PhysicalIntent(
@@ -71,46 +75,59 @@ public final class BanditryEngine implements SimulationSubsystem {
                     s.ownerKingdom(),
                     Optional.empty(),
                     Optional.empty(),
-                    site,
-                    BoundingBox2.around(site, variant.equals("STRONGHOLD") ? 10 : 6),
+                    site.center(),
+                    site.footprint(),
                     1,
                     PhysicalIntentStatus.READY,
                     ctx.time(),
                     3,
                     Map.of(
                             "cause", riskCause(state, s),
-                            "variant", variant,
+                            "variant", site.variant(),
                             "campId", id.value().toString(),
-                            "strength", String.format(java.util.Locale.ROOT, "%.2f", risk)
+                            "strength", String.format(java.util.Locale.ROOT, "%.2f", risk),
+                            "siteScore", String.format(java.util.Locale.ROOT, "%.2f", site.score())
                     ),
                     Map.of(),
-                    ""
+                    CultureResolver.forSettlement(state, s)
             );
             seedChunks(intent);
             state.dynamicPhysical().putIntent(intent);
             s.setSecurity(Math.max(0, s.security() - 0.04));
-            state.tradeNetwork().addHotspot(site);
+            state.tradeNetwork().addHotspot(site.center());
 
             state.appendHistory(new HistoricalEvent(
                     HistoricalEventId.deterministic(state.seed(), state.history().size()),
                     CivilizationEventType.BANDIT_ACTIVITY_CHANGED,
                     ctx.time(),
                     "Bandit camp forms",
-                    variant + " near " + s.name(),
-                    Optional.of(site),
-                    Map.of("settlement", s.id().toString(), "variant", variant)
+                    site.variant() + " near " + s.name(),
+                    Optional.of(site.center()),
+                    Map.of("settlement", s.id().toString(), "variant", site.variant(),
+                            "campId", id.value().toString())
             ));
             activeCamps++;
             if (activeCamps >= 12) break;
         }
 
-        for (PhysicalIntent intent : state.dynamicPhysical().intents().values()) {
-            if (intent.type() != PhysicalIntentType.CREATE_BANDIT_CAMP) continue;
+        for (PhysicalIntent intent : List.copyOf(state.dynamicPhysical().intents().values())) {
+            if (intent.type() != PhysicalIntentType.CREATE_BANDIT_CAMP
+                    && intent.type() != PhysicalIntentType.UPGRADE_BANDIT_CAMP) {
+                continue;
+            }
             if (intent.status() != PhysicalIntentStatus.MATERIALIZED) continue;
             SettlementId settlementId = intent.settlementId().orElse(null);
             if (settlementId == null) continue;
             SettlementState s = state.settlements().get(settlementId);
-            if (s == null || banditRisk(state, s) < 0.7) continue;
+            if (s == null) continue;
+            double risk = banditRisk(state, s);
+            // Security recovery / low risk → clear the camp physically (REMOVE_BANDIT_CAMP).
+            if (risk < 0.35 || s.security() > 0.7) {
+                offerCampRemoval(state, intent, ctx, risk < 0.35 ? "risk_collapsed" : "security_restored");
+                continue;
+            }
+            if (intent.type() != PhysicalIntentType.CREATE_BANDIT_CAMP) continue;
+            if (risk < 0.7) continue;
             if (state.dynamicPhysical().hasOpenIntent(s.id(), PhysicalIntentType.UPGRADE_BANDIT_CAMP)) continue;
             PhysicalIntentId upId = PhysicalIntentId.deterministic(
                     state.seed(), state.dynamicPhysical().intents().size() + 310_000L);
@@ -132,12 +149,57 @@ public final class BanditryEngine implements SimulationSubsystem {
                     Map.of("cause", "entrenched", "variant", "RUINED_FORT",
                             "campId", intent.provenance().getOrDefault("campId", intent.id().value().toString())),
                     Map.of(),
-                    ""
+                    intent.cultureKey()
             );
             upgrade.addDependency(intent.id());
             seedChunks(upgrade);
             state.dynamicPhysical().putIntent(upgrade);
         }
+    }
+
+    /** Emit REMOVE_BANDIT_CAMP when security recovers enough that the camp should clear. */
+    public static void offerCampRemoval(
+            CanonicalWorldState state,
+            PhysicalIntent campIntent,
+            SimulationContext ctx,
+            String reason
+    ) {
+        if (campIntent.type() != PhysicalIntentType.CREATE_BANDIT_CAMP
+                && campIntent.type() != PhysicalIntentType.UPGRADE_BANDIT_CAMP) {
+            return;
+        }
+        SettlementId sid = campIntent.settlementId().orElse(null);
+        if (sid != null && state.dynamicPhysical().hasOpenIntent(sid, PhysicalIntentType.REMOVE_BANDIT_CAMP)) {
+            return;
+        }
+        PhysicalIntentId removeId = PhysicalIntentId.deterministic(
+                state.seed(), state.dynamicPhysical().intents().size() + 320_000L);
+        PhysicalIntent remove = new PhysicalIntent(
+                removeId,
+                PhysicalIntentType.REMOVE_BANDIT_CAMP,
+                "banditry",
+                campIntent.sourceEntityId() != null ? campIntent.sourceEntityId() : removeId.value(),
+                campIntent.settlementId(),
+                campIntent.kingdomId(),
+                campIntent.structureId(),
+                Optional.empty(),
+                campIntent.targetPosition(),
+                campIntent.footprint(),
+                campIntent.revision() + 1,
+                PhysicalIntentStatus.READY,
+                ctx.time(),
+                2,
+                Map.of(
+                        "cause", reason,
+                        "campId", campIntent.provenance().getOrDefault("campId", campIntent.id().value().toString()),
+                        "mode", "abandon_ruin"
+                ),
+                Map.of(),
+                campIntent.cultureKey()
+        );
+        remove.addDependency(campIntent.id());
+        seedChunks(remove);
+        state.dynamicPhysical().putIntent(remove);
     }
 
     private static void seedChunks(PhysicalIntent intent) {
