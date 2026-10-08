@@ -1,0 +1,51 @@
+---
+description: Player agency / gameplay integration notes for MineLife agents (M4)
+globs:
+  - "**/PlayerGameplay*"
+  - "**/CitizenDialogue*"
+  - "**/FactionDisposition*"
+  - "**/ResourceItemMapping*"
+  - "**/CitizenInteractionPayloads*"
+alwaysApply: false
+---
+
+# Player gameplay rules
+
+## Authority
+
+- Commands: `PlayerGameplayBridge` → typed `PlayerActionRequest` → `PlayerGameplayService`
+- Physical evidence: `PhysicalInteractionBridge` → `PhysicalOutcomePayload`
+- Do not scatter sidecar calls from client screens
+
+## Interaction sessions
+
+`PlayerInteractionSessions` binds player + citizen + settlement + expiry/distance.
+Subsequent UI choices reference the session. Max interact distance: 8 blocks.
+
+## Typed actions only if handled
+
+`PlayerActionType` enumerates only actions with real handlers. No unused catalogue.
+
+## Reputation / standing
+
+Single number: `PlayerReputationState`. UI attitude labels derive from standing/reputation/legal — no second fame system.
+`FactionStanding`: NEUTRAL → CITIZEN → TRUSTED → OFFICIAL → RULER.
+
+## Tasks
+
+Lifecycle: OPEN → DISCOVERED → ACCEPTED → COMPLETED (also FAILED/ABANDONED/EXPIRED).
+Completion requires server-verified evidence (inventory delivery, camp clear, caravan arrival).
+
+## Trade
+
+Buy/sell: NeoForge consumes/refunds items + gold, then canonical stockpile/market update.
+Reject unverified (`serverVerified`) transactions.
+
+## Crime / guards
+
+Player offences create `CrimeState` with `playerOffender` + legal record.
+Guards use cached wanted/hostile flags — never IPC inside AI predicates.
+
+## Multi-world
+
+Clear `FactionDispositionCache` and `PlayerInteractionSessions` on server stop with other session caches.

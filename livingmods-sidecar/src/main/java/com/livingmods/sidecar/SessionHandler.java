@@ -17,6 +17,9 @@ import com.livingmods.protocol.RequestPayloads;
 import com.livingmods.common.model.PhysicalOutcomeType;
 import com.livingmods.protocol.PhysicalIntentPayload;
 import com.livingmods.protocol.PhysicalOutcomePayload;
+import com.livingmods.protocol.PlayerActionRequest;
+import com.livingmods.protocol.PlayerActionResponse;
+import com.livingmods.simulation.engine.PlayerGameplayService;
 import com.livingmods.simulation.engine.PlayerSystemsEngine;
 import com.livingmods.simulation.physical.PhysicalIntent;
 import com.livingmods.simulation.physical.PhysicalOutcomeApplier;
@@ -46,6 +49,7 @@ public final class SessionHandler implements Runnable {
     private final java.net.Socket socket;
     private final AtomicLong messageId = new AtomicLong(1);
     private final PlayerSystemsEngine playerSystems = new PlayerSystemsEngine();
+    private final PlayerGameplayService playerGameplay = new PlayerGameplayService();
     private final PhysicalOutcomeApplier outcomeApplier = new PhysicalOutcomeApplier();
     private UUID sessionId;
     private volatile boolean handshaken;
@@ -252,6 +256,21 @@ public final class SessionHandler implements Runnable {
             sendError(out, envelope.requestId(), ErrorPayload.NOT_READY, "Host frozen");
             return;
         }
+        SimulationContext ctx = new SimulationContext(
+                host.state().seed(),
+                host.state().time(),
+                host.state().saveRevision()
+        );
+        // Prefer typed PlayerActionRequest (protocol v4); fall back to legacy string-map.
+        try {
+            PlayerActionRequest typed = PlayerActionRequest.decode(envelope.payload());
+            PlayerActionResponse response = playerGameplay.handle(host.state(), typed, ctx);
+            send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(),
+                    response.encode());
+            return;
+        } catch (Exception typedFail) {
+            // Legacy path below.
+        }
         Map<String, String> fields;
         try {
             fields = PayloadIo.decodeStrings(envelope.payload());
@@ -267,11 +286,6 @@ public final class SessionHandler implements Runnable {
         PlayerId player = parsePlayer(fields);
         KingdomId kingdom = parseKingdom(fields);
         double delta = reputationDeltaFor(action.toUpperCase());
-        SimulationContext ctx = new SimulationContext(
-                host.state().seed(),
-                host.state().time(),
-                host.state().saveRevision()
-        );
         playerSystems.recordPlayerAction(host.state(), player, kingdom, delta, ctx);
         applyActionSideEffects(action.toUpperCase(), fields);
 
@@ -482,6 +496,27 @@ public final class SessionHandler implements Runnable {
             hist++;
         }
         summary.put("historyRecent", String.join(" | ", history));
+        // Compact kingdom disposition pairs for NeoForge AI cache (bounded).
+        StringBuilder pairs = new StringBuilder();
+        int pairCount = 0;
+        var kingdoms = new ArrayList<>(host.state().kingdoms().keySet());
+        for (int i = 0; i < kingdoms.size() && pairCount < 64; i++) {
+            for (int j = i + 1; j < kingdoms.size() && pairCount < 64; j++) {
+                var a = kingdoms.get(i);
+                var b = kingdoms.get(j);
+                var d = com.livingmods.simulation.engine.FactionDispositionResolver.betweenKingdoms(host.state(), a, b);
+                if (d == com.livingmods.common.model.FactionDisposition.NEUTRAL
+                        || d == com.livingmods.common.model.FactionDisposition.FRIENDLY) {
+                    continue;
+                }
+                if (pairs.length() > 0) pairs.append(';');
+                pairs.append(a.value()).append('|').append(b.value()).append('|').append(d.name());
+                pairCount++;
+            }
+        }
+        summary.put("dispositionPairs", pairs.toString());
+        long openTasks = host.state().emergentTasks().values().stream().filter(t -> t.open()).count();
+        summary.put("openTasks", String.valueOf(openTasks));
         summary.putAll(diagnostics.snapshot());
         send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(),
                 PayloadIo.encodeStrings(summary));
@@ -568,8 +603,9 @@ public final class SessionHandler implements Runnable {
     private void onDialogue(Envelope envelope, OutputStream out) throws IOException {
         RequestPayloads.DialogueQuery q = RequestPayloads.DialogueQuery.decode(envelope.payload());
         var engine = new com.livingmods.simulation.engine.DialogueEngine();
+        PlayerId player = q.playerId() == null ? null : PlayerId.of(q.playerId());
         var lines = engine.respond(host.state(),
-                com.livingmods.common.id.CitizenId.of(q.citizenId()), q.intent());
+                com.livingmods.common.id.CitizenId.of(q.citizenId()), q.intent(), player);
         List<String> texts = new ArrayList<>();
         for (var line : lines) {
             texts.add(line.speaker() + ": " + line.text());

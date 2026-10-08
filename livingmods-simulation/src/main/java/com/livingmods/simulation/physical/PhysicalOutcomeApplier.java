@@ -96,6 +96,16 @@ public final class PhysicalOutcomeApplier {
                     }
                     settlement.ownerKingdom().ifPresent(k ->
                             playerSystems.recordPlayerAction(state, player, k, -0.35, ctx));
+                    // Player crime — assault/murder enters CrimeJustice/legal state.
+                    if (player != null && !(player.value().getMostSignificantBits() == 0
+                            && player.value().getLeastSignificantBits() == 0)) {
+                        new com.livingmods.simulation.engine.PlayerGameplayService().recordPlayerCrime(
+                                state, player,
+                                "GUARD".equals(kind)
+                                        ? com.livingmods.common.model.CrimeType.ASSAULT
+                                        : com.livingmods.common.model.CrimeType.MURDER,
+                                settlement.id(), id, ctx);
+                    }
                 }
                 state.appendHistory(new HistoricalEvent(
                         HistoricalEventId.deterministic(state.seed(), state.history().size()),

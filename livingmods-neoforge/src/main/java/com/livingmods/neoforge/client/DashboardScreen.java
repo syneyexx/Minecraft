@@ -1,36 +1,43 @@
 package com.livingmods.neoforge.client;
 
+import com.livingmods.neoforge.network.CitizenInteractionPayloads;
 import com.livingmods.neoforge.network.LivingModsNetwork;
 import com.livingmods.neoforge.sidecar.SidecarClient;
 import com.livingmods.neoforge.sidecar.SidecarProcessManager;
 import com.livingmods.neoforge.sidecar.WorldSessionLifecycle;
 import com.livingmods.protocol.MessageType;
-import com.livingmods.protocol.PayloadIo;
+import com.livingmods.protocol.PlayerActionRequest;
+import com.livingmods.protocol.PlayerActionResponse;
+import com.livingmods.protocol.PlayerActionType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Multi-tab dashboard with live SidecarClient diagnostics — no hardcoded queueDepth=0.
+ * Civilization / player overview dashboard. SIDECAR tab remains technical diagnostics.
  */
 public final class DashboardScreen extends Screen {
     private enum Tab {
         WORLD, KINGDOMS, SETTLEMENTS, ECONOMY, DIPLOMACY, WAR, HISTORY, SIDECAR
     }
 
-    private Tab tab = Tab.SIDECAR;
+    private Tab tab = Tab.WORLD;
     private final Map<String, String> metrics = new LinkedHashMap<>();
+    private final Map<String, String> playerContext = new LinkedHashMap<>();
     private long lastRefreshMs;
+    private int selectedRow;
 
     public DashboardScreen() {
-        super(Component.literal("LivingMods Dashboard"));
+        super(Component.literal("MineLife"));
     }
 
     @Override
@@ -42,7 +49,7 @@ public final class DashboardScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
-        if (System.currentTimeMillis() - lastRefreshMs > 1500) {
+        if (System.currentTimeMillis() - lastRefreshMs > 2000) {
             refresh();
         }
     }
@@ -61,11 +68,32 @@ public final class DashboardScreen extends Screen {
             if (client.isReady()) {
                 client.sendAsync(MessageType.GET_WORLD_SUMMARY, new byte[0]).thenAccept(env -> {
                     try {
-                        Map<String, String> remote = PayloadIo.decodeStrings(env.payload());
+                        Map<String, String> remote = com.livingmods.protocol.PayloadIo.decodeStrings(env.payload());
                         ClientMapCache.mergeDashboard(remote);
                     } catch (Exception ignored) {
                     }
                 });
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.player != null) {
+                    try {
+                        PlayerActionRequest req = new PlayerActionRequest(
+                                PlayerActionType.QUERY_PLAYER_CONTEXT, mc.player.getUUID(),
+                                new UUID(0, 0), new UUID(0, 0), new UUID(0, 0), new UUID(0, 0),
+                                new UUID(0, 0), (int) mc.player.getX(), (int) mc.player.getY(),
+                                (int) mc.player.getZ(), 0L, Map.of());
+                        client.sendAsync(MessageType.PLAYER_ACTION, req.encode()).thenAccept(env -> {
+                            try {
+                                PlayerActionResponse resp = PlayerActionResponse.decode(env.payload());
+                                synchronized (playerContext) {
+                                    playerContext.clear();
+                                    playerContext.putAll(resp.data());
+                                }
+                            } catch (Exception ignored) {
+                            }
+                        });
+                    } catch (Exception ignored) {
+                    }
+                }
             }
         } else {
             metrics.put("connected", "false");
@@ -73,7 +101,6 @@ public final class DashboardScreen extends Screen {
             metrics.putIfAbsent("queueDepth", "n/a");
         }
 
-        // Ask integrated server for a push when available (singleplayer).
         Minecraft mc = Minecraft.getInstance();
         if (mc.getSingleplayerServer() != null && mc.player != null) {
             ServerPlayer sp = mc.getSingleplayerServer().getPlayerList().getPlayer(mc.player.getUUID());
@@ -82,7 +109,6 @@ public final class DashboardScreen extends Screen {
             }
         }
         metrics.putAll(ClientMapCache.dashboardSnapshot());
-        // Never invent a fake zero queue if sidecar omitted it.
         if (!metrics.containsKey("queueDepth") || "0".equals(metrics.get("queueDepth"))
                 && !"true".equals(metrics.get("connected"))) {
             if (!"true".equals(metrics.get("connected"))) {
@@ -94,7 +120,7 @@ public final class DashboardScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(font, "LivingMods Dashboard", width / 2, 12, 0xF0E6D2);
+        graphics.drawCenteredString(font, "MineLife — Civilization Overview", width / 2, 12, 0xF0E6D2);
 
         int tabX = 16;
         for (Tab t : Tab.values()) {
@@ -102,60 +128,127 @@ public final class DashboardScreen extends Screen {
             int tw = font.width(t.name()) + 10;
             graphics.fill(tabX, 28, tabX + tw, 42, active ? 0xFF3E5C3A : 0xFF2A2A2A);
             graphics.drawString(font, t.name(), tabX + 5, 31, active ? 0xFFE8E0D0 : 0xFFAAAAAA);
-            if (mouseX >= tabX && mouseX < tabX + tw && mouseY >= 28 && mouseY < 42 && Minecraft.getInstance().mouseHandler.isLeftPressed()) {
-                // selection handled in mouseClicked
-            }
             tabX += tw + 4;
         }
 
         List<String> lines = linesForTab(tab);
         int y = 56;
+        int row = 0;
         for (String line : lines) {
-            graphics.drawString(font, line, 24, y, 0xFFDDDDDD);
+            int color = row == selectedRow ? 0xFFE6B3 : 0xFFDDDDDD;
+            graphics.drawString(font, line, 24, y, color);
             y += 12;
+            row++;
             if (y > height - 40) break;
         }
-        graphics.drawCenteredString(font, "Click tabs · Esc to close", width / 2, height - 22, 0xFFAAAAAA);
+        graphics.drawCenteredString(font, "Click tabs · J journal · Esc close", width / 2, height - 22, 0xFFAAAAAA);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
     private List<String> linesForTab(Tab tab) {
+        Map<String, String> ctx;
+        synchronized (playerContext) {
+            ctx = new LinkedHashMap<>(playerContext);
+        }
         List<String> lines = new ArrayList<>();
         switch (tab) {
             case WORLD -> {
-                add(lines, "simTicks");
-                add(lines, "citizens");
-                add(lines, "planSettlements");
-                add(lines, "planKingdoms");
-                add(lines, "revision");
-                add(lines, "shipments");
+                lines.add("Day/ticks: " + metrics.getOrDefault("simTicks", "—"));
+                lines.add("Known kingdoms: " + countPacked(ctx.get("knownKingdoms")));
+                lines.add("Known settlements: " + countPacked(ctx.get("knownSettlements")));
+                lines.add("Citizens (live): " + metrics.getOrDefault("citizens", "—"));
+                lines.add("Open tasks: " + metrics.getOrDefault("openTasks", "—"));
+                lines.add("Your realm: " + blank(ctx.get("ruledKingdomName"), "(none)"));
+                String crises = metrics.getOrDefault("epidemicActive", "0");
+                lines.add("Epidemics: " + crises + "  Wars: " + metrics.getOrDefault("warActive", "0"));
             }
             case KINGDOMS -> {
-                add(lines, "planKingdoms");
-                add(lines, "wars");
-                lines.add("Relations & treasuries stream via GET_KINGDOM_SUMMARY.");
+                String packed = ctx.getOrDefault("knownKingdoms", "");
+                if (packed.isBlank()) {
+                    lines.add("No kingdoms discovered yet — explore or talk to citizens.");
+                    lines.add("Live count: " + metrics.getOrDefault("kingdomsLive",
+                            metrics.getOrDefault("planKingdoms", "—")));
+                } else {
+                    for (String row : packed.split(";")) {
+                        if (row.isBlank()) continue;
+                        String[] p = row.split("\\|", -1);
+                        // id|name|culture|gov|standing|attitude|war|treasury
+                        if (p.length >= 7) {
+                            lines.add(p[1] + "  " + p[2] + " / " + p[3]
+                                    + "  standing=" + p[4] + "  " + p[5] + "  " + p[6]
+                                    + (p.length > 7 ? "  ¤" + p[7] : ""));
+                        } else {
+                            lines.add(row);
+                        }
+                    }
+                }
             }
             case SETTLEMENTS -> {
-                add(lines, "planSettlements");
-                add(lines, "citizens");
-                add(lines, "epidemics");
+                String packed = ctx.getOrDefault("knownSettlements", "");
+                if (packed.isBlank()) {
+                    lines.add("No settlements known — visit or receive rumors.");
+                    lines.add("Live count: " + metrics.getOrDefault("settlementsLive",
+                            metrics.getOrDefault("planSettlements", "—")));
+                } else {
+                    for (String row : packed.split(";")) {
+                        if (row.isBlank()) continue;
+                        String[] p = row.split("\\|", -1);
+                        // id|name|tier|housing|hunger|security|unrest|kingdom|knowledge
+                        if (p.length >= 8) {
+                            lines.add(p[1] + " [" + p[2] + "] houses=" + p[3]
+                                    + " food=" + p[4] + " sec=" + p[5] + " unrest=" + p[6]
+                                    + " (" + p[8] + ")");
+                        } else {
+                            lines.add(row);
+                        }
+                    }
+                }
             }
             case ECONOMY -> {
-                add(lines, "shipments");
-                lines.add("Market crises appear in settlement snapshots.");
-                add(lines, "queueDepth");
+                lines.add("Shipments in transit: " + metrics.getOrDefault("shipments", "—"));
+                lines.add("Your treasury: " + blank(ctx.get("treasury"), "—"));
+                lines.add("Tax rate: " + blank(ctx.get("taxRate"), "—"));
+                lines.add("Talk to merchants for local market prices.");
+                lines.add("Currency: gold ingots ↔ canonical GOLD.");
             }
             case DIPLOMACY -> {
-                add(lines, "wars");
-                lines.add("Treaties tracked in canonical diplomacy matrix.");
+                boolean ruler = !blank(ctx.get("ruledKingdomId"), "").isBlank();
+                lines.add(ruler ? "You rule a realm — diplomacy actions available in Realm UI."
+                        : "Read-only: join a kingdom or found a realm for diplomacy authority.");
+                lines.add("Treaties (live): " + metrics.getOrDefault("treaties", "—"));
+                lines.add("Active wars: " + blank(ctx.get("activeWars"), metrics.getOrDefault("warActive", "—")));
+                if (ruler) {
+                    lines.add("Open realm panel from a steward/ruler conversation (MANAGE_REALM).");
+                }
             }
             case WAR -> {
-                add(lines, "wars");
-                lines.add("Army projections follow military engine state.");
+                String wars = ctx.getOrDefault("activeWars", "");
+                if (wars.isBlank()) {
+                    lines.add("No known active wars.");
+                    lines.add("Reported wars: " + metrics.getOrDefault("warActive", "0"));
+                } else {
+                    for (String row : wars.split(";")) {
+                        if (row.isBlank()) continue;
+                        String[] p = row.split("\\|", -1);
+                        if (p.length >= 3) {
+                            lines.add(p[1] + " vs " + p[2]);
+                        } else {
+                            lines.add(row);
+                        }
+                    }
+                }
+                lines.add("Armies (overlay): " + metrics.getOrDefault("armiesLive", "—"));
+                lines.add("Allegiance: " + blank(ctx.get("ruledKingdomName"), "none / civilian"));
             }
             case HISTORY -> {
-                lines.add("Meaningful events: wars, rulers, epidemics, founding, treaties.");
-                lines.add("Rumors derive from history — citizens are not omniscient.");
+                String hist = blank(ctx.get("historyRecent"), metrics.getOrDefault("historyRecent", ""));
+                if (hist.isBlank()) {
+                    lines.add("No recent events known.");
+                } else {
+                    for (String part : hist.split(" \\| ")) {
+                        lines.add("• " + part);
+                    }
+                }
             }
             case SIDECAR -> {
                 add(lines, "connected");
@@ -171,26 +264,30 @@ public final class DashboardScreen extends Screen {
                 add(lines, "inboundEvents");
                 add(lines, "ipcIn");
                 add(lines, "ipcOut");
-                add(lines, "citizens");
-                add(lines, "settlements");
-                add(lines, "shipments");
-                add(lines, "wars");
-                add(lines, "epidemics");
                 add(lines, "lastError");
             }
         }
         if (lines.isEmpty()) {
-            lines.add("No metrics yet.");
+            lines.add("No data yet.");
         }
         return lines;
     }
 
     private void add(List<String> lines, String key) {
-        String value = metrics.get(key);
-        if (value == null) {
-            value = "—";
+        lines.add(key + " = " + metrics.getOrDefault(key, "—"));
+    }
+
+    private static String blank(String v, String fallback) {
+        return v == null || v.isBlank() ? fallback : v;
+    }
+
+    private static int countPacked(String packed) {
+        if (packed == null || packed.isBlank()) return 0;
+        int n = 0;
+        for (String row : packed.split(";")) {
+            if (!row.isBlank()) n++;
         }
-        lines.add(key + " = " + value);
+        return n;
     }
 
     @Override
@@ -201,12 +298,41 @@ public final class DashboardScreen extends Screen {
                 int tw = font.width(t.name()) + 10;
                 if (mouseX >= tabX && mouseX < tabX + tw) {
                     tab = t;
+                    selectedRow = 0;
                     return true;
                 }
                 tabX += tw + 4;
             }
         }
+        if (button == 0 && mouseY >= 56) {
+            selectedRow = Math.max(0, ((int) mouseY - 56) / 12);
+            return true;
+        }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_J) {
+            String tasks = "";
+            synchronized (playerContext) {
+                tasks = playerContext.getOrDefault("tasks", "");
+            }
+            List<String> list = new ArrayList<>();
+            if (!tasks.isBlank()) {
+                for (String row : tasks.split(";")) {
+                    if (!row.isBlank()) list.add(row);
+                }
+            }
+            Minecraft.getInstance().setScreen(new TaskJournalScreen(list));
+            return true;
+        }
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R) {
+            PacketDistributor.sendToServer(new CitizenInteractionPayloads.RealmAction(
+                    "DISCOVER", "", "", 0, 0));
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override

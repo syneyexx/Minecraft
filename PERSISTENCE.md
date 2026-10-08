@@ -24,7 +24,7 @@ Sidecar save directory is `server.getWorldPath(ROOT)/livingmods/sidecar` (same w
 
 **Correction vs older docs:** the plan is **not** “regenerated every boot from seed.” Regeneration happens only when no readable full plan exists.
 
-## Canonical save (schema 4)
+## Canonical save (schema 5)
 
 `CanonicalSaveFormat` encodes/decodes:
 
@@ -32,13 +32,14 @@ Sidecar save directory is `server.getWorldPath(ROOT)/livingmods/sidecar` (same w
 - family relations
 - stockpiles, markets, shipments
 - diplomacy pairs/treaties, wars, sieges, armies
-- crime, epidemics, migration groups
-- ecology, technology, dynasties, factions, player reputation
+- crime (incl. optional player offender ids in schema ≥ 5), epidemics, migration groups
+- ecology, technology, dynasties, factions, player reputation (kingdom floats always)
 - history markers / bounded event lists
 - time ticks, save revision, plan content hash, world/session UUIDs
 - **DynamicPhysicalState** (schema ≥ 4): physical intents, dynamic structures, settlement geometry
+- **Player gameplay addendum** (schema ≥ 5): settlement reputation, faction standing, ruled kingdoms, legal records, knowledge/cartography, realm policies, emergent task lifecycle
 
-Schema 3 saves still load (empty DynamicPhysicalState). New writes use schema 4.
+Schema 3–4 saves still load (missing schema-5 fields default empty). New writes use schema 5.
 
 `CanonicalStore.saveBarrier` pauses the bound `SimulationEngine` at a phase boundary, writes snapshot, appends WAL.
 

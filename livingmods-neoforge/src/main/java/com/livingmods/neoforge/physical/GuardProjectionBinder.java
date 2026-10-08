@@ -122,8 +122,16 @@ public final class GuardProjectionBinder {
             ProjectedHumanoidEntity guard = LivingModsEntities.PROJECTED_HUMANOID.get().create(level);
             if (guard == null) break;
             guard.moveTo(x + o[0] + 0.5, y, z + o[1] + 0.5, 0, 0);
+            boolean hostile = false;
+            for (ServerPlayer nearby : level.players()) {
+                if (com.livingmods.neoforge.gameplay.FactionDispositionCache.get()
+                        .hostileToPlayer(nearby.getUUID(), faction == null ? settlementId : faction)) {
+                    hostile = true;
+                    break;
+                }
+            }
             guard.bind(ProjectedHumanoidEntity.Kind.GUARD, settlementId, faction, 1L,
-                    "Guard", duty == null ? "PATROL" : duty.toUpperCase(), culture, false);
+                    "Guard", duty == null ? "PATROL" : duty.toUpperCase(), culture, hostile);
             guard.setNavigationTarget(x + o[0], z + o[1]);
             level.addFreshEntity(guard);
             existing.add(guard.getUUID());

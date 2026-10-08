@@ -146,7 +146,7 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
             return false;
         }
         applyDeliveryEffects(state, task, evidence);
-        task.setCompleted(true);
+        task.setStatus(com.livingmods.common.model.TaskStatus.COMPLETED);
         applyCompletionEffects(state, task, player);
         return true;
     }

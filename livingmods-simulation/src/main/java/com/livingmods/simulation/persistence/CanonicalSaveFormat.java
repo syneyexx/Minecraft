@@ -30,15 +30,19 @@ import com.livingmods.common.model.CrimeStatus;
 import com.livingmods.common.model.CrimeType;
 import com.livingmods.common.model.CrimeVerdict;
 import com.livingmods.common.model.DiplomaticRelation;
+import com.livingmods.common.model.EmergentTaskType;
+import com.livingmods.common.model.FactionStanding;
 import com.livingmods.common.model.FamilyRelationType;
 import com.livingmods.common.model.GovernmentType;
 import com.livingmods.common.model.MilitaryRole;
 import com.livingmods.common.model.Personality;
+import com.livingmods.common.model.PlayerLegalStatus;
 import com.livingmods.common.model.Profession;
 import com.livingmods.common.model.ResourceType;
 import com.livingmods.common.model.ScheduleState;
 import com.livingmods.common.model.SettlementRole;
 import com.livingmods.common.model.SettlementTier;
+import com.livingmods.common.model.TaskStatus;
 import com.livingmods.common.model.TreatyType;
 import com.livingmods.common.model.WarObjective;
 import com.livingmods.common.model.WealthClass;
@@ -53,6 +57,7 @@ import com.livingmods.simulation.state.DiplomacyPair;
 import com.livingmods.simulation.state.DiplomacyState;
 import com.livingmods.simulation.state.DynastyState;
 import com.livingmods.simulation.state.EcologyState;
+import com.livingmods.simulation.state.EmergentTaskState;
 import com.livingmods.simulation.state.EpidemicState;
 import com.livingmods.simulation.state.FactionState;
 import com.livingmods.simulation.state.FamilyRelationState;
@@ -61,6 +66,8 @@ import com.livingmods.simulation.state.IntelligenceState;
 import com.livingmods.simulation.state.KingdomState;
 import com.livingmods.simulation.state.MarketState;
 import com.livingmods.simulation.state.MigrationGroupState;
+import com.livingmods.simulation.state.PlayerKnowledgeState;
+import com.livingmods.simulation.state.PlayerLegalRecord;
 import com.livingmods.simulation.state.PlayerReputationState;
 import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.state.ShipmentState;
@@ -89,8 +96,11 @@ import java.util.UUID;
  * (citizen family/housing/schedule, economy/trade caravans, politics/war/justice).
  */
 public final class CanonicalSaveFormat {
-    /** Schema 4 adds DynamicPhysicalState (intents / dynamic structures / settlement geometry). */
-    public static final int SCHEMA_VERSION = 4;
+    /**
+     * Schema 5: full player reputation, emergent tasks, player crime offender, knowledge.
+     * Schema 4: DynamicPhysicalState. Reads ≥3.
+     */
+    public static final int SCHEMA_VERSION = 5;
     public static final int MIN_SUPPORTED_SCHEMA = 3;
     public static final int MAGIC = 0x4C4D4353; // LMCS
     public static final int MAX_ENTITIES = 500_000;
@@ -216,6 +226,7 @@ public final class CanonicalSaveFormat {
         writeFactions(out, state);
         writeIntelligence(out, state.intelligence());
         DynamicPhysicalCodec.write(out, state.dynamicPhysical());
+        writeSchema5PlayerGameplay(out, state);
 
         out.flush();
         return bos.toByteArray();
@@ -351,6 +362,9 @@ public final class CanonicalSaveFormat {
         readIntelligence(in, state.intelligence());
         if (version >= 4) {
             DynamicPhysicalCodec.read(in, state.dynamicPhysical());
+        }
+        if (version >= 5) {
+            readSchema5PlayerGameplay(in, state);
         }
 
         state.rebuildIndexes();
@@ -1031,6 +1045,7 @@ public final class CanonicalSaveFormat {
     }
 
     private static void writePlayerReputation(DataOutputStream out, PlayerReputationState rep) throws IOException {
+        // Schema 3/4 compatible prefix: kingdom reputation floats only.
         out.writeInt(rep.reputationByPlayer().size());
         for (Map.Entry<PlayerId, Map<KingdomId, Double>> e : rep.reputationByPlayer().entrySet()) {
             BinaryCodec.writeUuid(out, e.getKey().value());
@@ -1053,6 +1068,304 @@ public final class CanonicalSaveFormat {
             }
             rep.reputationByPlayer().put(player, map);
         }
+    }
+
+    /** Schema 5 appendixendum: standing, ruled realms, legal, knowledge, policies, tasks, player crimes. */
+    private static void writeSchema5PlayerGameplay(DataOutputStream out, CanonicalWorldState state) throws IOException {
+        PlayerReputationState rep = state.playerReputation();
+        // Settlement reputation
+        out.writeInt(rep.settlementReputation().size());
+        for (var e : rep.settlementReputation().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (var s : e.getValue().entrySet()) {
+                BinaryCodec.writeUuid(out, s.getKey().value());
+                out.writeDouble(s.getValue());
+            }
+        }
+        // Faction standing
+        out.writeInt(rep.factionStanding().size());
+        for (var e : rep.factionStanding().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (var s : e.getValue().entrySet()) {
+                BinaryCodec.writeUuid(out, s.getKey().value());
+                out.writeInt(s.getValue().ordinal());
+            }
+        }
+        // Ruled kingdoms
+        out.writeInt(rep.ruledKingdoms().size());
+        for (var e : rep.ruledKingdoms().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            BinaryCodec.writeUuid(out, e.getValue().value());
+        }
+        // Legal by kingdom
+        out.writeInt(rep.legalByKingdom().size());
+        for (var e : rep.legalByKingdom().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (var legal : e.getValue().entrySet()) {
+                writeLegalRecord(out, legal.getValue());
+            }
+        }
+        // Legal by settlement
+        out.writeInt(rep.legalBySettlement().size());
+        for (var e : rep.legalBySettlement().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (var legal : e.getValue().entrySet()) {
+                writeLegalRecord(out, legal.getValue());
+            }
+        }
+        // Knowledge settlements
+        var knowledge = rep.knowledge();
+        out.writeInt(knowledge.settlements().size());
+        for (var e : knowledge.settlements().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (var s : e.getValue().entrySet()) {
+                BinaryCodec.writeUuid(out, s.getKey().value());
+                out.writeInt(s.getValue().ordinal());
+            }
+        }
+        out.writeInt(knowledge.kingdoms().size());
+        for (var e : knowledge.kingdoms().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (var s : e.getValue().entrySet()) {
+                BinaryCodec.writeUuid(out, s.getKey().value());
+                out.writeInt(s.getValue().ordinal());
+            }
+        }
+        out.writeInt(knowledge.knownCamps().size());
+        for (var e : knowledge.knownCamps().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (UUID camp : e.getValue()) {
+                BinaryCodec.writeUuid(out, camp);
+            }
+        }
+        out.writeInt(knowledge.knownTaskMarkers().size());
+        for (var e : knowledge.knownTaskMarkers().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (UUID task : e.getValue()) {
+                BinaryCodec.writeUuid(out, task);
+            }
+        }
+        // Policies
+        out.writeInt(rep.realmPolicies().size());
+        for (var e : rep.realmPolicies().entrySet()) {
+            BinaryCodec.writeUuid(out, e.getKey().value());
+            out.writeInt(e.getValue().size());
+            for (var p : e.getValue().entrySet()) {
+                BinaryCodec.writeString(out, p.getKey());
+                out.writeDouble(p.getValue());
+            }
+        }
+        // Emergent tasks
+        out.writeInt(state.emergentTasks().size());
+        for (EmergentTaskState task : state.emergentTasks().values()) {
+            BinaryCodec.writeUuid(out, task.id());
+            out.writeInt(task.type().ordinal());
+            BinaryCodec.writeUuid(out, task.settlementId().value());
+            BinaryCodec.writeString(out, task.title());
+            BinaryCodec.writeString(out, task.description());
+            out.writeLong(task.created().absoluteTicks());
+            out.writeInt(task.problemTags().size());
+            for (var tag : task.problemTags().entrySet()) {
+                BinaryCodec.writeString(out, tag.getKey());
+                BinaryCodec.writeString(out, tag.getValue());
+            }
+            out.writeInt(task.status().ordinal());
+            out.writeBoolean(task.acceptedBy() != null);
+            if (task.acceptedBy() != null) {
+                BinaryCodec.writeUuid(out, task.acceptedBy().value());
+            }
+            out.writeBoolean(task.acceptedAt() != null);
+            if (task.acceptedAt() != null) {
+                out.writeLong(task.acceptedAt().absoluteTicks());
+            }
+            BinaryCodec.writeString(out, task.progressNote());
+        }
+        // Player crime offenders
+        int playerCrimes = 0;
+        for (CrimeState c : state.crimes().values()) {
+            if (c.isPlayerCrime()) playerCrimes++;
+        }
+        out.writeInt(playerCrimes);
+        for (CrimeState c : state.crimes().values()) {
+            if (!c.isPlayerCrime()) continue;
+            BinaryCodec.writeUuid(out, c.id().value());
+            BinaryCodec.writeUuid(out, c.playerOffender().orElseThrow().value());
+        }
+    }
+
+    private static void writeLegalRecord(DataOutputStream out, PlayerLegalRecord legal) throws IOException {
+        out.writeBoolean(legal.kingdomId() != null);
+        if (legal.kingdomId() != null) BinaryCodec.writeUuid(out, legal.kingdomId().value());
+        out.writeBoolean(legal.settlementId() != null);
+        if (legal.settlementId() != null) BinaryCodec.writeUuid(out, legal.settlementId().value());
+        out.writeInt(legal.status().ordinal());
+        out.writeDouble(legal.outstandingFine());
+        out.writeLong(legal.updatedDay());
+        out.writeInt(legal.openCrimeIds().size());
+        for (CrimeId id : legal.openCrimeIds()) {
+            BinaryCodec.writeUuid(out, id.value());
+        }
+    }
+
+    private static void readSchema5PlayerGameplay(DataInputStream in, CanonicalWorldState state) throws IOException {
+        PlayerReputationState rep = state.playerReputation();
+        int settRepPlayers = readCount(in, MAX_NESTED, "settlementRep.players");
+        for (int i = 0; i < settRepPlayers; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, MAX_NESTED, "settlementRep.entries");
+            for (int j = 0; j < n; j++) {
+                SettlementId sid = SettlementId.of(BinaryCodec.readUuid(in));
+                rep.settlementReputation().computeIfAbsent(player, p -> new HashMap<>())
+                        .put(sid, in.readDouble());
+            }
+        }
+        int standingPlayers = readCount(in, MAX_NESTED, "standing.players");
+        for (int i = 0; i < standingPlayers; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, MAX_NESTED, "standing.entries");
+            for (int j = 0; j < n; j++) {
+                KingdomId kid = KingdomId.of(BinaryCodec.readUuid(in));
+                FactionStanding standing = readEnum(in, FactionStanding.class);
+                rep.factionStanding().computeIfAbsent(player, p -> new HashMap<>()).put(kid, standing);
+            }
+        }
+        int ruled = readCount(in, MAX_NESTED, "ruledKingdoms");
+        for (int i = 0; i < ruled; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            KingdomId kid = KingdomId.of(BinaryCodec.readUuid(in));
+            rep.ruledKingdoms().put(player, kid);
+        }
+        int legalK = readCount(in, MAX_NESTED, "legal.kingdomPlayers");
+        for (int i = 0; i < legalK; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, MAX_NESTED, "legal.kingdomEntries");
+            for (int j = 0; j < n; j++) {
+                PlayerLegalRecord record = readLegalRecord(in);
+                if (record.kingdomId() != null) {
+                    rep.legalByKingdom().computeIfAbsent(player, p -> new HashMap<>())
+                            .put(record.kingdomId(), record);
+                }
+            }
+        }
+        int legalS = readCount(in, MAX_NESTED, "legal.settlementPlayers");
+        for (int i = 0; i < legalS; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, MAX_NESTED, "legal.settlementEntries");
+            for (int j = 0; j < n; j++) {
+                PlayerLegalRecord record = readLegalRecord(in);
+                if (record.settlementId() != null) {
+                    rep.legalBySettlement().computeIfAbsent(player, p -> new HashMap<>())
+                            .put(record.settlementId(), record);
+                }
+            }
+        }
+        var knowledge = rep.knowledge();
+        int knowS = readCount(in, MAX_NESTED, "knowledge.settlements");
+        for (int i = 0; i < knowS; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, MAX_NESTED, "knowledge.settlementEntries");
+            for (int j = 0; j < n; j++) {
+                SettlementId sid = SettlementId.of(BinaryCodec.readUuid(in));
+                var level = readEnum(in, PlayerKnowledgeState.KnowledgeLevel.class);
+                knowledge.settlements().computeIfAbsent(player, p -> new HashMap<>()).put(sid, level);
+            }
+        }
+        int knowK = readCount(in, MAX_NESTED, "knowledge.kingdoms");
+        for (int i = 0; i < knowK; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, MAX_NESTED, "knowledge.kingdomEntries");
+            for (int j = 0; j < n; j++) {
+                KingdomId kid = KingdomId.of(BinaryCodec.readUuid(in));
+                var level = readEnum(in, PlayerKnowledgeState.KnowledgeLevel.class);
+                knowledge.kingdoms().computeIfAbsent(player, p -> new HashMap<>()).put(kid, level);
+            }
+        }
+        int camps = readCount(in, MAX_NESTED, "knowledge.camps");
+        for (int i = 0; i < camps; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, MAX_NESTED, "knowledge.campIds");
+            for (int j = 0; j < n; j++) {
+                knowledge.knownCamps().computeIfAbsent(player, p -> new java.util.HashSet<>())
+                        .add(BinaryCodec.readUuid(in));
+            }
+        }
+        int markers = readCount(in, MAX_NESTED, "knowledge.tasks");
+        for (int i = 0; i < markers; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, MAX_NESTED, "knowledge.taskIds");
+            for (int j = 0; j < n; j++) {
+                knowledge.knownTaskMarkers().computeIfAbsent(player, p -> new java.util.HashSet<>())
+                        .add(BinaryCodec.readUuid(in));
+            }
+        }
+        int policies = readCount(in, MAX_NESTED, "policies.players");
+        for (int i = 0; i < policies; i++) {
+            PlayerId player = PlayerId.of(BinaryCodec.readUuid(in));
+            int n = readCount(in, 64, "policies.entries");
+            for (int j = 0; j < n; j++) {
+                String key = BinaryCodec.readString(in);
+                double value = in.readDouble();
+                rep.realmPolicies().computeIfAbsent(player, p -> new HashMap<>()).put(key, value);
+            }
+        }
+        int taskCount = readCount(in, CanonicalWorldState.MAX_EMERGENT_TASKS, "emergentTasks");
+        for (int i = 0; i < taskCount; i++) {
+            UUID id = BinaryCodec.readUuid(in);
+            EmergentTaskType type = readEnum(in, EmergentTaskType.class);
+            SettlementId sid = SettlementId.of(BinaryCodec.readUuid(in));
+            String title = BinaryCodec.readString(in);
+            String description = BinaryCodec.readString(in);
+            SimulationTime created = SimulationTime.ofTicks(in.readLong());
+            int tagN = readCount(in, 64, "task.tags");
+            Map<String, String> tags = new HashMap<>();
+            for (int j = 0; j < tagN; j++) {
+                tags.put(BinaryCodec.readString(in), BinaryCodec.readString(in));
+            }
+            EmergentTaskState task = new EmergentTaskState(id, type, sid, title, description, created, tags);
+            TaskStatus status = readEnum(in, TaskStatus.class);
+            PlayerId accepted = null;
+            SimulationTime acceptedAt = null;
+            if (in.readBoolean()) {
+                accepted = PlayerId.of(BinaryCodec.readUuid(in));
+            }
+            if (in.readBoolean()) {
+                acceptedAt = SimulationTime.ofTicks(in.readLong());
+            }
+            String progress = BinaryCodec.readString(in);
+            task.restoreAssignment(status, accepted, acceptedAt, progress);
+            state.emergentTasks().put(id, task);
+        }
+        int playerCrimes = readCount(in, CanonicalWorldState.MAX_CRIMES, "playerCrimes");
+        for (int i = 0; i < playerCrimes; i++) {
+            CrimeId cid = CrimeId.of(BinaryCodec.readUuid(in));
+            PlayerId pid = PlayerId.of(BinaryCodec.readUuid(in));
+            CrimeState crime = state.crimes().get(cid);
+            if (crime != null) {
+                crime.setPlayerOffender(pid);
+            }
+        }
+    }
+
+    private static PlayerLegalRecord readLegalRecord(DataInputStream in) throws IOException {
+        KingdomId kingdom = in.readBoolean() ? KingdomId.of(BinaryCodec.readUuid(in)) : null;
+        SettlementId settlement = in.readBoolean() ? SettlementId.of(BinaryCodec.readUuid(in)) : null;
+        PlayerLegalRecord record = new PlayerLegalRecord(kingdom, settlement);
+        record.setStatus(readEnum(in, PlayerLegalStatus.class));
+        record.setOutstandingFine(in.readDouble());
+        record.setUpdatedDay(in.readLong());
+        int n = readCount(in, 64, "legal.crimes");
+        for (int i = 0; i < n; i++) {
+            record.openCrimeIds().add(CrimeId.of(BinaryCodec.readUuid(in)));
+        }
+        return record;
     }
 
     private static void writeHistory(DataOutputStream out, CanonicalWorldState state) throws IOException {

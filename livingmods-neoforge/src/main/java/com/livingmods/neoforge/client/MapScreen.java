@@ -91,10 +91,18 @@ public final class MapScreen extends Screen {
             graphics.drawString(font, hoverText, 20, height - 40, 0xFFE6B3);
         }
         if (!selectedSettlement.isEmpty() || !selectedKingdom.isEmpty()) {
+            // Contextual detail panel (not omniscient — shows selection + known labels only).
+            int panelTop = height - 78;
+            graphics.fill(16, panelTop, width - 16, height - 16, 0xC0181820);
+            graphics.drawString(font, "Selection", 24, panelTop + 6, 0xF0E6D2);
             graphics.drawString(font,
-                    (selectedSettlement.isEmpty() ? "" : selectedSettlement + "  ")
-                            + (selectedKingdom.isEmpty() ? "" : selectedKingdom),
-                    20, height - 28, 0xB8D4FF);
+                    selectedSettlement.isEmpty() ? "—" : selectedSettlement,
+                    24, panelTop + 20, 0xB8D4FF);
+            graphics.drawString(font,
+                    selectedKingdom.isEmpty() ? "—" : ("Kingdom: " + selectedKingdom),
+                    24, panelTop + 34, 0xA0D0A0);
+            graphics.drawString(font, "Visit / converse for deeper intel. Rulers see more of their realm.",
+                    24, panelTop + 48, 0x888888);
         }
         super.render(graphics, mouseX, mouseY, partialTick);
     }
@@ -260,8 +268,12 @@ public final class MapScreen extends Screen {
                 int px = worldToScreenX(data, s.x(), mapLeft, mapW);
                 int pz = worldToScreenZ(data, s.z(), mapTop, mapH);
                 if (Math.abs(mouseX - px) <= 6 && Math.abs(mouseY - pz) <= 6) {
-                    selectedSettlement = s.name() + " (" + s.tier() + ")";
+                    selectedSettlement = s.name() + " (" + s.tier() + ") @" + s.x() + "," + s.z()
+                            + (s.capital() ? " [capital]" : "");
                     selectedKingdom = s.kingdom().isEmpty() ? "Independent" : s.kingdom();
+                    // Ask server to mark discovery when selecting a nearby settlement.
+                    PacketDistributor.sendToServer(new com.livingmods.neoforge.network.CitizenInteractionPayloads.RealmAction(
+                            "DISCOVER", "", "", s.x(), s.z()));
                     return true;
                 }
             }
