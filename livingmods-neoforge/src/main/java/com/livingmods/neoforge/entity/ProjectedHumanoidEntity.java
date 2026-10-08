@@ -138,20 +138,40 @@ public class ProjectedHumanoidEntity extends PathfinderMob {
         getPersistentData().putString("livingmods_cargo", this.cargoMeta);
     }
 
+    /**
+     * Geopolitical hostility is NOT "different faction ID = enemy".
+     * Bandit rules are local; soldier-vs-soldier uses cached war/diplomacy disposition.
+     */
     public boolean isHostileToward(ProjectedHumanoidEntity other) {
         Kind self = kind();
         Kind o = other.kind();
         if (self == Kind.BANDIT) {
             return o == Kind.SOLDIER || o == Kind.GUARD || o == Kind.CARAVAN;
         }
-        if (self == Kind.SOLDIER || self == Kind.GUARD) {
-            if (o == Kind.BANDIT) return true;
-            if (o == Kind.SOLDIER && factionId != null && other.factionId != null
-                    && !factionId.equals(other.factionId)) {
-                return true;
-            }
+        if (o == Kind.BANDIT && (self == Kind.SOLDIER || self == Kind.GUARD)) {
+            return true;
+        }
+        if (self == Kind.SOLDIER && o == Kind.SOLDIER
+                && factionId != null && other.factionId != null
+                && !factionId.equals(other.factionId)) {
+            return com.livingmods.neoforge.gameplay.FactionDispositionCache.get()
+                    .militaryHostile(factionId, other.factionId);
+        }
+        if (self == Kind.GUARD && o == Kind.SOLDIER
+                && factionId != null && other.factionId != null
+                && !factionId.equals(other.factionId)) {
+            return com.livingmods.neoforge.gameplay.FactionDispositionCache.get()
+                    .militaryHostile(factionId, other.factionId);
         }
         return false;
+    }
+
+    public void setHostileToPlayer(boolean hostile) {
+        this.hostileToPlayer = hostile;
+    }
+
+    public boolean hostileToPlayer() {
+        return hostileToPlayer;
     }
 
     public Kind kind() {

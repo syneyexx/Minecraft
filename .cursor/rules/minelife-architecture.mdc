@@ -20,7 +20,9 @@ Source code is authoritative if this file drifts.
 | Citizen / army / caravan / bandit / guard entities | NeoForge binders (interest LOD) | `*ProjectionBinder`, `ProjectedHumanoidEntity` |
 | Physical intent realization | `PhysicalReconciliationEngine` | NeoForge |
 | Live map/dashboard cache | `LiveStateCache` (async) | NeoForge — never block server thread on IPC |
-| Verified Minecraft → canonical | `PhysicalInteractionBridge` → `PhysicalOutcomeApplier` | NeoForge → sidecar |
+| Verified Minecraft → canonical physical | `PhysicalInteractionBridge` → `PhysicalOutcomeApplier` | NeoForge → sidecar |
+| Verified Minecraft → canonical player commands | `PlayerGameplayBridge` → `PlayerGameplayService` | NeoForge → sidecar |
+| Geopolitical hostility | `FactionDispositionResolver` + `FactionDispositionCache` | simulation + NeoForge cache |
 
 ## Central live loop
 
@@ -32,6 +34,26 @@ CanonicalWorldState → PhysicalIntent → PhysicalReconciliation → Minecraft
 
 **Never write live geometry back into WorldPlan / plan.bin.**
 
+## Player agency loop (M4)
+
+```
+Player intent → Minecraft client UI
+→ NeoForge server validation (distance, inventory, session)
+→ typed PlayerActionRequest (protocol v4)
+→ PlayerGameplayService (canonical)
+→ PlayerActionResponse + history/rumors/legal/tasks
+→ NeoForge UI / notifications / disposition cache
+```
+
+**Never:** client button → directly mutate canonical state.
+
+### Player command vs physical outcome
+
+| Path | Examples | Bridge |
+|------|----------|--------|
+| Physical outcomes | entity killed, camp cleared, caravan damaged, structure completed, task item delivery | `PhysicalInteractionBridge` |
+| Player commands | talk, buy/sell, accept task, join faction, found realm, policies, diplomacy, fines | `PlayerGameplayBridge` |
+
 ## Key classes
 
 ### Simulation
@@ -40,27 +62,37 @@ CanonicalWorldState → PhysicalIntent → PhysicalReconciliation → Minecraft
 - `BanditryEngine` — scored camp sites + REMOVE_BANDIT_CAMP lifecycle
 - `PhysicalIntent` / `PhysicalIntentStatus` / `PhysicalIntentType` (category helpers)
 - `DynamicPhysicalState` — intents, structures, geometry, spatial query, dependency eval
-- `PhysicalOutcomeApplier` — typed outcome application
-- `PlayerSystemsEngine.foundKingdom` — founding plan + persisted culture key
+- `PhysicalOutcomeApplier` — typed outcome application (+ player crime on civilian/guard kill)
+- `PlayerSystemsEngine` — reputation, membership, foundKingdom, policies
+- `PlayerGameplayService` — typed player-action router (dialogue, trade, tasks, realm, diplomacy, justice)
+- `FactionDispositionResolver` — war/treaty/reputation disposition (not faction-ID inequality)
+- `EmergentTaskEngine` — problem→task; completion requires evidence
+- `DialogueEngine` — no-LLM, knowledge-bounded
+- `CrimeJusticeEngine` — NPC crime; player crimes via `PlayerGameplayService.recordPlayerCrime`
 
 ### NeoForge
 - `PhysicalReconciliationEngine` — exhaustive intent switch, slice resume, RealizationResult
 - `SafeChunkWriter` — dynamicMode, protected collision counting, LivingMods-only damage
 - `LiveStateCache` — async world summary + terrain tile + dynamic geometry overlay
+- `FactionDispositionCache` — async kingdom/player disposition for AI (no IPC in tick predicates)
+- `PlayerInteractionSessions` — distance-bounded interaction sessions
+- `PlayerGameplayBridge` — citizen/market/task/realm command bridge
+- `ResourceItemMapping` — single ResourceType↔Item table; currency = GOLD_INGOT ↔ GOLD
 - `ArmyProjectionBinder` / `CaravanProjectionBinder` / `BanditProjectionBinder` / `GuardProjectionBinder`
-- `ProjectedHumanoidEntity` — shared military/trade/bandit/guard projection entity
+- `ProjectedHumanoidEntity` — hostility from disposition cache + bandit rules
 - `PhysicalInteractionBridge` — inventory-verified task delivery; real player UUIDs only
+- Client screens: `CitizenDialogueScreen`, `MarketScreen`, `TaskJournalScreen`, `RealmManagementScreen`, playerized `DashboardScreen` / `MapScreen`
 
 ### Protocol / versions (`LivingModsVersions`)
-- `PROTOCOL_VERSION = 3` (`PhysicalIntentPayload` + `ConstructionQuery`)
-- `CANONICAL_SAVE_SCHEMA = 4` (DynamicPhysicalState; reads schema 3)
+- `PROTOCOL_VERSION = 4` (`PlayerActionRequest`/`Response` + retained physical payloads)
+- `CANONICAL_SAVE_SCHEMA = 5` (full player reputation/legal/knowledge/policies, emergent tasks, player crime offenders; reads ≥3)
 - `PHYSICAL_CONTENT_REVISION = 2` (initial chunk materialization only)
 - `WORLDGEN_VERSION = 2`
 
 ## Persistence artifacts
 
 1. `plan.bin` — immutable WorldPlan
-2. `canonical.bin` schema 4 — CanonicalWorldState including DynamicPhysicalState
+2. `canonical.bin` schema 5 — CanonicalWorldState including DynamicPhysicalState + player gameplay
 3. Chunk attachments — initial PHYSICAL_CONTENT_REVISION + plan hash
 4. `LivingModsStructureIndex` SavedData — structure registry
 
@@ -71,6 +103,14 @@ Production paths must use real Minecraft player UUID. `PlayerSystemsEngine.demoP
 ## Culture rule
 
 Physical intents carry CultureRegistry keys (`avalon`, `nordheim`, …). Kingdom UUID strings are never culture keys (`CultureKeys.sanitize` / `CultureResolver`).
+
+## Currency rule
+
+Player market trades use Minecraft `GOLD_INGOT` as the physical payment item, mapped to canonical `ResourceType.GOLD`. Do not invent a parallel emerald economy.
+
+## Hostility rule
+
+`ProjectedHumanoidEntity.isHostileToward` must not treat different faction IDs as automatic wartime enemies. Use `FactionDispositionCache` / `FactionDispositionResolver` (active wars, treaties, bandit identity, player legal status).
 
 ## Projection Y rule
 

@@ -10,6 +10,7 @@ public final class LivingModsKeyMappings {
     public static final String CATEGORY = "key.categories.livingmods";
     public static KeyMapping OPEN_MAP;
     public static KeyMapping OPEN_DASHBOARD;
+    public static KeyMapping OPEN_JOURNAL;
 
     private LivingModsKeyMappings() {}
 
@@ -26,7 +27,14 @@ public final class LivingModsKeyMappings {
                 GLFW.GLFW_KEY_F12,
                 CATEGORY
         );
+        OPEN_JOURNAL = new KeyMapping(
+                "key.livingmods.journal",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_J,
+                CATEGORY
+        );
         event.register(OPEN_MAP);
         event.register(OPEN_DASHBOARD);
+        event.register(OPEN_JOURNAL);
     }
 }

@@ -95,25 +95,13 @@ public final class PhysicalInteractionBridge {
         }
     }
 
+    /**
+     * Citizen / projected entity interaction is handled by {@code PlayerGameplayBridge}
+     * (typed OPEN_INTERACTION → dialogue UI). Physical outcomes remain this class's concern.
+     */
     @SubscribeEvent
     public static void onInteractEntity(PlayerInteractEvent.EntityInteract event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        if (!(event.getTarget() instanceof CitizenEntity citizen)) return;
-        if (citizen.citizenIdOrNull() == null) return;
-        // Dialogue hook — reputation-neutral; no arbitrary standing award for talk.
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put("action", "CITIZEN_TALKED");
-        fields.put("playerId", player.getUUID().toString());
-        fields.put("citizenId", citizen.citizenIdOrNull().toString());
-        fields.put("x", String.valueOf((int) citizen.getX()));
-        fields.put("z", String.valueOf((int) citizen.getZ()));
-        SidecarClient client = WorldSessionLifecycle.activeClient();
-        if (client == null || !client.isReady()) return;
-        try {
-            client.sendAsync(MessageType.PLAYER_ACTION, com.livingmods.protocol.PayloadIo.encodeStrings(fields));
-        } catch (Exception e) {
-            LivingModsMod.LOG.debug("Citizen talk bridge failed: {}", e.toString());
-        }
+        // Intentionally empty — PlayerGameplayBridge owns player command interactions.
     }
 
     /**
@@ -174,15 +162,7 @@ public final class PhysicalInteractionBridge {
     }
 
     private static net.minecraft.world.item.Item resolveResourceItem(String resource) {
-        if (resource == null) return null;
-        return switch (resource.toUpperCase(java.util.Locale.ROOT)) {
-            case "GRAIN", "WHEAT", "FOOD" -> net.minecraft.world.item.Items.WHEAT;
-            case "WOOD", "LOG" -> net.minecraft.world.item.Items.OAK_LOG;
-            case "STONE" -> net.minecraft.world.item.Items.COBBLESTONE;
-            case "IRON" -> net.minecraft.world.item.Items.IRON_INGOT;
-            case "TOOLS" -> net.minecraft.world.item.Items.IRON_PICKAXE;
-            default -> null;
-        };
+        return com.livingmods.neoforge.gameplay.ResourceItemMapping.itemFor(resource).orElse(null);
     }
 
     private static void report(

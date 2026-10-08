@@ -222,6 +222,8 @@ public final class WorldSessionLifecycle {
         GuardProjectionBinder.get().clear();
         PhysicalReconciliationEngine.get().clear();
         LiveStateCache.get().clear();
+        com.livingmods.neoforge.gameplay.FactionDispositionCache.get().clear();
+        com.livingmods.neoforge.gameplay.PlayerInteractionSessions.get().clear();
         timeSyncBridge.reset();
         activeWorldId = null;
         activeIdentity = null;

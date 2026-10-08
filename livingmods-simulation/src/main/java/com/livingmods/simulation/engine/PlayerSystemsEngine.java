@@ -152,6 +152,18 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
             return new FoundationResult(false,
                     "Capital needs at least " + req.minSettlementHousing() + " housing units.", null);
         }
+        if (req.requireTrustedStanding() && capital.ownerKingdom().isPresent()) {
+            FactionStanding standing = state.playerReputation().standing(player, capital.ownerKingdom().get());
+            if (!standing.atLeast(FactionStanding.TRUSTED)) {
+                return new FoundationResult(false, "Trusted standing required to claim this settlement.", null);
+            }
+        }
+        if (req.minReputation() > 0 && capital.ownerKingdom().isPresent()) {
+            double rep = state.playerReputation().reputation(player, capital.ownerKingdom().get());
+            if (rep < req.minReputation() / 100.0) {
+                return new FoundationResult(false, "Reputation too low to found here.", null);
+            }
+        }
 
         KingdomId kingdomId = KingdomId.deterministic(state.seed(), state.kingdoms().size() + 500);
         CitizenId stewardId = ensureSteward(state, capital, cultureId, ctx);

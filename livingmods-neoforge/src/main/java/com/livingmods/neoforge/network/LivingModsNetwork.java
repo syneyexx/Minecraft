@@ -35,6 +35,49 @@ public final class LivingModsNetwork {
                 LivingModsNetwork::handleMapDataClient);
         registrar.playToClient(DashboardDataPayload.TYPE, DashboardDataPayload.STREAM_CODEC,
                 LivingModsNetwork::handleDashboardClient);
+
+        registrar.playToClient(CitizenInteractionPayloads.OpenScreen.TYPE,
+                CitizenInteractionPayloads.OpenScreen.STREAM_CODEC,
+                (payload, ctx) -> {
+                    if (!FMLEnvironment.dist.isClient()) return;
+                    ctx.enqueueWork(() -> ClientNetworkBridge.openCitizen(payload));
+                });
+        registrar.playToServer(CitizenInteractionPayloads.DialogueChoice.TYPE,
+                CitizenInteractionPayloads.DialogueChoice.STREAM_CODEC,
+                CitizenInteractionPayloads.DialogueChoice::handle);
+        registrar.playToClient(CitizenInteractionPayloads.DialogueUpdate.TYPE,
+                CitizenInteractionPayloads.DialogueUpdate.STREAM_CODEC,
+                (payload, ctx) -> {
+                    if (!FMLEnvironment.dist.isClient()) return;
+                    ctx.enqueueWork(() -> ClientNetworkBridge.updateDialogue(payload));
+                });
+        registrar.playToClient(CitizenInteractionPayloads.MarketScreenData.TYPE,
+                CitizenInteractionPayloads.MarketScreenData.STREAM_CODEC,
+                (payload, ctx) -> {
+                    if (!FMLEnvironment.dist.isClient()) return;
+                    ctx.enqueueWork(() -> ClientNetworkBridge.openMarket(payload));
+                });
+        registrar.playToServer(CitizenInteractionPayloads.MarketTransaction.TYPE,
+                CitizenInteractionPayloads.MarketTransaction.STREAM_CODEC,
+                CitizenInteractionPayloads.MarketTransaction::handle);
+        registrar.playToClient(CitizenInteractionPayloads.TaskJournalUpdate.TYPE,
+                CitizenInteractionPayloads.TaskJournalUpdate.STREAM_CODEC,
+                (payload, ctx) -> {
+                    if (!FMLEnvironment.dist.isClient()) return;
+                    ctx.enqueueWork(() -> ClientNetworkBridge.mergeTasks(payload));
+                });
+        registrar.playToServer(CitizenInteractionPayloads.TaskAction.TYPE,
+                CitizenInteractionPayloads.TaskAction.STREAM_CODEC,
+                CitizenInteractionPayloads.TaskAction::handle);
+        registrar.playToClient(CitizenInteractionPayloads.RealmPanel.TYPE,
+                CitizenInteractionPayloads.RealmPanel.STREAM_CODEC,
+                (payload, ctx) -> {
+                    if (!FMLEnvironment.dist.isClient()) return;
+                    ctx.enqueueWork(() -> ClientNetworkBridge.openRealm(payload));
+                });
+        registrar.playToServer(CitizenInteractionPayloads.RealmAction.TYPE,
+                CitizenInteractionPayloads.RealmAction.STREAM_CODEC,
+                CitizenInteractionPayloads.RealmAction::handle);
     }
 
     private static void handleMapRequest(MapDataRequestPayload request, IPayloadContext context) {
