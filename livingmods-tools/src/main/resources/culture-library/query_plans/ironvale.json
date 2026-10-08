@@ -1,0 +1,54 @@
+{
+  "culture": "ironvale",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "dwarven house",
+        "dwarven village"
+      ]
+    },
+    "SMITHY": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "dwarven forge",
+        "blacksmith",
+        "forge hall"
+      ]
+    },
+    "MINE_ENTRANCE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "dwarven mine",
+        "mine entrance",
+        "dwarven quarry"
+      ]
+    },
+    "TAVERN": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "dwarven tavern"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "dwarven fortress",
+        "mountain fortress"
+      ]
+    },
+    "MANOR": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "dwarven hall",
+        "guild hall"
+      ]
+    }
+  }
+}

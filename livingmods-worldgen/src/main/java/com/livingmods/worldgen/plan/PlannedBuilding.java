@@ -12,6 +12,7 @@ import java.util.List;
 
 /**
  * Planned building with architecture-grammar metadata preserved for physical materialization.
+ * {@code assetId} is empty for procedural fallback (old plans / missing catalog entries).
  */
 public record PlannedBuilding(
         StructureId id,
@@ -35,7 +36,9 @@ public record PlannedBuilding(
         String entranceFacing,
         int capacity,
         int workSlots,
-        int residentialSlots
+        int residentialSlots,
+        String assetId,
+        String archetype
 ) {
     public PlannedBuilding {
         roomTags = List.copyOf(roomTags);
@@ -48,5 +51,41 @@ public record PlannedBuilding(
         capacity = Math.max(0, capacity);
         workSlots = Math.max(0, workSlots);
         residentialSlots = Math.max(0, residentialSlots);
+        assetId = assetId == null ? "" : assetId;
+        archetype = archetype == null ? "" : archetype;
+    }
+
+    /** Back-compat constructor for pre-asset plans / callers. */
+    public PlannedBuilding(
+            StructureId id,
+            LotId lotId,
+            SettlementId settlementId,
+            DistrictId districtId,
+            BuildingRole role,
+            WealthClass wealthClass,
+            BoundingBox2 footprint,
+            int rotationY,
+            int foundationY,
+            String cultureKey,
+            String paletteKey,
+            int seed,
+            int floorCount,
+            boolean hasBasement,
+            boolean hasAttic,
+            List<String> roomTags,
+            List<String> wallSegments,
+            List<String> windowPositions,
+            String entranceFacing,
+            int capacity,
+            int workSlots,
+            int residentialSlots
+    ) {
+        this(id, lotId, settlementId, districtId, role, wealthClass, footprint, rotationY, foundationY,
+                cultureKey, paletteKey, seed, floorCount, hasBasement, hasAttic, roomTags, wallSegments,
+                windowPositions, entranceFacing, capacity, workSlots, residentialSlots, "", "");
+    }
+
+    public boolean usesImportedAsset() {
+        return assetId != null && !assetId.isBlank();
     }
 }

@@ -1,0 +1,17 @@
+{
+  "cultures": {
+    "nordheim": {"total":93,"status":"GOOD","residential":34,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":20,"infrastructure":8,"authored":93,"exact":0,"sanitized":0,"smallestBlocks":479,"largestBlocks":1890},
+    "avalon": {"total":90,"status":"GOOD","residential":31,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":20,"infrastructure":8,"authored":90,"exact":0,"sanitized":0,"smallestBlocks":137,"largestBlocks":4055},
+    "sahari": {"total":95,"status":"GOOD","residential":34,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":22,"infrastructure":8,"authored":95,"exact":0,"sanitized":0,"smallestBlocks":122,"largestBlocks":2089},
+    "yamato": {"total":92,"status":"GOOD","residential":33,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":20,"infrastructure":8,"authored":92,"exact":0,"sanitized":0,"smallestBlocks":144,"largestBlocks":2055},
+    "helvetia": {"total":92,"status":"GOOD","residential":31,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":22,"infrastructure":8,"authored":92,"exact":0,"sanitized":0,"smallestBlocks":137,"largestBlocks":4055},
+    "amaru": {"total":93,"status":"GOOD","residential":34,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":20,"infrastructure":8,"authored":93,"exact":0,"sanitized":0,"smallestBlocks":122,"largestBlocks":1976},
+    "varangian": {"total":92,"status":"GOOD","residential":31,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":22,"infrastructure":8,"authored":92,"exact":0,"sanitized":0,"smallestBlocks":293,"largestBlocks":4055},
+    "celtara": {"total":90,"status":"GOOD","residential":31,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":20,"infrastructure":8,"authored":90,"exact":0,"sanitized":0,"smallestBlocks":122,"largestBlocks":1976},
+    "qin": {"total":93,"status":"GOOD","residential":34,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":20,"infrastructure":8,"authored":93,"exact":0,"sanitized":0,"smallestBlocks":122,"largestBlocks":1976},
+    "atlantea": {"total":94,"status":"GOOD","residential":33,"civic":6,"religious":3,"military":17,"agriculture":5,"commerce":20,"infrastructure":8,"authored":94,"exact":0,"sanitized":0,"smallestBlocks":122,"largestBlocks":2089},
+    "steppeborn": {"total":93,"status":"GOOD","residential":34,"civic":6,"religious":3,"military":15,"agriculture":5,"commerce":20,"infrastructure":8,"authored":93,"exact":0,"sanitized":0,"smallestBlocks":122,"largestBlocks":1976},
+    "ironvale": {"total":96,"status":"GOOD","residential":31,"civic":6,"religious":3,"military":15,"agriculture":8,"commerce":23,"infrastructure":8,"authored":96,"exact":0,"sanitized":0,"smallestBlocks":122,"largestBlocks":1976},
+    "wizard_trees": {"total":51,"status":"PARTIAL","residential":16,"civic":7,"religious":3,"military":10,"agriculture":0,"commerce":13,"infrastructure":2,"authored":51,"exact":0,"sanitized":0,"smallestBlocks":122,"largestBlocks":1976}
+  }
+}

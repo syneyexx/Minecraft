@@ -13,7 +13,7 @@ Legend for notes: write `pass` / `fail` / `blocked` + short evidence (seed, coor
 - [ ] `./gradlew buildAll -x test` completes
 - [ ] `./gradlew :livingmods-sidecar:sidecarJar` produces embeddable jar
 - [ ] NeoForge mod loads on 1.21.1 / loader 21.1.x without crash on title screen
-- [ ] `LivingModsVersions` axes match `gradle.properties` documentation (protocol 4, worldgen 2, save schema 5, physical revision 2, mod 0.1.0)
+- [ ] `LivingModsVersions` axes match `gradle.properties` documentation (protocol 4, worldgen 3, save schema 6, physical revision 2, structure catalog 1, mod 0.1.0)
 
 ## B. World creates
 
@@ -169,7 +169,7 @@ Legend for notes: write `pass` / `fail` / `blocked` + short evidence (seed, coor
 - [ ] War allegiance / disposition updates for soldiers
 - [ ] Non-omniscient map (unknown settlements not sent; click does not discover remote)
 - [ ] Nearby observation discovers settlements from real player position
-- [ ] Save/reload of player reputation / legal / knowledge / policies / tasks (schema 5)
+- [ ] Save/reload of player reputation / legal / knowledge / policies / tasks / structure assetId (schema 6)
 - [ ] Dashboard never calls sidecar from the client
 
 ## Q. Release gate (all must be true)

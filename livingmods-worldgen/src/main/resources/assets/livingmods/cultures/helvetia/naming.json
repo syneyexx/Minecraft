@@ -1,0 +1,67 @@
+{
+  "key": "helvetia",
+  "maleNames": [
+    "Hans", "Felix", "Lukas", "Jonas", "Matthias", "Stefan", "Niklas", "Tobias", 
+    "Adrian", "Leo", "Anton", "Bruno", "Conrad", "Dietrich", "Emil", "Fritz", 
+    "Gustav", "Heinz", "Kurt", "Otto", "Paul", "Rolf", "Sepp", "Ueli", 
+    "Walter", "Yves", "Markus", "Beat", "Reto", "Pirmin", "Hanas", "Felnton", 
+    "Lukanz", "Joter", "Matelix", "Niitz", "Tobsepp", "Adriin", "Lelas", "Antrich", 
+    "Brunul", "Coeat", "Diehias", "Emilno", "Frurt", "Gusyves", "Heinas", "Kuleo", 
+    "Ottstav", "Paulli", "Roans", "Sepbias", "Ueliil", "Waolf", "Yvereto", "Markan", 
+    "Berad", "Retotto", "Pirmus"
+  ],
+  "femaleNames": [
+    "Greta", "Helena", "Clara", "Anna", "Sophie", "Emma", "Lina", "Mia", 
+    "Elsa", "Nina", "Adele", "Brigitte", "Doris", "Erika", "Franziska", "Gabi", 
+    "Heidi", "Ilse", "Jolanda", "Karin", "Liselotte", "Monika", "Nadja", "Petra", 
+    "Regula", "Silvia", "Trudi", "Ursula", "Vreni", "Yvonne", "Grnna", "Heldele", 
+    "Clarse", "Anula", "Soplena", "Emmasa", "Liabi", "Miaadja", "Elsane", "Niina", 
+    "Aderika", "Brigte", "Doula", "Eriphie", "Frante", "Ganda", "Heilvia", "Ilsera", 
+    "Joina", "Kareidi", "Lisera", "Moeta", "Nadmia", "Petrka", "Reika", "Silreni", 
+    "Trudma", "Urris", "Vrearin", "Yvondi"
+  ],
+  "familyNames": [
+    "Bergmann", "Steiner", "Vogel", "Keller", "Fischer", "Weber", "Meier", "Albrecht", 
+    "Baumann", "Gerber", "Hofmann", "Kunz", "Lehmann", "Moser", "Schmid", "Ziegler", 
+    "Ambuehl", "Beler", "Stemann", "Vogenn", "Kecht", "Fishmid", "Webeer", "Meunz", 
+    "Albiner", "Baumnn", "Geler", "Hofeber", "Kunznn", "Legel", "Mosrber", "Schmhl", 
+    "Ziier", "Amboser", "Berger", "Stann", "Vogmann", "Kellht", "Fimid", "Webcher", 
+    "Meienz", "Alner", "Hober", "Kunmann", "Lehmel", "Mober", "Schuehl", "Zieger", 
+    "Amser", "Berller", "Steinn", "Voann", "Kelecht", "Fiscid", "Weher", "Meikunz", 
+    "Albrer", "Baann", "Gergler", "Hofmer", "Kuann", "Lehogel", "Moseer", "Scehl", 
+    "Zieeier", "Ambuer"
+  ],
+  "settlementPrefixes": [
+    "Alp", "High", "Stone", "Clear", "Frost", "Pine", "Old", "New", 
+    "Great", "Little", "North", "South", "East", "West", "Upper", "Lower", 
+    "Far", "Near", "Bright", "Dark", "White", "Black", "Red", "Gold", 
+    "Silver", "Alear", "Higorth", "Stonar", "Clver", "Froold", "Pinest", "Olite", 
+    "Newtone", "Greale", "Lifar", "Norgold", "Soutne", "Eaast", "Wesdark", "Uppegh", 
+    "Loeat", "Farower", "Neared", "Brost", "Darouth", "Whitht", "Blalp", "Rednew", 
+    "Golder", "Siack"
+  ],
+  "settlementSuffixes": [
+    "berg", "thal", "bruck", "dorf", "wald", "heim", "ton", "ford", 
+    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
+    "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", 
+    "bay", "reach", "Beorf", "Thaield", "Bructe", "Dobay", "Walheim", "Heimok", 
+    "Toead", "Forberg", "Wickrd", "Haoor", "Fiefell", "Woodck", "Brven", "Valport", 
+    "Moorff", "Riald", "Porwood", "Gatell", "Haach", "Steton", "Merele", "Feere", 
+    "Marthal", "Clifck"
+  ],
+  "rulerTitles": [
+    "Consul", "Chancellor", "Burgermeister", "Lord", "Lady", "High", "Grand", "Chief", 
+    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
+    "Duchess", "Marshal", "Speaker", "Keeper"
+  ],
+  "dynastyPrefixes": [
+    "House", "League of", "Canton of", "Clan", "Line of", "Blood of", "Order of", "Circle of", 
+    "Banner of", "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", 
+    "Shield of", "Flame of", "Star of", "Stone of"
+  ],
+  "kingdomPatterns": [
+    "Republic of {prefix}{suffix}", "Canton {family}", "{title}'s Alpine League", "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", 
+    "League of {prefix}", "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", 
+    "Confederation of {suffix}", "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}"
+  ]
+}

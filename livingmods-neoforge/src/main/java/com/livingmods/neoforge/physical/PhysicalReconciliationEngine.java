@@ -420,6 +420,8 @@ public final class PhysicalReconciliationEngine {
         int workSlots = role == BuildingRole.WORKSHOP || role == BuildingRole.WAREHOUSE
                 || role == BuildingRole.SMITHY || role == BuildingRole.SHOP ? 4 : 0;
         String culture = CultureKeys.sanitize(work.cultureKey());
+        String assetId = work.meta().getOrDefault("assetId", "");
+        String archetype = work.meta().getOrDefault("archetype", "");
         PlannedBuilding building = new PlannedBuilding(
                 structureId,
                 LotId.deterministic(structureId.value().getMostSignificantBits(), 1),
@@ -442,7 +444,9 @@ public final class PhysicalReconciliationEngine {
                 facing,
                 Math.max(residential, workSlots),
                 workSlots,
-                residential
+                residential,
+                assetId,
+                archetype
         );
         PlannedSettlement settlement = findSettlement(sid);
         int before = writer.placedCount();

@@ -85,9 +85,10 @@ Player intent → Minecraft client UI
 
 ### Protocol / versions (`LivingModsVersions`)
 - `PROTOCOL_VERSION = 4` (`PlayerActionRequest`/`Response` + M5 append-only action types; retained physical payloads)
-- `CANONICAL_SAVE_SCHEMA = 5` (full player reputation/legal/knowledge/policies, emergent tasks, player crime offenders; reads ≥3)
+- `CANONICAL_SAVE_SCHEMA = 6` (DynamicStructureRecord.assetId; schema 5 player gameplay retained; reads ≥3)
 - `PHYSICAL_CONTENT_REVISION = 2` (initial chunk materialization only)
-- `WORLDGEN_VERSION = 2`
+- `WORLDGEN_VERSION = 3` (PlannedBuilding.assetId)
+- `STRUCTURE_CATALOG_REVISION = 1` (packaged MLS catalog content)
 
 ### M5 authority notes
 - Client screens never hold `SidecarClient` or issue `MessageType` requests
@@ -100,7 +101,7 @@ Player intent → Minecraft client UI
 ## Persistence artifacts
 
 1. `plan.bin` — immutable WorldPlan
-2. `canonical.bin` schema 5 — CanonicalWorldState including DynamicPhysicalState + player gameplay
+2. `canonical.bin` schema 6 — CanonicalWorldState including DynamicPhysicalState + player gameplay + structure assetId
 3. Chunk attachments — initial PHYSICAL_CONTENT_REVISION + plan hash
 4. `LivingModsStructureIndex` SavedData — structure registry
 

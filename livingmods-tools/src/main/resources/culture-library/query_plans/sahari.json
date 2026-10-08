@@ -1,0 +1,65 @@
+{
+  "culture": "sahari",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "desert house",
+        "sandstone house",
+        "arabian house"
+      ]
+    },
+    "MARKET_HALL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "desert market",
+        "bazaar"
+      ]
+    },
+    "WAREHOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "caravanserai"
+      ]
+    },
+    "PALACE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "desert palace"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "desert temple",
+        "mosque architecture"
+      ]
+    },
+    "GATEHOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "desert gate"
+      ]
+    },
+    "TOWER": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "desert tower"
+      ]
+    },
+    "WALL_SEGMENT": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "sandstone walls"
+      ]
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "key": "avalon",
+  "maleNames": [
+    "Arthur", "Gawain", "Percival", "Lancelot", "Tristan", "Bedivere", "Gareth", "Kay", 
+    "Owen", "Edmund", "Aldric", "Cedric", "Roland", "Godfrey", "Hugh", "Walter", 
+    "Miles", "Geoffrey", "Raymond", "Simon", "Philip", "Henry", "Richard", "Edward", 
+    "Thomas", "William", "Robert", "Stephen", "Gilbert", "Baldwin", "Arlot", "Gawdric", 
+    "Percey", "Lamas", "Triwain", "Bedien", "Gater", "Kayhard", "Owenin", "Edeth", 
+    "Aldfrey", "Cedrip", "Rohen", "Godstan", "Hughic", "Waond", "Milliam", "Geofal", 
+    "Raund", "Similes", "Philrd", "Hehur", "Rickay", "Edwagh", "Thnry", "Wilbert", 
+    "Robere", "Stand", "Gilimon", "Baldrt"
+  ],
+  "femaleNames": [
+    "Guinevere", "Elaine", "Isolde", "Morgana", "Igraine", "Lynette", "Rowena", "Eleanor", 
+    "Cecily", "Mab", "Alys", "Beatrice", "Catherine", "Diane", "Eve", "Frances", 
+    "Grace", "Helen", "Isabel", "Joan", "Katherine", "Lydia", "Margaret", "Nora", 
+    "Olive", "Patience", "Rose", "Sybil", "Ursula", "Vivian", "Guana", "Elaalys", 
+    "Isolen", "Moive", "Lynely", "Roces", "Elearet", "Cecian", "Maena", "Alyiane", 
+    "Beatne", "Cabil", "Diaaine", "Evece", "Frbel", "Graence", "Helede", "Ismab", 
+    "Joarace", "Kathra", "Lyere", "Maranor", "Norave", "Oldia", "Patsula", "Rosete", 
+    "Syine", "Ursjoan", "Vivise"
+  ],
+  "familyNames": [
+    "Pendragon", "Loxley", "Ashwood", "Fairchild", "Greenhill", "Whitford", "Rosevale", "Blackwood", 
+    "Hartley", "Kingsley", "Northcote", "Redgrave", "Thornfield", "Westbrook", "Ashford", "Bellemont", 
+    "Crowley", "Peild", "Loxcote", "Ashwon", "Faood", "Greford", "Whitll", "Roave", 
+    "Blaxley", "Hartey", "Kiont", "Norford", "Redgld", "Thood", "Wessley", "Ashfey", 
+    "Beale", "Crorook", "Pendld", "Loote", "Ashagon", "Fairod", "Grord", "Whihill", 
+    "Roseve", "Blley", "Kingnt", "Noord", "Redield", "Thorod", "Weley", "Ashwley", 
+    "Bellle", "Crook", "Penhild", "Loxlte", "Asgon", "Faiwood", "Greerd", "Whill", 
+    "Rosrave", "Blacey", "Haley", "Kinmont", "Nortrd", "Reeld", "Thowood", "Westey", 
+    "Asley", "Belvale", "Crowok"
+  ],
+  "settlementPrefixes": [
+    "Fair", "Green", "King", "Bright", "Silver", "Rose", "High", "Old", 
+    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
+    "Lower", "Far", "Near", "Dark", "White", "Black", "Red", "Gold", 
+    "Faght", "Grettle", "Kingar", "Brair", "Silold", "Rosest", "Hiack", "Oldlver", 
+    "Newth", "Grear", "Litreen", "Nortew", "Soper", "Easred", "Westse", "Uputh", 
+    "Lowdark", "Farng", "Neeat", "Darower", "Whitld", "Bligh", "Redeast", "Goldte"
+  ],
+  "settlementSuffixes": [
+    "wick", "dale", "ford", "ham", "bury", "chester", "ton", "haven", 
+    "field", "wood", "brook", "vale", "moor", "ridge", "port", "gate", 
+    "hall", "stead", "mere", "fell", "marsh", "cliff", "bay", "reach", 
+    "Wiham", "Dalrook", "Fordad", "Haick", "Buraven", "Chesrt", "Toiff", "Havbury", 
+    "Fielle", "Woere", "Brodale", "Valeld", "Moate", "Ridbay", "Porter", "Gaoor", 
+    "Halfell", "Steard", "Meood", "Felhall", "Marsch", "Clton", "Bayidge", "Reacsh"
+  ],
+  "rulerTitles": [
+    "King", "Queen", "Lord Protector", "Lord", "Lady", "High", "Grand", "Chief", 
+    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
+    "Duchess", "Marshal", "Chancellor", "Speaker"
+  ],
+  "dynastyPrefixes": [
+    "House", "Line of", "Court of", "Clan", "Blood of", "Order of", "Circle of", "Banner of", 
+    "Seat of", "Throne of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", "Flame of", 
+    "Star of", "Stone of", "Root of", "Tide of"
+  ],
+  "kingdomPatterns": [
+    "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", "League of {prefix}", "Empire of {prefix}{suffix}", "{family} March", 
+    "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", "Confederation of {suffix}", "Principality of {prefix}{suffix}", "Grand Duchy of {family}", 
+    "Satrapy of {prefix}", "Khanate of {prefix}{suffix}", "Theocracy of {prefix}", "Guildrealm of {family}"
+  ]
+}

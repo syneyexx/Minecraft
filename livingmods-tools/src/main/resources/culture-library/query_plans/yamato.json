@@ -1,0 +1,60 @@
+{
+  "culture": "yamato",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "japanese house",
+        "minka",
+        "machiya",
+        "japanese village"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "japanese temple",
+        "japanese shrine",
+        "pagoda"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "japanese castle"
+      ]
+    },
+    "MARKET_HALL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "japanese market"
+      ]
+    },
+    "BRIDGE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "japanese bridge"
+      ]
+    },
+    "GATEHOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "japanese gate",
+        "torii"
+      ]
+    },
+    "SCHOOL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "dojo"
+      ]
+    }
+  }
+}

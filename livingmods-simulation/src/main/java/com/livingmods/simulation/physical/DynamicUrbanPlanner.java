@@ -130,24 +130,45 @@ public final class DynamicUrbanPlanner {
                 continue;
             }
             String facing = entranceToward(center, road);
+            List<String> recent = recentAssetIds(state, settlement.id());
             ArchitectureGrammar.Blueprint blueprint = grammar.generate(
                     state.seed(),
                     ordinal + i,
                     def,
                     role,
                     WealthClass.COMMON,
+                    settlement.tier(),
                     LotId.deterministic(state.seed(), ordinal + i),
                     settlement.id(),
                     DistrictId.deterministic(state.seed(), ordinal + i),
                     footprint,
                     facingToDir(facing),
-                    (int) metrics.medianY
+                    (int) metrics.medianY,
+                    recent
             );
             double score = scorePlot(metrics, center, road, settlement.center(), role);
             candidates.add(new PlotCandidate(
                     center, blueprint.building().footprint(), facing, road, score, culture, blueprint));
         }
         return candidates.stream().max(Comparator.comparingDouble(PlotCandidate::score));
+    }
+
+    private static List<String> recentAssetIds(CanonicalWorldState state, SettlementId settlementId) {
+        List<String> recent = new ArrayList<>();
+        for (DynamicStructureRecord rec : state.dynamicPhysical().structures().values()) {
+            if (rec.settlementId().equals(settlementId) && rec.assetId() != null && !rec.assetId().isBlank()) {
+                recent.add(rec.assetId());
+            }
+        }
+        for (PhysicalIntent intent : state.dynamicPhysical().intents().values()) {
+            if (intent.settlementId().isPresent() && intent.settlementId().get().equals(settlementId)) {
+                String assetId = intent.provenance().get("assetId");
+                if (assetId != null && !assetId.isBlank()) {
+                    recent.add(assetId);
+                }
+            }
+        }
+        return recent;
     }
 
     public DistrictPlan planDistrict(

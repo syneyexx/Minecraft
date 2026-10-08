@@ -1,0 +1,80 @@
+{
+  "key": "atlantea",
+  "maleNames": [
+    "Marinus", "Oceanus", "Nereus", "Triton", "Pelagios", "Aegaeus", "Pontus", "Thalor", 
+    "Corin", "Salin", "Alcyon", "Brine", "Caelum", "Delmar", "Eryx", "Galen", 
+    "Helios", "Iason", "Kairos", "Lysander", "Orpheus", "Philos", "Quillon", "Sandros", 
+    "Thalos", "Uriel", "Varian", "Xenos", "Zephyr", "Maton", "Ocecyon", "Nereon", 
+    "Trlos", "Pelreus", "Aegain", "Poios", "Thadros", "Corius", "Sarin", "Alcalen", 
+    "Brinon", "Canus", "Delalor", "Eryxyx", "Galos", "Helphyr", "Iasous", "Kamar", 
+    "Lysheus", "Orphos", "Pheus", "Quielum", "Sander", "Thian", "Urigios", "Varine", 
+    "Xeros", "Zepriel", "Marion", "Ocyon", "Nerason", "Tritos", "Peeus", "Aegalin", 
+    "Pontos", "Thros", "Coranus", "Saliin", "Allen", "Brillon", "Caelus", "Delor", 
+    "Eryeryx", "Galeos", "Hehyr", "Iasntus", "Kairar", "Lyeus", "Orpenos", "Philus", 
+    "Qulum", "Sannder", "Thalan", "Urios", "Varrine", "Xenoos", "Zeiel", "Mariton", 
+    "Oceaon", "Neson", "Trialos", "Pelaus", "Aelin", "Ponlios", "Conus", "Salorin", 
+    "Alcyen", "Brlon", "Caeinus", "Delmor", "Erryx", "Galilos", "Heliyr", "Iatus", 
+    "Kailmar", "Lysaus", "Ornos", "Phiaeus", "Quilum", "Sader", "Tharian", "Urieos", 
+    "Vaine", "Xeniros", "Zephel"
+  ],
+  "femaleNames": [
+    "Thalassa", "Coralia", "Marina", "Nerida", "Aurelia", "Selene", "Pearl", "Isla", 
+    "Naia", "Lira", "Aella", "Brineya", "Calypso", "Delphine", "Eirene", "Foam", 
+    "Galatea", "Halcyon", "Iris", "Juno", "Kalliope", "Lyra", "Mira", "Nerissa", 
+    "Oceana", "Phaedra", "Rhea", "Thetis", "Undine", "Thida", "Corella", "Marion", 
+    "Neana", "Aurrina", "Selera", "Petea", "Islissa", "Naiaia", "Liaia", "Aelfoam", 
+    "Brinra", "Cassa", "Delisla", "Foyra", "Galdine", "Halcrl", "Irine", "Juniope", 
+    "Kallis", "Lyene", "Mirypso", "Nerino", "Ochea", "Phaelia", "Rheaya", "Thris", 
+    "Undedra", "Thalda", "Colla", "Marcyon", "Nerina", "Auina", "Sellira", "Pearea", 
+    "Isssa", "Naialia", "Liraia", "Aeoam", "Brimira", "Calysa", "Desla", "Eirrene", 
+    "Foamra", "Gaine", "Halearl", "Irisne", "Juope", "Kaletis", "Lyrane", "Mipso", 
+    "Nerjuno", "Oceaea", "Phlia", "Rheneya", "Undra", "Tharida", "Corala", "Mayon", 
+    "Nereana", "Aurena", "Seira", "Peaatea", "Islasa", "Nalia", "Lirnaia", "Aellam", 
+    "Brira", "Calassa", "Delpla", "Eiene", "Foalyra", "Galane", "Haarl", "Irihine", 
+    "Junope", "Katis", "Lyrlene", "Miraso", "Neuno", "Ocerhea", "Phaeia", "Rheya", 
+    "Theiris", "Undira"
+  ],
+  "familyNames": [
+    "Waveborn", "Deepcurrent", "Saltwind", "Reefsong", "Pearlgate", "Tidemark", "Azuresail", "Deepwake", 
+    "Foamcrest", "Pearlhand", "Reefborn", "Saltglint", "Tidecaller", "Waveglass", "Azurekeel", "Coralmark", 
+    "Seastone", "Waong", "Deeborn", "Saltrn", "Reake", "Peakeel", "Tidete", "Azint", 
+    "Deerent", "Foamst", "Peark", "Reemark", "Salter", "Tiind", "Wavhand", "Azurne", 
+    "Coail", "Sealass", "Waveng", "Deorn", "Salborn", "Reefke", "Peeel", "Tidgate", 
+    "Azurnt", "Deent", "Foarest", "Pearrk", "Reark", "Salller", "Tidend", "Waand", 
+    "Azutone", "Corail", "Seass", "Wavsong", "Deeprn", "Saorn", "Reewake", "Pearel", 
+    "Tiate", "Azulint", "Deepnt", "Foest", "Peamark", "Reefrk", "Saler", "Tidwind", 
+    "Wavend", "Azone", "Corsail", "Seasss"
+  ],
+  "settlementPrefixes": [
+    "Tide", "Coral", "Deep", "Azure", "Pearl", "Foam", "High", "Old", 
+    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
+    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
+    "Gold", "Silver", "Tiure", "Corttle", "Deepar", "Azold", "Peafoam", "Foamth", 
+    "Hight", "Oldtide", "Newld", "Grest", "Lithite", "Nortep", "Soeat", "Easower", 
+    "Wested", "Uparl", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
+    "Blaoral", "Redew"
+  ],
+  "settlementSuffixes": [
+    "port", "bay", "harbor", "reef", "isle", "cove", "ton", "ford", 
+    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
+    "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", "reach", 
+    "Poeef", "Bayield", "Harbll", "Reort", "Islford", "Coveor", "Torsh", "Forisle", 
+    "Wickod", "Haead", "Fiebay", "Woodck", "Brdge", "Valliff", "Moorve", "Riook", 
+    "Gatmere", "Hallor", "Stven", "Mergate", "Fellch", "Maton", "Clivale", "Reacll"
+  ],
+  "rulerTitles": [
+    "Archon", "Admiral", "Harbor Lord", "Lord", "Lady", "High", "Grand", "Chief", 
+    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
+    "Duchess", "Marshal", "Chancellor", "Speaker"
+  ],
+  "dynastyPrefixes": [
+    "House", "League of", "Fleet of", "Clan", "Line of", "Blood of", "Order of", "Circle of", 
+    "Banner of", "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", 
+    "Shield of", "Flame of", "Star of", "Stone of"
+  ],
+  "kingdomPatterns": [
+    "Republic of {prefix}{suffix}", "League of {family}", "{title}'s {prefix} Waters", "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", 
+    "League of {prefix}", "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", 
+    "Confederation of {suffix}", "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}"
+  ]
+}

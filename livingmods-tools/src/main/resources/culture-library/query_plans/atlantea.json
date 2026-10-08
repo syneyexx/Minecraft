@@ -1,0 +1,54 @@
+{
+  "culture": "atlantea",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "atlantean house",
+        "atlantis",
+        "coastal villa",
+        "mediterranean house",
+        "greek house",
+        "roman house"
+      ]
+    },
+    "DOCK": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "harbor",
+        "port market"
+      ]
+    },
+    "TOWER": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "lighthouse"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "sea temple",
+        "classical temple"
+      ]
+    },
+    "CLINIC": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "roman bath"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "coastal fortress"
+      ]
+    }
+  }
+}

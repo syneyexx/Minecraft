@@ -1,0 +1,46 @@
+{
+  "culture": "steppeborn",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "yurt",
+        "ger",
+        "mongol camp",
+        "nomad camp",
+        "steppe village"
+      ]
+    },
+    "BARN": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "horse camp",
+        "horse stable"
+      ]
+    },
+    "PALACE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "khan palace",
+        "wooden hall"
+      ]
+    },
+    "MARKET_HALL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "nomad market"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "steppe fort"
+      ]
+    }
+  }
+}

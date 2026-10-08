@@ -1,0 +1,67 @@
+{
+  "key": "nordheim",
+  "maleNames": [
+    "Bjorn", "Erik", "Harald", "Leif", "Ragnar", "Torsten", "Ivar", "Sigurd", 
+    "Olaf", "Gunnar", "Halfdan", "Knut", "Ulf", "Sven", "Eirik", "Arne", 
+    "Roar", "Stein", "Hakon", "Vidar", "Trygve", "Frode", "Geir", "Odd", 
+    "Rune", "Stig", "Tor", "Yngve", "Asgeir", "Bjarke", "Bjeif", "Erifdan", 
+    "Harain", "Leune", "Ragerik", "Torsaf", "Ivrne", "Siggeir", "Olafke", "Guvar", 
+    "Halsven", "Knutve", "Ulgve", "Svegnar", "Eiriut", "Arkon", "Roastig", "Steild", 
+    "Hanar", "Vidroar", "Trygdd", "Frorn", "Geigurd", "Oddik", "Ruode", "Stigeir", 
+    "Toren", "Ynulf", "Asgidar", "Bjaror"
+  ],
+  "femaleNames": [
+    "Astrid", "Ingrid", "Sigrid", "Freyja", "Solveig", "Helga", "Thora", "Ragnhild", 
+    "Liv", "Kara", "Alva", "Brynja", "Disa", "Eira", "Frida", "Gunhild", 
+    "Hilda", "Idun", "Jorunn", "Kirsten", "Magnhild", "Nanna", "Runa", "Siv", 
+    "Tyra", "Unni", "Vigdis", "Ylva", "Asta", "Embla", "Asyja", "Ingalva", 
+    "Sigrun", "Fryra", "Solgrid", "Helgiv", "Thild", "Ragruna", "Livla", "Kaora", 
+    "Alveira", "Brynld", "Dilva", "Eirveig", "Fridja", "Guunn", "Hilunni", "Idunid", 
+    "Joara", "Kirilda", "Magniv", "Narid", "Runhild", "Sivda", "Tynna", "Unnasta", 
+    "Vigdga", "Ylisa", "Aststen", "Emblis"
+  ],
+  "familyNames": [
+    "Ironside", "Wolfsson", "Stonehand", "Frostborn", "Ravenclaw", "Seastorm", "Axebreaker", "Stormson", 
+    "Icevein", "Thornaxe", "Skaldson", "Bearmantle", "Fjordwalker", "Runebinder", "Snowmane", "Ashhelm", 
+    "Wavecrest", "Irorn", "Woldson", "Stonde", "Frson", "Ravmane", "Seasaw", "Axtle", 
+    "Stosson", "Icevin", "Thelm", "Skatorm", "Bearer", "Fjand", "Runnaxe", "Snowst", 
+    "Asker", "Wavnder", "Ironrn", "Woson", "Stoside", "Froson", "Raane", "Seaclaw", 
+    "Axeble", "Stson", "Thorlm", "Skorm", "Bealker", "Fjornd", "Ruaxe", "Snorest", 
+    "Ashher", "Wader", "Iroborn", "Wolfon", "Stide", "Fromson", "Ravene", "Selaw", 
+    "Axentle", "Storon", "Icein", "Thohelm", "Skalrm", "Beker", "Fjohand", "Runexe", 
+    "Snest", "Ashaker", "Waveer"
+  ],
+  "settlementPrefixes": [
+    "Skjold", "Frost", "Iron", "Storm", "Rime", "Wolf", "High", "Old", 
+    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
+    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
+    "Gold", "Silver", "Skorm", "Frottle", "Ironar", "Stold", "Rimwolf", "Wolfth", 
+    "Hight", "Oldjold", "Newld", "Grest", "Lithite", "Norton", "Soeat", "Easower", 
+    "Wested", "Upime", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
+    "Blarost", "Redew"
+  ],
+  "settlementSuffixes": [
+    "heim", "fjord", "gard", "vik", "holt", "stad", "ton", "ford", 
+    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
+    "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", 
+    "bay", "reach", "Hevik", "Fjoield", "Gardte", "Vibay", "Holstad", "Stadok", 
+    "Toead", "Forheim", "Wickrd", "Haoor", "Fiefell", "Woodrd", "Brven", "Valport", 
+    "Moorff", "Riolt", "Porwood", "Gatell", "Haach", "Steton", "Merele", "Feere", 
+    "Marjord", "Clifck"
+  ],
+  "rulerTitles": [
+    "Jarl", "King", "High King", "Lord", "Lady", "High", "Grand", "Chief", 
+    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
+    "Duchess", "Marshal", "Chancellor", "Speaker"
+  ],
+  "dynastyPrefixes": [
+    "House", "Clan", "Blood of", "Line of", "Order of", "Circle of", "Banner of", "Seat of", 
+    "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", "Flame of", 
+    "Star of", "Stone of", "Root of", "Tide of"
+  ],
+  "kingdomPatterns": [
+    "Kingdom of {prefix}{suffix}", "{title}dom of {family}", "Jarldom of {prefix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", "League of {prefix}", 
+    "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", "Confederation of {suffix}", 
+    "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}", "Khanate of {prefix}{suffix}"
+  ]
+}

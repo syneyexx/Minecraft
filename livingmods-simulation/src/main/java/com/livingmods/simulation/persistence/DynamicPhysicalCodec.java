@@ -51,6 +51,10 @@ public final class DynamicPhysicalCodec {
     }
 
     public static void read(DataInputStream in, DynamicPhysicalState state) throws IOException {
+        read(in, state, CanonicalSaveFormat.SCHEMA_VERSION);
+    }
+
+    public static void read(DataInputStream in, DynamicPhysicalState state, int schemaVersion) throws IOException {
         long revision = in.readLong();
         while (state.physicalDeltaRevision() < revision) {
             state.bumpPhysicalDeltaRevision();
@@ -66,7 +70,7 @@ public final class DynamicPhysicalCodec {
 
         int structureCount = CanonicalSaveFormat.readCountPublic(in, DynamicPhysicalState.MAX_STRUCTURES, "dynamicStructures");
         for (int i = 0; i < structureCount; i++) {
-            DynamicStructureRecord rec = readStructure(in);
+            DynamicStructureRecord rec = readStructure(in, schemaVersion);
             if (state.structures().put(rec.structureId(), rec) != null) {
                 throw new IOException("duplicate dynamic structure: " + rec.structureId());
             }
@@ -203,9 +207,14 @@ public final class DynamicPhysicalCodec {
         out.writeInt(rec.physicalRevision());
         BinaryCodec.writeString(out, rec.cultureKey());
         out.writeInt(rec.foundationY());
+        BinaryCodec.writeString(out, rec.assetId() == null ? "" : rec.assetId());
     }
 
     private static DynamicStructureRecord readStructure(DataInputStream in) throws IOException {
+        return readStructure(in, CanonicalSaveFormat.SCHEMA_VERSION);
+    }
+
+    static DynamicStructureRecord readStructure(DataInputStream in, int schemaVersion) throws IOException {
         StructureId structureId = StructureId.of(BinaryCodec.readUuid(in));
         SettlementId settlementId = SettlementId.of(BinaryCodec.readUuid(in));
         BuildingRole role = readEnum(in, BuildingRole.class);
@@ -221,9 +230,13 @@ public final class DynamicPhysicalCodec {
         int revision = in.readInt();
         String culture = BinaryCodec.readString(in);
         int foundationY = in.readInt();
+        String assetId = "";
+        if (schemaVersion >= 6) {
+            assetId = BinaryCodec.readString(in);
+        }
         return new DynamicStructureRecord(
                 structureId, settlementId, role, fp, intentId, status, integrity,
-                residential, work, revision, culture, foundationY
+                residential, work, revision, culture, foundationY, assetId
         );
     }
 

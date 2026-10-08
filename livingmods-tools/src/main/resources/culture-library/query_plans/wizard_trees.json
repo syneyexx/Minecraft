@@ -1,0 +1,45 @@
+{
+  "culture": "wizard_trees",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "underground house",
+        "mushroom house",
+        "cave dwelling",
+        "fantasy cavern"
+      ]
+    },
+    "SCHOOL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "wizard library",
+        "arcane library"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "ritual chamber",
+        "crystal temple"
+      ]
+    },
+    "WORKSHOP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "alchemy lab"
+      ]
+    },
+    "MARKET_HALL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "underground market"
+      ]
+    }
+  }
+}

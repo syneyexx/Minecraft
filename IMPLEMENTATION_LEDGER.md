@@ -28,7 +28,9 @@ Status legend (mandatory):
 | Physical interaction bridge | INTEGRATED | Verified death/interact → typed PhysicalOutcomePayload |
 | Worldgen terrain (synthetic) | INTEGRATED | `TerrainAnalyzer` for tools/tests |
 | Minecraft terrain provider | INTEGRATED | `MinecraftTerrainProvider` injected from `WorldPlanCache` |
-| Cultures (12 surface + Wizard Trees) | INTEGRATED | Architecture, naming, government, biomes |
+| Cultures (12 surface + Wizard Trees) | INTEGRATED | Architecture, naming, government, biomes; M6 data-driven structure libraries + naming overlays |
+| Structure catalog (MLS) | INTEGRATED | Data-driven manifests, deterministic selection, chunk-sliced materializer, procedural fallback |
+| BuildPaste import tooling | FUNCTIONAL | Public search/resume/report; payloads SOURCE_UNAVAILABLE (no public NBT); authored library ships instead |
 | Kingdom / territory planning | INTEGRATED | Configurable counts; adjacency on kingdoms |
 | Settlement planning + scoring | INTEGRATED | Hierarchy + specialization slots |
 | Road graph + bridges (plan) | INTEGRATED | Terrain-aware A*; bridge records on roads |
@@ -86,9 +88,10 @@ A subsystem may be promoted to RELEASE_READY only after the relevant sections of
 | Axis | Current | Source |
 |------|---------|--------|
 | Protocol | 4 | `LivingModsVersions.PROTOCOL_VERSION` (typed player actions; M5 append-only types) |
-| Worldgen | 2 | `WORLDGEN_VERSION` |
-| Canonical save schema | 5 | `CANONICAL_SAVE_SCHEMA` (player gameplay + DynamicPhysicalState) |
+| Worldgen | 3 | `WORLDGEN_VERSION` (PlannedBuilding.assetId) |
+| Canonical save schema | 6 | `CANONICAL_SAVE_SCHEMA` (DynamicStructureRecord.assetId; reads ≥3) |
 | Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` (initial materialization only) |
+| Structure catalog revision | 1 | `STRUCTURE_CATALOG_REVISION` |
 | Mod / sidecar | 0.1.0 | `MOD_VERSION` / `SIDECAR_VERSION` |
 
 Also recorded in `gradle.properties` for clarity; **Java constants win at runtime**.

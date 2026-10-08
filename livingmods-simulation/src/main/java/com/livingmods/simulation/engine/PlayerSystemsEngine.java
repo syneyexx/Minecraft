@@ -450,8 +450,8 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
                     : i == 4 ? com.livingmods.common.model.BuildingRole.FARMHOUSE
                     : i == 5 ? com.livingmods.common.model.BuildingRole.GUARDHOUSE
                     : com.livingmods.common.model.BuildingRole.HOUSE;
-            seedFoundingBuilding(state, capital, role, plot.center(), plot.footprint(),
-                    causes[Math.min(i, causes.length - 1)], culture, zoneId, roadId, plot.entranceFacing(), ctx);
+            seedFoundingBuilding(state, capital, role, plot,
+                    causes[Math.min(i, causes.length - 1)], culture, zoneId, roadId, ctx);
         }
 
         zone.transitionTo(com.livingmods.common.model.PhysicalIntentStatus.MATERIALIZING,
@@ -464,13 +464,11 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
             CanonicalWorldState state,
             SettlementState capital,
             com.livingmods.common.model.BuildingRole role,
-            BlockPos2 plot,
-            com.livingmods.common.geo.BoundingBox2 footprint,
+            com.livingmods.simulation.physical.DynamicUrbanPlanner.PlotCandidate plot,
             String cause,
             String culture,
             com.livingmods.common.id.PhysicalIntentId zoneId,
             com.livingmods.common.id.PhysicalIntentId roadId,
-            String entranceFacing,
             SimulationContext ctx
     ) {
         var physical = state.dynamicPhysical();
@@ -478,6 +476,16 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
                 state.seed(), physical.structures().size() + physical.intents().size() + 410_000L);
         var intentId = com.livingmods.common.id.PhysicalIntentId.deterministic(
                 state.seed(), physical.intents().size() + 420_000L + role.ordinal());
+        java.util.Map<String, String> provenance = new java.util.LinkedHashMap<>();
+        provenance.put("cause", cause);
+        provenance.put("role", role.name());
+        provenance.put("entranceFacing", plot.entranceFacing() == null ? "south" : plot.entranceFacing());
+        provenance.put("reservationState", "NONE");
+        if (plot.blueprint() != null && plot.blueprint().building().usesImportedAsset()) {
+            provenance.put("assetId", plot.blueprint().building().assetId());
+            provenance.put("archetype", plot.blueprint().building().archetype() == null
+                    ? "" : plot.blueprint().building().archetype());
+        }
         var intent = new com.livingmods.simulation.physical.PhysicalIntent(
                 intentId,
                 com.livingmods.common.model.PhysicalIntentType.CONSTRUCT_BUILDING,
@@ -487,18 +495,13 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
                 capital.ownerKingdom(),
                 Optional.of(structureId),
                 Optional.of(role),
-                plot,
-                footprint,
+                plot.center(),
+                plot.footprint(),
                 1,
                 com.livingmods.common.model.PhysicalIntentStatus.READY,
                 ctx.time(),
                 2,
-                Map.of(
-                        "cause", cause,
-                        "role", role.name(),
-                        "entranceFacing", entranceFacing == null ? "south" : entranceFacing,
-                        "reservationState", "NONE"
-                ),
+                provenance,
                 Map.of(ResourceType.WOOD, 10.0, ResourceType.STONE, 8.0),
                 culture
         );

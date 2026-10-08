@@ -10,9 +10,12 @@ import com.livingmods.neoforge.physical.PhysicalInteractionBridge;
 import com.livingmods.neoforge.sidecar.WorldSessionLifecycle;
 import com.livingmods.neoforge.worldgen.ChunkMaterializationHandler;
 import com.livingmods.neoforge.worldgen.MaterializationAttachments;
+import com.livingmods.worldgen.structure.StructureCatalog;
+import com.livingmods.worldgen.structure.StructureCatalogHolder;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
@@ -31,6 +34,7 @@ public final class LivingModsMod {
             event.put(LivingModsEntities.CITIZEN.get(), CitizenEntity.createAttributes().build());
             event.put(LivingModsEntities.PROJECTED_HUMANOID.get(), ProjectedHumanoidEntity.createAttributes().build());
         });
+        modBus.addListener(this::commonSetup);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modBus.addListener(com.livingmods.neoforge.client.LivingModsClientSetup::registerRenderers);
         }
@@ -42,5 +46,14 @@ public final class LivingModsMod {
         // LivingModsClientEvents is Dist.CLIENT via @EventBusSubscriber — do not register on dedicated servers.
         ModIntegrations.logAvailability();
         LOG.info("LivingMods loaded");
+    }
+
+    private void commonSetup(FMLCommonSetupEvent event) {
+        event.enqueueWork(() -> {
+            StructureCatalog catalog = StructureCatalog.loadFromClasspath(LivingModsMod.class.getClassLoader());
+            StructureCatalogHolder.set(catalog);
+            LOG.info("Structure catalog loaded assets={} revision={} hash={}",
+                    catalog.size(), catalog.contentRevision(), Long.toHexString(catalog.manifestHash()));
+        });
     }
 }

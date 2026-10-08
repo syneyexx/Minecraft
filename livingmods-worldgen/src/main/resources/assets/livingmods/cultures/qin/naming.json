@@ -1,0 +1,80 @@
+{
+  "key": "qin",
+  "maleNames": [
+    "Wei", "Li", "Chen", "Wang", "Zhang", "Liu", "Zhao", "Sun", 
+    "Zhou", "Huang", "Bai", "Cheng", "Dong", "Feng", "Gang", "Hai", 
+    "Jun", "Kang", "Liang", "Ming", "Ning", "Peng", "Qiang", "Rui", 
+    "Shen", "Tao", "Xin", "Yong", "Zhen", "Weang", "Libai", "Chenng", 
+    "Wahen", "Zhachen", "Liung", "Zhjun", "Sunrui", "Zhouli", "Huhou", "Baihai", 
+    "Dowei", "Fensun", "Gangng", "Haeng", "Junzhen", "Kangao", "Lieng", "Minning", 
+    "Ningng", "Peliu", "Qiadong", "Ruing", "Shxin", "Taohang", "Xinng", "Yoang", 
+    "Zhetao", "Weing", "Chekang", "Wangen", "Zhhen", "Liuuang", "Zhaoun", "Surui", 
+    "Zholi", "Huanou", "Bahai", "Cheiang", "Dongei", "Fesun", "Gangang", "Haing", 
+    "Juhen", "Kanzhao", "Lianng", "Miing", "Ninyong", "Pengiu", "Qiong", "Ruiming", 
+    "Shenin", "Taang", "Xinheng", "Yongng", "Zhtao", "Weiwang", "Liai", "Chang", 
+    "Wanshen", "Zhanen", "Zhajun", "Sunui", "Zhli", "Huazhou", "Baiai", "Donwei", 
+    "Fengun", "Gaang", "Haipeng", "Junen", "Kahao", "Liafeng", "Mingng", "Niong", 
+    "Penliu", "Qianng", "Shexin", "Taong", "Xieng", "Yoniang", "Zhenao"
+  ],
+  "femaleNames": [
+    "Mei", "Ling", "Xia", "Yan", "Lan", "Fang", "Jing", "Hua", 
+    "Qiu", "Yue", "Baihua", "Chun", "Dongmei", "Guiying", "Hong", "Juan", 
+    "Lian", "Min", "Ning", "Ping", "Qian", "Shuyi", "Ting", "Xiaoli", 
+    "Yanli", "Zhenzhen", "Ai", "Bao", "Cai", "Meyan", "Linihua", "Xiain", 
+    "Lanxia", "Fangue", "Jiian", "Huaaoli", "Qiung", "Yuqiu", "Baijuan", "Chunng", 
+    "Domei", "Guihua", "Hongng", "Juuyi", "Liacai", "Minng", "Niing", "Pinqian", 
+    "Qianao", "Shang", "Tingmei", "Xiaong", "Yaai", "Zhelan", "Aiun", "Baing", 
+    "Caizhen", "Meian", "Lihua", "Xiamin", "Laxia", "Fanyue", "Jingan", "Huoli", 
+    "Qiuling", "Yueiu", "Bauan", "Chuting", "Dongei", "Guhua", "Honhong", "Juanyi", 
+    "Licai", "Minjing", "Ningng", "Piian", "Qiabao", "Shuyng", "Timei", "Xiaping", 
+    "Yanlai", "Zhlan", "Aichun", "Baong", "Cahen", "Meiyan", "Lingua", "Ximin", 
+    "Yananli", "Lania", "Fayue", "Jinlian", "Huali", "Qiing", "Yueqiu", "Baihan", 
+    "Ching", "Donmei", "Guiyua", "Hoong", "Juahuyi", "Lianai", "Miing", "Ninying", 
+    "Pingan", "Qibao", "Shufang", "Tingei", "Xiing", "Yanai", "Zhenan", "Aihun", 
+    "Baoning", "Caien"
+  ],
+  "familyNames": [
+    "Dragonheart", "Jadehand", "Heavenly", "Silkroad", "Lotuspath", "Goldseal", "Cloudgate", "Bai", 
+    "Guo", "Han", "Jin", "Ma", "Tang", "Xu", "Yang", "Zheng", 
+    "Zhu", "Droad", "Jadjin", "Heavrt", "Sibai", "Lotyang", "Goldth", "Clma", 
+    "Baihand", "Guouo", "Haeng", "Jinseal", "Mang", "Tanly", "Xuhan", "Yanghu", 
+    "Zhate", "Zhuxu", "Dragad", "Jajin", "Heaeart", "Silkai", "Loang", "Golpath", 
+    "Clouma", "Baand", "Guoguo", "Hanng", "Jieal", "Matang", "Tangly", "Yanzhu", 
+    "Zhente", "Zhxu", "Draroad", "Jadein", "Heart", "Silbai", "Lotung", "Goath", 
+    "Cloma", "Baind", "Guguo", "Hanheng", "Jinal", "Maang", "Tanenly", "Xuan", 
+    "Yazhu", "Zhegate"
+  ],
+  "settlementPrefixes": [
+    "Jade", "Dragon", "Heaven", "Silk", "Lotus", "Golden", "High", "Old", 
+    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
+    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
+    "Gold", "Silver", "Jailk", "Drattle", "Heavar", "Siold", "Lotlden", "Goldth", 
+    "Hight", "Oldjade", "Newld", "Grest", "Lithite", "Norten", "Soeat", "Easower", 
+    "Wested", "Uptus", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
+    "Blaagon", "Redew"
+  ],
+  "settlementSuffixes": [
+    "zhou", "jing", "shan", "an", "men", "fu", "ton", "ford", 
+    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
+    "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", 
+    "bay", "reach", "Zhan", "Jinield", "Shante", "Anbay", "Menfu", "Fuok", 
+    "Toead", "Forzhou", "Wickrd", "Haoor", "Fiefell", "Woodan", "Brven", "Valport", 
+    "Moorff", "Rimen", "Porwood", "Gatell", "Haach", "Steton", "Merele", "Feere", 
+    "Marjing", "Clifck"
+  ],
+  "rulerTitles": [
+    "Emperor", "Prince", "Minister", "Lord", "Lady", "High", "Grand", "Chief", 
+    "Master", "Elder", "Warden", "Steward", "Regent", "Princess", "Duke", "Duchess", 
+    "Marshal", "Chancellor", "Speaker", "Keeper"
+  ],
+  "dynastyPrefixes": [
+    "House", "Clan", "Dynasty of", "Line of", "Blood of", "Order of", "Circle of", "Banner of", 
+    "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", 
+    "Flame of", "Star of", "Stone of", "Root of"
+  ],
+  "kingdomPatterns": [
+    "Empire of {prefix}{suffix}", "{family} Dynasty", "{title}'s Mandate of {prefix}", "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", 
+    "League of {prefix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", "Confederation of {suffix}", 
+    "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}", "Khanate of {prefix}{suffix}"
+  ]
+}
