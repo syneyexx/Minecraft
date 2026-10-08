@@ -454,12 +454,34 @@ public final class SessionHandler implements Runnable {
 
     private void onWorldSummary(Envelope envelope, OutputStream out) throws IOException {
         Map<String, String> summary = new LinkedHashMap<>();
-        summary.put("kingdoms", String.valueOf(host.worldPlan().kingdoms().size()));
-        summary.put("settlements", String.valueOf(host.worldPlan().settlements().size()));
+        summary.put("kingdoms", String.valueOf(host.state().kingdoms().size()));
+        summary.put("settlements", String.valueOf(host.state().settlements().size()));
         summary.put("citizens", String.valueOf(host.state().citizens().size()));
         summary.put("simTicks", String.valueOf(host.state().time().absoluteTicks()));
-        summary.put("wars", String.valueOf(host.state().wars().size()));
-        summary.put("epidemics", String.valueOf(host.state().epidemics().size()));
+        summary.put("wars", String.valueOf(host.state().wars().values().stream().filter(w -> w.active()).count()));
+        summary.put("epidemics", String.valueOf(host.state().epidemics().values().stream().filter(e -> e.active()).count()));
+        summary.put("shipments", String.valueOf(host.state().shipments().values().stream()
+                .filter(s -> !s.delivered() && !s.looted()).count()));
+        summary.put("treaties", String.valueOf(host.state().diplomacy().treaties().size()));
+        double treasury = 0;
+        double legitimacy = 0;
+        int kingdomCount = 0;
+        for (var k : host.state().kingdoms().values()) {
+            treasury += k.treasury();
+            legitimacy += k.legitimacy();
+            kingdomCount++;
+        }
+        summary.put("treasury", String.format(java.util.Locale.ROOT, "%.1f", treasury));
+        summary.put("legitimacy", String.format(java.util.Locale.ROOT, "%.3f",
+                kingdomCount == 0 ? 0.0 : legitimacy / kingdomCount));
+        List<String> history = new ArrayList<>();
+        int hist = 0;
+        for (var event : host.state().history()) {
+            if (hist >= 8) break;
+            history.add(event.title() == null ? event.type().name() : event.title());
+            hist++;
+        }
+        summary.put("historyRecent", String.join(" | ", history));
         summary.putAll(diagnostics.snapshot());
         send(out, MessageType.RESPONSE, envelope.requestId(), host.state().time().absoluteTicks(),
                 PayloadIo.encodeStrings(summary));

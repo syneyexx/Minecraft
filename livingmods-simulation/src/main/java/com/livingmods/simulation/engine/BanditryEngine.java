@@ -18,6 +18,7 @@ import com.livingmods.simulation.state.ShipmentState;
 import com.livingmods.simulation.tick.RegionalWork;
 import com.livingmods.simulation.tick.SimulationContext;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -109,13 +110,24 @@ public final class BanditryEngine implements SimulationSubsystem {
             if (activeCamps >= 12) break;
         }
 
-        for (PhysicalIntent intent : state.dynamicPhysical().intents().values()) {
-            if (intent.type() != PhysicalIntentType.CREATE_BANDIT_CAMP) continue;
+        for (PhysicalIntent intent : List.copyOf(state.dynamicPhysical().intents().values())) {
+            if (intent.type() != PhysicalIntentType.CREATE_BANDIT_CAMP
+                    && intent.type() != PhysicalIntentType.UPGRADE_BANDIT_CAMP) {
+                continue;
+            }
             if (intent.status() != PhysicalIntentStatus.MATERIALIZED) continue;
             SettlementId settlementId = intent.settlementId().orElse(null);
             if (settlementId == null) continue;
             SettlementState s = state.settlements().get(settlementId);
-            if (s == null || banditRisk(state, s) < 0.7) continue;
+            if (s == null) continue;
+            double risk = banditRisk(state, s);
+            // Security recovery / low risk → clear the camp physically (REMOVE_BANDIT_CAMP).
+            if (risk < 0.35 || s.security() > 0.7) {
+                offerCampRemoval(state, intent, ctx, risk < 0.35 ? "risk_collapsed" : "security_restored");
+                continue;
+            }
+            if (intent.type() != PhysicalIntentType.CREATE_BANDIT_CAMP) continue;
+            if (risk < 0.7) continue;
             if (state.dynamicPhysical().hasOpenIntent(s.id(), PhysicalIntentType.UPGRADE_BANDIT_CAMP)) continue;
             PhysicalIntentId upId = PhysicalIntentId.deterministic(
                     state.seed(), state.dynamicPhysical().intents().size() + 310_000L);
