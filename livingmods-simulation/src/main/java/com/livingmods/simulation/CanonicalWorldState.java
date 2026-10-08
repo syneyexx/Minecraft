@@ -41,6 +41,7 @@ import com.livingmods.simulation.state.SiegeState;
 import com.livingmods.simulation.state.StockpileState;
 import com.livingmods.simulation.state.TechnologyState;
 import com.livingmods.simulation.state.TradeNetwork;
+import com.livingmods.simulation.physical.DynamicPhysicalState;
 import com.livingmods.simulation.state.WarState;
 
 import java.util.ArrayDeque;
@@ -99,6 +100,7 @@ public final class CanonicalWorldState {
     private final Map<String, RumorState> rumors = new LinkedHashMap<>();
     private final Map<UUID, EmergentTaskState> emergentTasks = new LinkedHashMap<>();
     private final Map<String, HistoryMarkerState> historyMarkers = new LinkedHashMap<>();
+    private final DynamicPhysicalState dynamicPhysical = new DynamicPhysicalState();
 
     private final Map<SettlementId, Set<CitizenId>> citizensBySettlement = new LinkedHashMap<>();
     private final Map<HouseholdId, Set<CitizenId>> citizensByHousehold = new LinkedHashMap<>();
@@ -164,6 +166,7 @@ public final class CanonicalWorldState {
     public Map<String, RumorState> rumors() { return rumors; }
     public Map<UUID, EmergentTaskState> emergentTasks() { return emergentTasks; }
     public Map<String, HistoryMarkerState> historyMarkers() { return historyMarkers; }
+    public DynamicPhysicalState dynamicPhysical() { return dynamicPhysical; }
 
     public void transferCitizen(
             CitizenState citizen,
@@ -288,6 +291,11 @@ public final class CanonicalWorldState {
         return set == null ? Set.of() : Collections.unmodifiableSet(set);
     }
 
+    public Set<CitizenId> citizensInHousehold(HouseholdId householdId) {
+        Set<CitizenId> set = citizensByHousehold.get(householdId);
+        return set == null ? Set.of() : Collections.unmodifiableSet(set);
+    }
+
     public void appendHistory(HistoricalEvent event) {
         history.addLast(event);
         while (history.size() > MAX_HISTORY_EVENTS) {
@@ -387,6 +395,9 @@ public final class CanonicalWorldState {
         h = Hashing.mix(h, sieges.size());
         h = Hashing.mix(h, factions.size());
         h = Hashing.mix(h, history.size());
+        h = Hashing.mix(h, dynamicPhysical.physicalDeltaRevision());
+        h = Hashing.mix(h, dynamicPhysical.intents().size());
+        h = Hashing.mix(h, dynamicPhysical.structures().size());
         return h;
     }
 }

@@ -7,13 +7,35 @@ LivingMods splits three concerns:
 3. **Physical presentation** (`livingmods-neoforge`) — blocks, entities, UI, Minecraft lifecycle
 
 ```
+INITIAL WORLD
+  WorldPlan (immutable plan.bin)
+      ↓
+  Initial Minecraft realization (CivilizationMaterializer)
+
+LIVE WORLD
+  CanonicalWorldState
+      ↓
+  PhysicalIntent / DynamicPhysicalState
+      ↓
+  PhysicalReconciliationEngine (NeoForge, chunk-local, bounded)
+      ↓
+  Minecraft World
+      ↓
+  PhysicalOutcome (PhysicalInteractionBridge / binders)
+      ↓
+  PhysicalOutcomeApplier → CanonicalWorldState
+
 Minecraft Server (NeoForge)
   ├─ LivingModsWorldIds          → world/livingmods/world.id
   ├─ WorldPlanCache              → WorldPlanStore.loadOrGenerate (+ MinecraftTerrainProvider)
   ├─ ChunkMaterializationHandler → CivilizationMaterializer (+ chunk attachments)
-  ├─ CitizenProjectionBinder     → interest-based entity spawn/despawn via IPC
+  ├─ PhysicalReconciliationEngine→ dynamic intents → safe block realization
+  ├─ CitizenProjectionBinder     → interest-based citizen spawn/despawn via IPC
+  ├─ CaravanProjectionBinder     → shipment LOD (lead merchant + cargo meta)
+  ├─ ArmyProjectionBinder        → army squad LOD (never 1:1 manpower)
+  ├─ PhysicalInteractionBridge   → verified death/interact → REPORT_PHYSICAL_OUTCOME
   ├─ LivingModsCommands          → /livingmods locate …
-  ├─ LivingModsNetwork           → map/dashboard payloads to client
+  ├─ LivingModsNetwork           → map/dashboard payloads (live overlays from sidecar)
   └─ WorldSessionLifecycle
         ├─ SidecarProcessManager → embed + launch livingmods-sidecar.jar
         ├─ SidecarClient         → async 127.0.0.1 IPC
@@ -21,11 +43,11 @@ Minecraft Server (NeoForge)
 
 Sidecar JVM
   ├─ SidecarMain / SidecarServer (loopback, single session)
-  ├─ SessionHandler              → handshake, requests, events
+  ├─ SessionHandler              → handshake, requests, typed physical outcomes
   ├─ SidecarSimulationHost
   │     ├─ WorldPlanStore.loadOrGenerate (must match expected plan hash)
-  │     ├─ PersistenceCoordinator → CanonicalStore + WAL
-  │     └─ SimulationEngine      → phased tick loop
+  │     ├─ PersistenceCoordinator → CanonicalStore + WAL (schema 4)
+  │     └─ SimulationEngine      → phased tick loop (+ ConstructionEngine intents, BanditryEngine)
   └─ DiagnosticsExporter
 ```
 
@@ -33,11 +55,12 @@ Sidecar JVM
 
 | Concern | Authority |
 |---------|-----------|
-| World plan geometry | Frozen `plan.bin` after first successful plan for a world |
+| World plan geometry | Frozen `plan.bin` after first successful plan for a world — **never mutated by live sim** |
 | Civilization sim state | Sidecar `CanonicalWorldState` |
-| Block placement / chunk edits | Minecraft server thread materializers |
-| Projected citizen entities | Minecraft, driven by sidecar projection plans |
-| Player-visible map/dashboard | Server aggregates plan + sidecar summaries; client does not read `WorldPlanCache` |
+| Dynamic physical changes | `DynamicPhysicalState` inside canonical save (intents, dynamic structures, settlement geometry) |
+| Block placement / chunk edits | Minecraft server thread materializers + `PhysicalReconciliationEngine` |
+| Projected entities | Minecraft binders, driven by sidecar projection / map overlay plans |
+| Player-visible map/dashboard | Server aggregates plan + sidecar live overlays; client does not read `WorldPlanCache` |
 
 ## Non-goals of the current wiring
 

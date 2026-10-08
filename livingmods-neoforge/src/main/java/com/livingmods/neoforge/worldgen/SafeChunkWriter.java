@@ -20,12 +20,22 @@ public final class SafeChunkWriter {
     private final int chunkX;
     private final int chunkZ;
     private int placed;
+    /** When true, vanilla crafted blocks (planks/cobble/etc.) are treated conservatively. */
+    private boolean dynamicMode;
 
     public SafeChunkWriter(ServerLevel level, LevelChunk chunk) {
         this.level = level;
         this.chunk = chunk;
         this.chunkX = chunk.getPos().x;
         this.chunkZ = chunk.getPos().z;
+    }
+
+    public void setDynamicMode(boolean dynamicMode) {
+        this.dynamicMode = dynamicMode;
+    }
+
+    public boolean dynamicMode() {
+        return dynamicMode;
     }
 
     public ServerLevel level() {
@@ -87,6 +97,15 @@ public final class SafeChunkWriter {
         if (isForeignProtected(existing)) {
             return false;
         }
+        if (dynamicMode) {
+            // Conservative dynamic expansion: only air / fluids / clear natural terrain.
+            // Do NOT treat player-built vanilla structures (planks, cobble walls, etc.) as replaceable.
+            return existing.isAir()
+                    || existing.canBeReplaced()
+                    || existing.getFluidState().is(Fluids.WATER)
+                    || existing.getFluidState().is(Fluids.LAVA)
+                    || isStrictNaturalTerrain(existing);
+        }
         return existing.isAir()
                 || existing.canBeReplaced()
                 || existing.getFluidState().is(Fluids.WATER)
@@ -96,6 +115,13 @@ public final class SafeChunkWriter {
     }
 
     public static boolean isNaturalTerrain(BlockState state) {
+        return isStrictNaturalTerrain(state)
+                || state.is(BlockTags.LEAVES)
+                || state.is(BlockTags.LOGS);
+    }
+
+    /** Terrain-only replaceability — excludes logs/leaves that may be player plantings. */
+    public static boolean isStrictNaturalTerrain(BlockState state) {
         return state.is(BlockTags.DIRT)
                 || state.is(BlockTags.BASE_STONE_OVERWORLD)
                 || state.is(BlockTags.BASE_STONE_NETHER)
@@ -109,8 +135,6 @@ public final class SafeChunkWriter {
                 || state.is(Blocks.MOSS_BLOCK)
                 || state.is(Blocks.MUD)
                 || state.is(Blocks.PACKED_MUD)
-                || state.is(BlockTags.LEAVES)
-                || state.is(BlockTags.LOGS)
                 || state.is(BlockTags.FLOWERS)
                 || state.is(Blocks.TALL_GRASS)
                 || state.is(Blocks.SHORT_GRASS)
@@ -145,17 +169,36 @@ public final class SafeChunkWriter {
 
     private static boolean isForeignProtected(BlockState state) {
         String id = state.getBlock().builtInRegistryHolder().key().location().toString();
-        if (id.startsWith("minecraft:")) {
+        if (id.startsWith("livingmods:")) {
             return false;
         }
-        // Soft refuse: never casually overwrite Create / SecurityCraft / other mod blocks.
+        if (id.startsWith("minecraft:")) {
+            // Protect containers / functional vanilla blocks even without block-entity check races.
+            return state.is(Blocks.CHEST)
+                    || state.is(Blocks.TRAPPED_CHEST)
+                    || state.is(Blocks.BARREL)
+                    || state.is(Blocks.FURNACE)
+                    || state.is(Blocks.BLAST_FURNACE)
+                    || state.is(Blocks.SMOKER)
+                    || state.is(Blocks.BREWING_STAND)
+                    || state.is(Blocks.HOPPER)
+                    || state.is(Blocks.DROPPER)
+                    || state.is(Blocks.DISPENSER)
+                    || state.is(Blocks.SPAWNER)
+                    || state.is(Blocks.BEACON)
+                    || state.is(Blocks.END_PORTAL_FRAME)
+                    || state.is(Blocks.END_PORTAL)
+                    || state.is(Blocks.NETHER_PORTAL);
+        }
+        // Soft refuse: never casually overwrite Create / SecurityCraft / Waystones / other mod blocks.
         return id.contains("create")
                 || id.contains("securitycraft")
+                || id.contains("waystone")
                 || id.contains("immersiveengineering")
                 || id.contains("mekanism")
                 || id.contains("ae2")
                 || id.contains("refinedstorage")
-                || !id.startsWith("livingmods:");
+                || true; // any non-livingmods, non-minecraft block is protected
     }
 
     public int placed() {

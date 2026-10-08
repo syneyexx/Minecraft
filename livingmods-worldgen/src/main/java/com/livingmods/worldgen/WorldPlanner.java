@@ -5,7 +5,9 @@ import com.livingmods.common.culture.CultureRegistry;
 import com.livingmods.common.geo.RegionCoord;
 import com.livingmods.common.id.KingdomId;
 import com.livingmods.common.util.Hashing;
+import com.livingmods.common.version.LivingModsVersions;
 import com.livingmods.worldgen.plan.PlannedBanditCamp;
+import com.livingmods.worldgen.plan.PlannedBuilding;
 import com.livingmods.worldgen.plan.PlannedKingdom;
 import com.livingmods.worldgen.plan.PlannedResourceSite;
 import com.livingmods.worldgen.plan.PlannedRoad;
@@ -26,6 +28,7 @@ import com.livingmods.worldgen.territory.TerritoryMap;
 import com.livingmods.worldgen.validation.WorldPlanValidator;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -137,16 +140,7 @@ public final class WorldPlanner {
         List<PlannedRuin> ruins = ruinPlanner.plan(seed, kingdoms, settlements);
         progress.accept(new Progress(Phase.RESOURCE_AND_RUINS, 0.90, "Resources/ruins placed"));
 
-        long hash = Hashing.mix(seed, settlements.size());
-        hash = Hashing.mix(hash, kingdoms.size());
-        hash = Hashing.mix(hash, roads.size());
-        hash = Hashing.mix(hash, territories.widthCells() * 31L + territories.heightCells());
-        for (PlannedSettlement s : settlements) {
-            hash = Hashing.mix(hash, s.center().packed());
-        }
-        for (PlannedKingdom k : kingdoms) {
-            hash = Hashing.mix(hash, k.adjacentKingdomIds().size());
-        }
+        long hash = computeContentHash(seed, kingdoms, settlements, roads, ruins, resources, camps, territories);
 
         WorldPlan plan = new WorldPlan(
                 seed, kingdoms, settlements, roads, ruins, resources, camps, territories, hash
@@ -154,6 +148,121 @@ public final class WorldPlanner {
         new WorldPlanValidator().validateOrThrow(plan);
         progress.accept(new Progress(Phase.FINALIZATION, 1.0, "Plan hash=" + Long.toHexString(hash)));
         return plan;
+    }
+
+    /**
+     * Deterministic identity hash over immutable plan content.
+     * Stable across HashMap iteration / machine / thread ordering by sorting IDs.
+     */
+    static long computeContentHash(
+            long seed,
+            List<PlannedKingdom> kingdoms,
+            List<PlannedSettlement> settlements,
+            List<PlannedRoad> roads,
+            List<PlannedRuin> ruins,
+            List<PlannedResourceSite> resources,
+            List<PlannedBanditCamp> camps,
+            com.livingmods.worldgen.territory.TerritoryMap territories
+    ) {
+        long hash = Hashing.mix(seed, LivingModsVersions.WORLDGEN_VERSION);
+        hash = Hashing.mix(hash, kingdoms.size());
+        hash = Hashing.mix(hash, settlements.size());
+        hash = Hashing.mix(hash, roads.size());
+        hash = Hashing.mix(hash, ruins.size());
+        hash = Hashing.mix(hash, resources.size());
+        hash = Hashing.mix(hash, camps.size());
+        hash = Hashing.mix(hash, territories.widthCells() * 31L + territories.heightCells());
+
+        List<PlannedKingdom> ks = new ArrayList<>(kingdoms);
+        ks.sort(Comparator.comparing(k -> k.id().value()));
+        for (PlannedKingdom k : ks) {
+            hash = Hashing.mix(hash, k.id().hashCode());
+            hash = Hashing.mix(hash, k.capitalId().hashCode());
+            hash = Hashing.mix(hash, k.capitalCenter().packed());
+            hash = Hashing.mix(hash, k.cultureId().hashCode());
+            hash = Hashing.mix(hash, k.adjacentKingdomIds().size());
+            List<com.livingmods.common.id.KingdomId> adj = new ArrayList<>(k.adjacentKingdomIds());
+            adj.sort(Comparator.naturalOrder());
+            for (var id : adj) {
+                hash = Hashing.mix(hash, id.hashCode());
+            }
+            List<com.livingmods.common.id.SettlementId> sids = new ArrayList<>(k.settlementIds());
+            sids.sort(Comparator.naturalOrder());
+            for (var sid : sids) {
+                hash = Hashing.mix(hash, sid.hashCode());
+            }
+        }
+
+        List<PlannedSettlement> ss = new ArrayList<>(settlements);
+        ss.sort(Comparator.comparing(s -> s.id().value()));
+        for (PlannedSettlement s : ss) {
+            hash = Hashing.mix(hash, s.id().hashCode());
+            hash = Hashing.mix(hash, s.center().packed());
+            hash = Hashing.mix(hash, s.tier().ordinal());
+            hash = Hashing.mix(hash, s.role().ordinal());
+            hash = Hashing.mix(hash, s.capital() ? 1 : 0);
+            hash = Hashing.mix(hash, s.walls() ? 1 : 0);
+            hash = Hashing.mix(hash, s.underground() ? 1 : 0);
+            hash = Hashing.mix(hash, s.cultureId().hashCode());
+            hash = Hashing.mix(hash, Hashing.hashString(s.cultureKey() == null ? "" : s.cultureKey()));
+            hash = Hashing.mix(hash, s.bounds().minX());
+            hash = Hashing.mix(hash, s.bounds().minZ());
+            hash = Hashing.mix(hash, s.bounds().maxX());
+            hash = Hashing.mix(hash, s.bounds().maxZ());
+            hash = Hashing.mix(hash, s.buildings().size());
+            hash = Hashing.mix(hash, s.streetNetwork().size());
+            hash = Hashing.mix(hash, s.wallPath().size());
+            hash = Hashing.mix(hash, s.gatePositions().size());
+            List<PlannedBuilding> buildings = new ArrayList<>(s.buildings());
+            buildings.sort(Comparator.comparing(b -> b.id().value()));
+            for (PlannedBuilding b : buildings) {
+                hash = Hashing.mix(hash, b.id().hashCode());
+                hash = Hashing.mix(hash, b.role().ordinal());
+                hash = Hashing.mix(hash, b.footprint().minX());
+                hash = Hashing.mix(hash, b.footprint().minZ());
+                hash = Hashing.mix(hash, b.footprint().maxX());
+                hash = Hashing.mix(hash, b.footprint().maxZ());
+            }
+        }
+
+        List<PlannedRoad> rs = new ArrayList<>(roads);
+        rs.sort(Comparator.comparing(r -> r.id().value()));
+        for (PlannedRoad r : rs) {
+            hash = Hashing.mix(hash, r.id().hashCode());
+            hash = Hashing.mix(hash, r.roadClass().ordinal());
+            hash = Hashing.mix(hash, r.path().size());
+            if (!r.path().isEmpty()) {
+                hash = Hashing.mix(hash, r.path().get(0).packed());
+                hash = Hashing.mix(hash, r.path().get(r.path().size() - 1).packed());
+            }
+            hash = Hashing.mix(hash, r.bridges().size());
+            for (var bridge : r.bridges()) {
+                hash = Hashing.mix(hash, bridge.start().packed());
+                hash = Hashing.mix(hash, bridge.end().packed());
+                hash = Hashing.mix(hash, bridge.kind().ordinal());
+            }
+        }
+
+        for (PlannedRuin ruin : ruins) {
+            hash = Hashing.mix(hash, ruin.bounds().minX());
+            hash = Hashing.mix(hash, ruin.bounds().minZ());
+            hash = Hashing.mix(hash, ruin.bounds().maxX());
+            hash = Hashing.mix(hash, ruin.bounds().maxZ());
+            hash = Hashing.mix(hash, ruin.originalRole().ordinal());
+            hash = Hashing.mix(hash, ruin.decaySeed());
+        }
+        for (PlannedResourceSite site : resources) {
+            hash = Hashing.mix(hash, site.center().packed());
+            hash = Hashing.mix(hash, site.resource().ordinal());
+        }
+        List<PlannedBanditCamp> sortedCamps = new ArrayList<>(camps);
+        sortedCamps.sort(Comparator.comparingLong(c -> c.center().packed()));
+        for (PlannedBanditCamp camp : sortedCamps) {
+            hash = Hashing.mix(hash, camp.center().packed());
+            hash = Hashing.mix(hash, camp.size());
+            hash = Hashing.mix(hash, camp.variant().ordinal());
+        }
+        return hash == 0 ? 1L : hash;
     }
 
     /**

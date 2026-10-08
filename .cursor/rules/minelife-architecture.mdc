@@ -1,0 +1,74 @@
+---
+description: MineLife / LivingMods architecture authority index for agents
+globs:
+alwaysApply: true
+---
+
+# MineLife architecture index
+
+Source code is authoritative if this file drifts.
+
+## Authority boundaries
+
+| Concern | Authority | Location |
+|---------|-----------|----------|
+| Immutable initial world geometry | `WorldPlan` / `plan.bin` | `livingmods-worldgen` |
+| Live simulation | `CanonicalWorldState` | `livingmods-simulation` |
+| Physical changes AFTER initial gen | `DynamicPhysicalState` | `CanonicalWorldState.dynamicPhysical()` |
+| Block placement | Minecraft server thread materializers | `livingmods-neoforge` |
+| Citizen / army / caravan entities | NeoForge binders (interest LOD) | `CitizenProjectionBinder`, `ArmyProjectionBinder`, `CaravanProjectionBinder` |
+| Physical intent realization | `PhysicalReconciliationEngine` | NeoForge |
+| Verified Minecraft → canonical | `PhysicalInteractionBridge` → `PhysicalOutcomeApplier` | NeoForge → sidecar |
+
+## Central live loop
+
+```
+WorldPlan (immutable) → initial Minecraft realization
+CanonicalWorldState → PhysicalIntent → PhysicalReconciliation → Minecraft
+→ PhysicalOutcome → CanonicalWorldState
+```
+
+**Never write live geometry back into WorldPlan / plan.bin.**
+
+## Key classes
+
+### Simulation
+- `ConstructionEngine` — demand → resource reservation → `PhysicalIntent` (not abstract deficit-only)
+- `BanditryEngine` — dynamic camps from security/trade/unrest/war
+- `PhysicalIntent` / `PhysicalIntentStatus` / `PhysicalIntentType`
+- `DynamicPhysicalState` / `DynamicStructureRecord` / `DynamicSettlementGeometry`
+- `PhysicalOutcomeApplier` — typed outcome application
+- `EmergentTaskEngine.completeTaskWithEvidence` — no bare `completeTask` production path
+- `PlayerSystemsEngine.foundKingdom` — seeds founding physical intents
+
+### NeoForge
+- `PhysicalReconciliationEngine` — bounded per-tick, chunk-local, reload-safe
+- `SafeChunkWriter` — `dynamicMode` conservative replaceability; protects containers/mods/Waystones
+- `LivingModsStructureIndex` — initial + dynamic structures with provenance
+- `PhysicalInteractionBridge` — single death/interact → outcome bridge
+- `CitizenScheduleGoal` — POI destinations from structure index
+
+### Protocol / versions (`LivingModsVersions`)
+- `PROTOCOL_VERSION = 2` (typed `PhysicalOutcomePayload`)
+- `CANONICAL_SAVE_SCHEMA = 4` (DynamicPhysicalState; reads schema 3)
+- `PHYSICAL_CONTENT_REVISION = 2` (initial chunk materialization only — do not conflate with intent revisions)
+- `WORLDGEN_VERSION = 2`
+
+## Persistence artifacts
+
+1. `plan.bin` — immutable WorldPlan
+2. `canonical.bin` schema 4 — CanonicalWorldState including DynamicPhysicalState
+3. Chunk attachments — initial PHYSICAL_CONTENT_REVISION + plan hash
+4. `LivingModsStructureIndex` SavedData — structure registry
+
+## Player UUID rule
+
+Production paths must use real Minecraft player UUID. `PlayerSystemsEngine.demoPlayer()` is test/demo only — never silent production fallback.
+
+## Projection Y rule
+
+Canonical projection may send `y = -1`. NeoForge resolves safe Y via terrain / building floor (`CitizenProjectionBinder.resolveSafeY`).
+
+## Config knobs (format v2)
+
+`maxReconciliationOpsPerTick`, `armyProjectionCap`, `caravanProjectionCap`, `banditProjectionCap`, `dynamicConstructionEnabled`

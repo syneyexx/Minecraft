@@ -22,7 +22,10 @@ Status legend (mandatory):
 | IPC protocol (binary, versioned) | INTEGRATED | `BinaryCodec`, handshake identity fields, unit tests present (not run here) |
 | Sidecar process lifecycle | INTEGRATED | Auto-start/stop, embed jar, bounded restart (3), loopback bind |
 | Sidecar ↔ Minecraft handshake | INTEGRATED | Version/seed/plan-hash checks; reject paths coded |
-| Coordinated save + WAL | INTEGRATED | Schema 3 full graph + WAL; save barrier pauses engine |
+| Coordinated save + WAL | INTEGRATED | Schema 4 full graph + DynamicPhysicalState + WAL; save barrier pauses engine |
+| Dynamic physical reconciliation | INTEGRATED | PhysicalIntent lifecycle, ConstructionEngine intents, BanditryEngine, NeoForge PhysicalReconciliationEngine, outcome applier |
+| Caravan / army projection | INTEGRATED | CaravanProjectionBinder + ArmyProjectionBinder (LOD, not 1:1) |
+| Physical interaction bridge | INTEGRATED | Verified death/interact → typed PhysicalOutcomePayload |
 | Worldgen terrain (synthetic) | INTEGRATED | `TerrainAnalyzer` for tools/tests |
 | Minecraft terrain provider | INTEGRATED | `MinecraftTerrainProvider` injected from `WorldPlanCache` |
 | Cultures (12 surface + Wizard Trees) | INTEGRATED | Architecture, naming, government, biomes |
@@ -79,10 +82,10 @@ A subsystem may be promoted to RELEASE_READY only after the relevant sections of
 
 | Axis | Current | Source |
 |------|---------|--------|
-| Protocol | 1 | `LivingModsVersions.PROTOCOL_VERSION` |
+| Protocol | 2 | `LivingModsVersions.PROTOCOL_VERSION` (typed physical outcomes) |
 | Worldgen | 2 | `WORLDGEN_VERSION` |
-| Canonical save schema | 3 | `CANONICAL_SAVE_SCHEMA` |
-| Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` |
+| Canonical save schema | 4 | `CANONICAL_SAVE_SCHEMA` (DynamicPhysicalState) |
+| Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` (initial materialization only) |
 | Mod / sidecar | 0.1.0 | `MOD_VERSION` / `SIDECAR_VERSION` |
 
 Also recorded in `gradle.properties` for clarity; **Java constants win at runtime**.

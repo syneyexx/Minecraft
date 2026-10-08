@@ -72,6 +72,7 @@ public final class LivingModsNetwork {
             metrics.put("connected", String.valueOf(client.isReady()));
             metrics.put("simLag", String.valueOf(client.roundTripLatency()));
             metrics.put("pendingRequests", String.valueOf(client.diagnostics().getOrDefault("pendingRequests", "0")));
+            enrichDashboardFromSidecar(client, metrics);
         } else {
             metrics.put("connected", "false");
             metrics.put("pendingRequests", "0");
@@ -87,6 +88,24 @@ public final class LivingModsNetwork {
         // Ensure no hardcoded queueDepth=0 when sidecar has not reported — mark unknown.
         metrics.putIfAbsent("queueDepth", "unknown");
         return metrics;
+    }
+
+    private static void enrichDashboardFromSidecar(SidecarClient client, Map<String, String> metrics) {
+        try {
+            var envelope = client.sendAsync(com.livingmods.protocol.MessageType.GET_WORLD_SUMMARY, new byte[0])
+                    .get(800, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (envelope == null || envelope.isError()) return;
+            Map<String, String> summary = com.livingmods.protocol.PayloadIo.decodeStrings(envelope.payload());
+            metrics.put("warActive", summary.getOrDefault("wars", "0"));
+            metrics.put("epidemicActive", summary.getOrDefault("epidemics", "0"));
+            metrics.put("citizens", summary.getOrDefault("citizens", "0"));
+            metrics.put("simTicks", summary.getOrDefault("simTicks", "0"));
+            metrics.put("kingdomsLive", summary.getOrDefault("kingdoms", "0"));
+            metrics.put("settlementsLive", summary.getOrDefault("settlements", "0"));
+        } catch (Exception e) {
+            metrics.putIfAbsent("warActive", "unknown");
+            metrics.putIfAbsent("epidemicActive", "unknown");
+        }
     }
 
     private static MapDataPayload buildMapPayload(ServerPlayer player, MapDataRequestPayload request) {
@@ -168,12 +187,72 @@ public final class LivingModsNetwork {
             }
         }
 
+        List<MapDataPayload.ArmyMarker> armies = new ArrayList<>();
+        List<MapDataPayload.EpidemicMarker> epidemics = new ArrayList<>();
+        List<MapDataPayload.MigrationMarker> migrations = new ArrayList<>();
+        fillLiveOverlays(player, centerX, centerZ, radius, armies, epidemics, migrations);
+
         return new MapDataPayload(
                 originX, originZ, tileSize, width, height, tiles,
-                settlements, roads, kingdoms, List.of(), List.of(), List.of(),
+                settlements, roads, kingdoms, armies, epidemics, migrations,
                 (int) player.getX(), (int) player.getZ(),
                 plan == null ? 0L : plan.contentHash()
         );
+    }
+
+    private static void fillLiveOverlays(
+            ServerPlayer player,
+            int centerX,
+            int centerZ,
+            int radius,
+            List<MapDataPayload.ArmyMarker> armies,
+            List<MapDataPayload.EpidemicMarker> epidemics,
+            List<MapDataPayload.MigrationMarker> migrations
+    ) {
+        SidecarClient client = WorldSessionLifecycle.activeClient();
+        if (client == null || !client.isReady()) {
+            return;
+        }
+        try {
+            byte[] req = new com.livingmods.protocol.RequestPayloads.NearbyQuery(
+                    centerX, centerZ, radius, 48).encode();
+            var envelope = client.sendAsync(com.livingmods.protocol.MessageType.GET_MAP_OVERLAY, req)
+                    .get(800, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (envelope == null || envelope.isError()) return;
+            Map<String, String> data = com.livingmods.protocol.PayloadIo.decodeStrings(envelope.payload());
+            String armyPacked = data.getOrDefault("armiesPacked", "");
+            if (!armyPacked.isBlank()) {
+                for (String row : armyPacked.split(";")) {
+                    if (row.isBlank()) continue;
+                    String[] p = row.split("\\|");
+                    if (p.length < 5) continue;
+                    armies.add(new MapDataPayload.ArmyMarker(
+                            p[0], p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3]), Integer.parseInt(p[4])));
+                }
+            }
+            String epiPacked = data.getOrDefault("epidemicsPacked", "");
+            if (!epiPacked.isBlank()) {
+                for (String row : epiPacked.split(";")) {
+                    if (row.isBlank()) continue;
+                    String[] p = row.split("\\|");
+                    if (p.length < 4) continue;
+                    epidemics.add(new MapDataPayload.EpidemicMarker(
+                            p[0], Integer.parseInt(p[1]), Integer.parseInt(p[2]), Double.parseDouble(p[3])));
+                }
+            }
+            String migPacked = data.getOrDefault("migrationsPacked", "");
+            if (!migPacked.isBlank()) {
+                for (String row : migPacked.split(";")) {
+                    if (row.isBlank()) continue;
+                    String[] p = row.split("\\|");
+                    if (p.length < 4) continue;
+                    migrations.add(new MapDataPayload.MigrationMarker(
+                            p[0], Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3])));
+                }
+            }
+        } catch (Exception e) {
+            LivingModsMod.LOG.debug("Live map overlay fetch failed: {}", e.toString());
+        }
     }
 
     private static byte classifyTerrain(WorldPlan plan, int x, int z) {

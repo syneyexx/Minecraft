@@ -37,8 +37,32 @@ public final class LivingModsStructureIndex extends SavedData {
             int maxX,
             int maxZ,
             int foundationY,
-            String cultureKey
-    ) {}
+            String cultureKey,
+            String source,
+            UUID sourceIntentId,
+            int physicalRevision,
+            String integrityStatus
+    ) {
+        public Entry(
+                StructureId structureId,
+                BuildingRole role,
+                SettlementId settlementId,
+                DistrictId districtId,
+                int capacity,
+                int workSlots,
+                int residentialSlots,
+                int minX,
+                int minZ,
+                int maxX,
+                int maxZ,
+                int foundationY,
+                String cultureKey
+        ) {
+            this(structureId, role, settlementId, districtId, capacity, workSlots, residentialSlots,
+                    minX, minZ, maxX, maxZ, foundationY, cultureKey,
+                    "worldplan", null, 0, "ACTIVE");
+        }
+    }
 
     private final Map<UUID, Entry> byId = new LinkedHashMap<>();
 
@@ -58,6 +82,13 @@ public final class LivingModsStructureIndex extends SavedData {
             CompoundTag e = list.getCompound(i);
             try {
                 StructureId sid = StructureId.of(UUID.fromString(e.getString("id")));
+                UUID intent = null;
+                if (e.contains("intent") && !e.getString("intent").isBlank()) {
+                    try {
+                        intent = UUID.fromString(e.getString("intent"));
+                    } catch (Exception ignored) {
+                    }
+                }
                 Entry entry = new Entry(
                         sid,
                         BuildingRole.valueOf(e.getString("role")),
@@ -71,7 +102,11 @@ public final class LivingModsStructureIndex extends SavedData {
                         e.getInt("maxX"),
                         e.getInt("maxZ"),
                         e.getInt("y"),
-                        e.getString("culture")
+                        e.getString("culture"),
+                        e.contains("source") ? e.getString("source") : "worldplan",
+                        intent,
+                        e.contains("physRev") ? e.getInt("physRev") : 0,
+                        e.contains("integrity") ? e.getString("integrity") : "ACTIVE"
                 );
                 index.byId.put(sid.value(), entry);
             } catch (Exception ignored) {
@@ -98,6 +133,12 @@ public final class LivingModsStructureIndex extends SavedData {
             c.putInt("maxZ", e.maxZ());
             c.putInt("y", e.foundationY());
             c.putString("culture", e.cultureKey());
+            c.putString("source", e.source() == null ? "worldplan" : e.source());
+            if (e.sourceIntentId() != null) {
+                c.putString("intent", e.sourceIntentId().toString());
+            }
+            c.putInt("physRev", e.physicalRevision());
+            c.putString("integrity", e.integrityStatus() == null ? "ACTIVE" : e.integrityStatus());
             list.add(c);
         }
         tag.put("entries", list);
@@ -122,6 +163,57 @@ public final class LivingModsStructureIndex extends SavedData {
         );
         byId.put(building.id().value(), entry);
         setDirty();
+    }
+
+    public void putDynamic(
+            StructureId structureId,
+            BuildingRole role,
+            SettlementId settlementId,
+            com.livingmods.common.geo.BoundingBox2 footprint,
+            int foundationY,
+            String cultureKey,
+            UUID sourceIntentId
+    ) {
+        Entry entry = new Entry(
+                structureId,
+                role,
+                settlementId,
+                DistrictId.deterministic(structureId.value().getMostSignificantBits(), 2),
+                Math.max(1, footprint.width() * footprint.depth() / 16),
+                role.name().contains("WORK") || role == BuildingRole.WAREHOUSE || role == BuildingRole.SHOP ? 4 : 0,
+                role == BuildingRole.HOUSE || role == BuildingRole.TOWNHOUSE || role == BuildingRole.FARMHOUSE ? 4 : 0,
+                footprint.minX(),
+                footprint.minZ(),
+                footprint.maxX(),
+                footprint.maxZ(),
+                foundationY,
+                cultureKey == null ? "" : cultureKey,
+                "dynamic",
+                sourceIntentId,
+                1,
+                "ACTIVE"
+        );
+        byId.put(structureId.value(), entry);
+        setDirty();
+    }
+
+    public java.util.Optional<Entry> findNearest(BuildingRole role, int x, int z, int radius) {
+        Entry best = null;
+        double bestDist = Double.MAX_VALUE;
+        long r2 = (long) radius * radius;
+        for (Entry e : byId.values()) {
+            if (role != null && e.role() != role) continue;
+            int cx = (e.minX() + e.maxX()) / 2;
+            int cz = (e.minZ() + e.maxZ()) / 2;
+            long dx = (long) cx - x;
+            long dz = (long) cz - z;
+            long d2 = dx * dx + dz * dz;
+            if (d2 <= r2 && d2 < bestDist) {
+                bestDist = d2;
+                best = e;
+            }
+        }
+        return java.util.Optional.ofNullable(best);
     }
 
     public Optional<Entry> get(StructureId id) {

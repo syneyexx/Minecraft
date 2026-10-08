@@ -1,5 +1,7 @@
 package com.livingmods.simulation.engine;
 
+import com.livingmods.common.id.PlayerId;
+import com.livingmods.common.id.ShipmentId;
 import com.livingmods.common.model.EmergentTaskType;
 import com.livingmods.common.model.ResourceType;
 import com.livingmods.simulation.CanonicalWorldState;
@@ -13,6 +15,7 @@ import com.livingmods.simulation.tick.SimulationContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -28,12 +31,13 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
     public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
         if (!ctx.schedule().runGovernment()) return;
 
-        // Complete tasks whose underlying problem is already resolved.
+        // Auto-complete only when the underlying problem is resolved by simulation itself
+        // (not player claims). Player completions require completeTaskWithEvidence.
         for (EmergentTaskState task : state.emergentTasks().values()) {
             if (!task.open()) continue;
-            if (problemResolved(state, task)) {
+            if (problemResolved(state, task) && task.problemTags().containsKey("autoComplete")) {
                 task.setCompleted(true);
-                applyCompletionEffects(state, task);
+                applyCompletionEffects(state, task, null);
             }
         }
 
@@ -59,17 +63,33 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
                         "Healers lack supplies during the outbreak.",
                         Map.of("resource", "MEDICINE", "amount", "10"));
             }
-            if (s.developmentDeficit() > 1.5) {
+            if (s.developmentDeficit() > 1.5
+                    || state.dynamicPhysical().hasOpenIntent(s.id(),
+                    com.livingmods.common.model.PhysicalIntentType.CONSTRUCT_BUILDING)) {
                 offer(state, ctx, EmergentTaskType.CONSTRUCTION_RESOURCES, s,
                         "Haul stone and wood to " + s.name(),
                         "Builders cannot finish works in progress.",
                         Map.of("wood", "15", "stone", "15"));
             }
-            if (s.security() < 0.25 || s.unrest() > 0.55) {
+            if (s.security() < 0.25 || s.unrest() > 0.55
+                    || state.dynamicPhysical().hasOpenIntent(s.id(),
+                    com.livingmods.common.model.PhysicalIntentType.CREATE_BANDIT_CAMP)) {
+                String campId = "";
+                for (var intent : state.dynamicPhysical().intents().values()) {
+                    if (intent.type() == com.livingmods.common.model.PhysicalIntentType.CREATE_BANDIT_CAMP
+                            && intent.status().isActive()
+                            && intent.settlementId().isPresent()
+                            && intent.settlementId().get().equals(s.id())) {
+                        campId = intent.id().value().toString();
+                        break;
+                    }
+                }
                 offer(state, ctx, EmergentTaskType.BANDIT_REMOVAL, s,
                         "Clear bandits near " + s.name(),
                         "Roads are unsafe and trade falters.",
-                        Map.of("securityTarget", "0.5"));
+                        campId.isBlank()
+                                ? Map.of("securityTarget", "0.5")
+                                : Map.of("securityTarget", "0.5", "campId", campId));
             }
             if (market != null && market.crisisSeverity() > 0.4) {
                 offer(state, ctx, EmergentTaskType.ESCORT, s,
@@ -86,7 +106,7 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
                 offer(state, ctx, EmergentTaskType.MISSING_CARAVAN, dest,
                         "Find the missing caravan",
                         "A shipment bound for " + dest.name() + " never arrived.",
-                        Map.of("shipment", shipment.id().toString()));
+                        Map.of("shipment", shipment.id().value().toString()));
             }
         }
 
@@ -103,12 +123,111 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
         }
     }
 
+    /**
+     * @deprecated Prefer {@link #completeTaskWithEvidence} — bare completion is not production authority.
+     */
+    @Deprecated
     public boolean completeTask(CanonicalWorldState state, UUID taskId) {
+        return false;
+    }
+
+    /**
+     * Completes a task only when server-attested physical evidence satisfies the objective.
+     */
+    public boolean completeTaskWithEvidence(
+            CanonicalWorldState state,
+            UUID taskId,
+            PlayerId player,
+            Map<String, String> evidence
+    ) {
         EmergentTaskState task = state.emergentTasks().get(taskId);
         if (task == null || !task.open()) return false;
+        if (!evidenceSatisfies(state, task, evidence)) {
+            return false;
+        }
+        applyDeliveryEffects(state, task, evidence);
         task.setCompleted(true);
-        applyCompletionEffects(state, task);
+        applyCompletionEffects(state, task, player);
         return true;
+    }
+
+    private static boolean evidenceSatisfies(
+            CanonicalWorldState state,
+            EmergentTaskState task,
+            Map<String, String> evidence
+    ) {
+        SettlementState s = state.settlements().get(task.settlementId());
+        if (s == null) return false;
+        return switch (task.type()) {
+            case FOOD_DELIVERY, MEDICINE_DELIVERY -> {
+                ResourceType required = parseResource(task.problemTags().getOrDefault("resource",
+                        task.type() == EmergentTaskType.FOOD_DELIVERY ? "GRAIN" : "MEDICINE"));
+                double need = parseDouble(task.problemTags().getOrDefault("amount", "10"), 10);
+                ResourceType delivered = parseResource(evidence.get("resource"));
+                double amount = parseDouble(evidence.get("amount"), 0);
+                boolean settlementMatch = task.settlementId().value().toString()
+                        .equals(evidence.getOrDefault("settlementId", task.settlementId().value().toString()))
+                        || s.id().toString().equals(evidence.get("settlementId"));
+                yield delivered == required && amount + 1e-6 >= need && settlementMatch
+                        && "true".equalsIgnoreCase(evidence.getOrDefault("serverVerified", "true"));
+            }
+            case CONSTRUCTION_RESOURCES -> {
+                double wood = parseDouble(evidence.get("wood"), 0);
+                double stone = parseDouble(evidence.get("stone"), 0);
+                yield wood >= 15 && stone >= 15;
+            }
+            case BANDIT_REMOVAL -> {
+                boolean cleared = "true".equalsIgnoreCase(evidence.get("campCleared"))
+                        || "true".equalsIgnoreCase(evidence.get("campDestroyed"));
+                String expectedCamp = task.problemTags().get("campId");
+                if (expectedCamp != null && !expectedCamp.isBlank()) {
+                    String got = evidence.getOrDefault("campId", "");
+                    yield cleared && (got.isBlank() || got.equals(expectedCamp));
+                }
+                yield cleared || s.security() >= 0.45;
+            }
+            case ESCORT, MISSING_CARAVAN -> {
+                String shipmentRaw = task.problemTags().getOrDefault("shipment",
+                        evidence.getOrDefault("shipmentId", ""));
+                if (shipmentRaw.isBlank()) {
+                    yield "true".equalsIgnoreCase(evidence.get("caravanRescued"))
+                            || "true".equalsIgnoreCase(evidence.get("caravanArrived"));
+                }
+                ShipmentState sh = findShipment(state, shipmentRaw);
+                yield sh != null && (sh.delivered() || "true".equalsIgnoreCase(evidence.get("caravanRescued"))
+                        || "true".equalsIgnoreCase(evidence.get("caravanArrived")));
+            }
+            case DIPLOMATIC_DELIVERY -> "true".equalsIgnoreCase(evidence.get("delivered"));
+        };
+    }
+
+    private static void applyDeliveryEffects(
+            CanonicalWorldState state,
+            EmergentTaskState task,
+            Map<String, String> evidence
+    ) {
+        StockpileState stock = state.stockpiles().get(task.settlementId());
+        if (stock == null) {
+            stock = new StockpileState(task.settlementId());
+            state.stockpiles().put(task.settlementId(), stock);
+        }
+        switch (task.type()) {
+            case FOOD_DELIVERY, MEDICINE_DELIVERY -> {
+                ResourceType resource = parseResource(evidence.getOrDefault("resource",
+                        task.problemTags().get("resource")));
+                double amount = parseDouble(evidence.get("amount"),
+                        parseDouble(task.problemTags().get("amount"), 0));
+                if (resource != null && amount > 0) {
+                    stock.add(resource, amount);
+                }
+            }
+            case CONSTRUCTION_RESOURCES -> {
+                stock.add(ResourceType.WOOD, parseDouble(evidence.get("wood"), 15));
+                stock.add(ResourceType.STONE, parseDouble(evidence.get("stone"), 15));
+            }
+            default -> {
+            }
+        }
     }
 
     private static void offer(
@@ -152,39 +271,58 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
         };
     }
 
-    private static void applyCompletionEffects(CanonicalWorldState state, EmergentTaskState task) {
+    private static void applyCompletionEffects(CanonicalWorldState state, EmergentTaskState task, PlayerId player) {
         SettlementState s = state.settlements().get(task.settlementId());
         if (s == null) return;
-        StockpileState stock = state.stockpiles().get(s.id());
         switch (task.type()) {
-            case FOOD_DELIVERY -> {
-                if (stock != null) stock.add(ResourceType.GRAIN, 20);
-                s.setHunger(Math.max(0, s.hunger() - 0.2));
-            }
+            case FOOD_DELIVERY -> s.setHunger(Math.max(0, s.hunger() - 0.2));
             case MEDICINE_DELIVERY -> {
-                if (stock != null) stock.add(ResourceType.MEDICINE, 10);
+                // Stock already updated by evidence delivery; epidemic pressure eased by DiseaseEngine.
             }
-            case CONSTRUCTION_RESOURCES -> {
-                if (stock != null) {
-                    stock.add(ResourceType.WOOD, 15);
-                    stock.add(ResourceType.STONE, 15);
-                }
-                s.setDevelopmentDeficit(Math.max(0, s.developmentDeficit() - 1.0));
-            }
+            case CONSTRUCTION_RESOURCES ->
+                    s.setDevelopmentDeficit(Math.max(0, s.developmentDeficit() - 1.0));
             case BANDIT_REMOVAL -> {
-                s.setSecurity(Math.min(1.0, s.security() + 0.25));
-                s.setUnrest(Math.max(0, s.unrest() - 0.15));
+                // Security rises only from physical camp clear evidence path; do not invent boosts here.
             }
             case ESCORT -> {
                 MarketState m = state.markets().get(s.id());
                 if (m != null) m.setCrisisSeverity(Math.max(0, m.crisisSeverity() - 0.25));
             }
             case MISSING_CARAVAN -> {
-                if (stock != null) stock.add(ResourceType.GRAIN, 8);
+                // Arrival handled by caravan outcome; no free stockpile gift.
             }
             case DIPLOMATIC_DELIVERY -> s.setLegitimacy(Math.min(100, s.legitimacy() + 2));
         }
-        s.ownerKingdom().ifPresent(k ->
-                state.playerReputation().adjust(PlayerSystemsEngine.demoPlayer(), k, 0.08));
+        if (player != null) {
+            s.ownerKingdom().ifPresent(k ->
+                    state.playerReputation().adjust(player, k, 0.08));
+        }
+    }
+
+    private static ShipmentState findShipment(CanonicalWorldState state, String raw) {
+        try {
+            String cleaned = raw.startsWith("shipment:") ? raw.substring(9) : raw;
+            return state.shipments().get(ShipmentId.of(UUID.fromString(cleaned)));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static ResourceType parseResource(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return ResourceType.valueOf(raw.toUpperCase(Locale.ROOT));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static double parseDouble(String raw, double fallback) {
+        if (raw == null || raw.isBlank()) return fallback;
+        try {
+            return Double.parseDouble(raw.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 }

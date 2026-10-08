@@ -4,6 +4,9 @@ import com.livingmods.common.model.WorldIdentityContract;
 import com.livingmods.neoforge.LivingModsMod;
 import com.livingmods.neoforge.LivingModsWorldIds;
 import com.livingmods.neoforge.entity.CitizenProjectionBinder;
+import com.livingmods.neoforge.physical.ArmyProjectionBinder;
+import com.livingmods.neoforge.physical.CaravanProjectionBinder;
+import com.livingmods.neoforge.physical.PhysicalReconciliationEngine;
 import com.livingmods.neoforge.worldgen.WorldPlanCache;
 import com.livingmods.protocol.MessageType;
 import com.livingmods.worldgen.plan.WorldPlan;
@@ -117,9 +120,12 @@ public final class WorldSessionLifecycle {
             attemptBoundedRestart(server, worldId);
         }
 
-        // Interest-based citizen projection (never 1:1 with population).
+        // Interest-based physical projection + reconciliation (never 1:1 with population).
         if (client != null && client.isReady()) {
             CitizenProjectionBinder.get().onServerTick(server);
+            CaravanProjectionBinder.get().onServerTick(server);
+            ArmyProjectionBinder.get().onServerTick(server);
+            PhysicalReconciliationEngine.get().onServerTick(server);
         }
     }
 
@@ -204,6 +210,9 @@ public final class WorldSessionLifecycle {
         SidecarProcessManager.stopAll();
         WorldPlanCache.clear();
         CitizenProjectionBinder.get().clear();
+        CaravanProjectionBinder.get().clear();
+        ArmyProjectionBinder.get().clear();
+        PhysicalReconciliationEngine.get().clear();
         timeSyncBridge.reset();
         activeWorldId = null;
         activeIdentity = null;

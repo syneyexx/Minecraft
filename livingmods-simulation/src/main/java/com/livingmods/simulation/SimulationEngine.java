@@ -3,6 +3,7 @@ package com.livingmods.simulation;
 import com.livingmods.common.config.LivingModsConfig;
 import com.livingmods.common.geo.RegionCoord;
 import com.livingmods.common.time.SimulationTime;
+import com.livingmods.simulation.engine.BanditryEngine;
 import com.livingmods.simulation.engine.ConstructionEngine;
 import com.livingmods.simulation.engine.CrimeJusticeEngine;
 import com.livingmods.simulation.engine.DemographyEngine;
@@ -91,6 +92,7 @@ public final class SimulationEngine {
                 new EcologyEngine(),
                 new TechnologyEngine(),
                 new ConstructionEngine(),
+                new BanditryEngine(),
                 new DialogueEngine(),
                 new HistoryEngine(),
                 new EmergentTaskEngine(),

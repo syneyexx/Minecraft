@@ -191,7 +191,7 @@ public final class CitizenProjectionBinder {
                     UUID cid = UUID.fromString(cleaned);
                     ensureSpawned(level, new ProjectionCandidate(
                             cid, "Citizen", ScheduleState.HOME.name(),
-                            interest.x() + (i % 5) * 2, 64, interest.z() + (i / 5) * 2,
+                            interest.x() + (i % 5) * 2, -1, interest.z() + (i / 5) * 2,
                             lastPlanRevision, "avalon", "FARMER", false, 25));
                     i++;
                 }
@@ -227,10 +227,7 @@ public final class CitizenProjectionBinder {
         if (projected.size() >= config.physicalCitizenProjectionCap()) {
             return;
         }
-        int y = c.y();
-        if (y <= 0 || y >= level.getMaxBuildHeight()) {
-            y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, c.x(), c.z());
-        }
+        int y = resolveSafeY(level, c.x(), c.y(), c.z());
         CitizenEntity entity = LivingModsEntities.CITIZEN.get().create(level);
         if (entity == null) {
             return;
@@ -309,6 +306,37 @@ public final class CitizenProjectionBinder {
             client.sendAsync(MessageType.REPORT_PHYSICAL_OUTCOME, PayloadIo.encodeStrings(payload));
         } catch (Exception ignored) {
         }
+    }
+
+    /**
+     * Resolve a safe standing Y from terrain / building floors.
+     * Canonical Y=-1 (or invalid) means Minecraft must decide locally.
+     */
+    static int resolveSafeY(ServerLevel level, int x, int suggestedY, int z) {
+        int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+        if (suggestedY <= 0 || suggestedY >= level.getMaxBuildHeight()) {
+            return Math.max(level.getMinBuildHeight() + 1, surface);
+        }
+        // Prefer suggested floor when it is near surface and not inside solid blocks.
+        BlockPos feet = new BlockPos(x, suggestedY, z);
+        if (level.getBlockState(feet).isAir()
+                && level.getBlockState(feet.above()).isAir()
+                && !level.getBlockState(feet.below()).isAir()) {
+            return suggestedY;
+        }
+        // Scan downward from suggested toward surface for a standable spot.
+        int from = Math.max(suggestedY, surface + 4);
+        int to = Math.min(suggestedY, surface) - 8;
+        for (int y = from; y >= Math.max(level.getMinBuildHeight() + 1, to); y--) {
+            BlockPos p = new BlockPos(x, y, z);
+            if (level.getBlockState(p).isAir()
+                    && level.getBlockState(p.above()).isAir()
+                    && !level.getBlockState(p.below()).isAir()
+                    && !level.getBlockState(p.below()).liquid()) {
+                return y;
+            }
+        }
+        return Math.max(level.getMinBuildHeight() + 1, surface);
     }
 
     private static ScheduleState parseSchedule(String raw) {

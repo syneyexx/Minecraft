@@ -150,6 +150,18 @@ public final class TradeNetwork {
         return new RoutedPath(List.copyOf(points), List.of(), dist);
     }
 
+    public void addHotspot(BlockPos2 position) {
+        if (position == null) return;
+        for (BlockPos2 existing : banditHotspots) {
+            if (existing.distanceTo(position) < 24) {
+                return;
+            }
+        }
+        if (banditHotspots.size() < 512) {
+            banditHotspots.add(position);
+        }
+    }
+
     public double hotspotRisk(BlockPos2 position) {
         double risk = 0.05;
         for (BlockPos2 camp : banditHotspots) {
