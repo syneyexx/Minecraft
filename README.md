@@ -14,7 +14,7 @@ Status after release Blocks A–H (static inspection only — **this agent did n
 | Physical | Chunk materializers for roads, bridges, buildings, walls/gates, farms/mines/ports, ruins, bandit camps, Wizard Trees caverns; chunk attachment idempotency |
 | Sidecar | Separate JVM, loopback IPC, handshake with world-id / seed / plan-hash, simulation loop, canonical save + WAL |
 | Simulation | Phased engine with demography, economy, trade, government, diplomacy, war, crime, disease, migration, ecology, tech, religion, history, dialogue, player systems |
-| Player UX | Citizen entity projection (interest-based), map (`M`), dashboard (`F12`), `/livingmods locate …` |
+| Player UX | Citizen dialogue/market/tasks/realm (M4/M5), knowledge-filtered map (`M`), dashboard (`F12` via server), journal (`J`), `/livingmods locate …` |
 | Integrations | Soft `ModList` availability checks only — no real Create/Waystones/etc. adapters |
 
 ## Architecture (short)
@@ -43,9 +43,9 @@ Worldgen and chunk materialization do **not** wait on the sidecar. The sidecar l
 
 | Axis | Value | Constant |
 |------|-------|----------|
-| Protocol | 3 | `LivingModsVersions.PROTOCOL_VERSION` |
+| Protocol | 4 | `LivingModsVersions.PROTOCOL_VERSION` |
 | Worldgen | 2 | `WORLDGEN_VERSION` |
-| Canonical save schema | 4 | `CANONICAL_SAVE_SCHEMA` |
+| Canonical save schema | 5 | `CANONICAL_SAVE_SCHEMA` |
 | Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` |
 | Mod / sidecar | 0.1.0 | `MOD_VERSION` / `SIDECAR_VERSION` |
 

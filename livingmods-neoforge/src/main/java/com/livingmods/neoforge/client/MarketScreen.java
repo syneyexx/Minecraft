@@ -8,12 +8,10 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Settlement market UI — prices/stock from canonical market; trades go through server. */
+/** Settlement market UI — session-bound; prices from canonical market; trades via quote/commit. */
 public final class MarketScreen extends Screen {
     private static final ResourceType[] TRADEABLE = {
             ResourceType.GRAIN, ResourceType.FOOD, ResourceType.WOOD, ResourceType.STONE,
@@ -21,15 +19,24 @@ public final class MarketScreen extends Screen {
             ResourceType.CLOTH, ResourceType.COAL
     };
 
+    private final UUID sessionId;
     private final UUID settlementId;
-    private final Map<String, String> market;
+    private Map<String, String> market;
     private int selected;
     private int amount = 1;
+    private String lastResult = "";
 
     public MarketScreen(CitizenInteractionPayloads.MarketScreenData data) {
         super(Component.literal("Market"));
+        this.sessionId = data.sessionId();
         this.settlementId = data.settlementId();
         this.market = data.market();
+    }
+
+    public void applyMarketData(CitizenInteractionPayloads.MarketScreenData data) {
+        if (data == null) return;
+        this.market = data.market();
+        this.lastResult = "Market refreshed";
     }
 
     @Override
@@ -41,12 +48,14 @@ public final class MarketScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("Buy"), b -> {
             ResourceType r = TRADEABLE[Math.max(0, Math.min(TRADEABLE.length - 1, selected))];
             PacketDistributor.sendToServer(new CitizenInteractionPayloads.MarketTransaction(
-                    settlementId, r.name(), amount, true));
+                    sessionId, settlementId, r.name(), amount, true));
+            lastResult = "Buy requested…";
         }).bounds(width / 2 + 10, height - 52, 48, 18).build());
         addRenderableWidget(Button.builder(Component.literal("Sell"), b -> {
             ResourceType r = TRADEABLE[Math.max(0, Math.min(TRADEABLE.length - 1, selected))];
             PacketDistributor.sendToServer(new CitizenInteractionPayloads.MarketTransaction(
-                    settlementId, r.name(), amount, false));
+                    sessionId, settlementId, r.name(), amount, false));
+            lastResult = "Sell requested…";
         }).bounds(width / 2 + 64, height - 52, 48, 18).build());
         addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose())
                 .bounds(width - 70, height - 28, 54, 18).build());
@@ -63,11 +72,15 @@ public final class MarketScreen extends Screen {
             String price = market.getOrDefault("price_" + r.name(), "—");
             String stock = market.getOrDefault("stock_" + r.name(), "—");
             int color = i == selected ? 0xFFE6B3 : 0xDDDDDD;
+            double unit = 1;
+            try { unit = Double.parseDouble(price); } catch (Exception ignored) {}
+            int estGold = Math.max(1, (int) Math.ceil(unit * amount));
             graphics.drawString(font, (i == selected ? "> " : "  ") + r.name()
-                    + "  buy@" + price + "  stock=" + stock, 28, y, color);
+                    + "  @" + price + "  stock=" + stock
+                    + (i == selected ? "  ~" + estGold + " gold" : ""), 28, y, color);
             y += 12;
         }
-        graphics.drawCenteredString(font, "Amount: " + amount, width / 2, height - 72, 0xA0D0A0);
+        graphics.drawCenteredString(font, "Amount: " + amount + "   " + lastResult, width / 2, height - 72, 0xA0D0A0);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 

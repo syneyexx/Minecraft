@@ -107,6 +107,7 @@ public final class PhysicalInteractionBridge {
     /**
      * Server-authoritative task delivery: verifies and consumes inventory items before reporting.
      * Client cannot choose arbitrary amount or set serverVerified.
+     * Construction deliveries consume wood+stone together when resource is CONSTRUCTION / WOOD+STONE.
      */
     public static boolean reportTaskDelivery(
             ServerPlayer player,
@@ -116,26 +117,41 @@ public final class PhysicalInteractionBridge {
             double requestedAmount
     ) {
         if (player == null || taskId == null) return false;
+        String res = resource == null ? "" : resource.toUpperCase(java.util.Locale.ROOT);
+        // Construction: consume both materials in one verified outcome.
+        if ("CONSTRUCTION".equals(res) || "WOOD+STONE".equals(res) || "CONSTRUCTION_RESOURCES".equals(res)) {
+            int woodNeed = Math.max(1, Math.min(64, (int) Math.ceil(requestedAmount > 0 ? requestedAmount : 15)));
+            int stoneNeed = woodNeed;
+            var woodItem = resolveResourceItem("WOOD");
+            var stoneItem = resolveResourceItem("STONE");
+            if (woodItem == null || stoneItem == null) return false;
+            var tx = new com.livingmods.neoforge.gameplay.ServerInventoryTransaction(player);
+            if (!tx.consume(woodItem, woodNeed) || !tx.consume(stoneItem, stoneNeed)) {
+                tx.rollback();
+                return false;
+            }
+            tx.commit();
+            Map<String, String> evidence = new LinkedHashMap<>();
+            evidence.put("taskId", taskId.toString());
+            evidence.put("settlementId", settlementId == null ? "" : settlementId.toString());
+            evidence.put("wood", String.valueOf(woodNeed));
+            evidence.put("stone", String.valueOf(stoneNeed));
+            evidence.put("serverVerified", "true");
+            evidence.put("inventoryConsumed", "true");
+            evidence.put("playerId", player.getUUID().toString());
+            report(PhysicalOutcomeType.TASK_ITEM_DELIVERED, player.getUUID(), taskId,
+                    (int) player.getX(), (int) player.getY(), (int) player.getZ(), evidence);
+            return true;
+        }
         double amount = Math.max(1.0, Math.min(64.0, requestedAmount));
         net.minecraft.world.item.Item item = resolveResourceItem(resource);
         if (item == null) return false;
         int needed = (int) Math.ceil(amount);
-        int counted = 0;
-        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            ItemStack stack = player.getInventory().getItem(i);
-            if (stack.is(item)) counted += stack.getCount();
-        }
-        if (counted < needed) {
+        var tx = new com.livingmods.neoforge.gameplay.ServerInventoryTransaction(player);
+        if (!tx.consume(item, needed)) {
             return false;
         }
-        int remaining = needed;
-        for (int i = 0; i < player.getInventory().getContainerSize() && remaining > 0; i++) {
-            ItemStack stack = player.getInventory().getItem(i);
-            if (!stack.is(item)) continue;
-            int take = Math.min(remaining, stack.getCount());
-            stack.shrink(take);
-            remaining -= take;
-        }
+        tx.commit();
         Map<String, String> evidence = new LinkedHashMap<>();
         evidence.put("taskId", taskId.toString());
         evidence.put("settlementId", settlementId == null ? "" : settlementId.toString());

@@ -17,6 +17,17 @@ Authority flow: Minecraft server validates inventory/distance/session → typed 
 
 Player currency for market trades: Minecraft `GOLD_INGOT` ↔ canonical `ResourceType.GOLD`.
 
+### M5 append-only `PlayerActionType` additions
+
+Wire ordinals are append-only (still protocol 4 / PAM4):
+
+- `MARKET_QUOTE` / `MARKET_COMMIT` — session-bound exact integer GOLD_INGOT quotes
+- `QUERY_TASK_JOURNAL` — typed task journal snapshot
+- `PREVIEW_FOUND_REALM` — founding eligibility/cost without mutation
+- `QUERY_FINE` — exact outstanding fine for a jurisdiction
+
+Market quotes are **not** persisted (expire in-memory / on reconnect).
+
 ## Handshake
 
 `HandshakePayload` carries:

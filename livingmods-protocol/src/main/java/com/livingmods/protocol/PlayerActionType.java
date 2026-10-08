@@ -25,5 +25,15 @@ public enum PlayerActionType {
     PAY_FINE,
     SURRENDER_TO_GUARDS,
     DISCOVER_SETTLEMENT,
-    QUERY_PLAYER_CONTEXT
+    QUERY_PLAYER_CONTEXT,
+    /** M5: request exact integer GOLD_INGOT market quote (session-bound). */
+    MARKET_QUOTE,
+    /** M5: commit a previously issued market quote (single-use). */
+    MARKET_COMMIT,
+    /** M5: typed task journal snapshot for the requesting player. */
+    QUERY_TASK_JOURNAL,
+    /** M5: validate founding eligibility/cost without mutating state. */
+    PREVIEW_FOUND_REALM,
+    /** M5: query exact outstanding fine for a jurisdiction. */
+    QUERY_FINE
 }

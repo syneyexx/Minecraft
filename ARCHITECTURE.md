@@ -46,7 +46,7 @@ Sidecar JVM
   ├─ SessionHandler              → handshake, requests, typed physical outcomes
   ├─ SidecarSimulationHost
   │     ├─ WorldPlanStore.loadOrGenerate (must match expected plan hash)
-  │     ├─ PersistenceCoordinator → CanonicalStore + WAL (schema 4)
+  │     ├─ PersistenceCoordinator → CanonicalStore + WAL (schema 5)
   │     └─ SimulationEngine      → phased tick loop (+ ConstructionEngine intents, BanditryEngine)
   └─ DiagnosticsExporter
 ```

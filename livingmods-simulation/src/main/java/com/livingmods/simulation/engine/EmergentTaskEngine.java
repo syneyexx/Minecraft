@@ -4,6 +4,7 @@ import com.livingmods.common.id.PlayerId;
 import com.livingmods.common.id.ShipmentId;
 import com.livingmods.common.model.EmergentTaskType;
 import com.livingmods.common.model.ResourceType;
+import com.livingmods.common.model.TaskStatus;
 import com.livingmods.simulation.CanonicalWorldState;
 import com.livingmods.simulation.state.EmergentTaskState;
 import com.livingmods.simulation.state.MarketState;
@@ -31,12 +32,12 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
     public void phase2Global(CanonicalWorldState state, SimulationContext ctx) {
         if (!ctx.schedule().runGovernment()) return;
 
-        // Auto-complete only when the underlying problem is resolved by simulation itself
-        // (not player claims). Player completions require completeTaskWithEvidence.
+        // Path A: simulation resolves world problem (autoComplete tag only).
+        // Does NOT require accepted player — these are world-driven auto-resolutions.
         for (EmergentTaskState task : state.emergentTasks().values()) {
             if (!task.open()) continue;
             if (problemResolved(state, task) && task.problemTags().containsKey("autoComplete")) {
-                task.setCompleted(true);
+                task.setStatus(TaskStatus.COMPLETED);
                 applyCompletionEffects(state, task, null);
             }
         }
@@ -132,7 +133,9 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
     }
 
     /**
-     * Completes a task only when server-attested physical evidence satisfies the objective.
+     * Path B: accepted player completes objective with server-attested evidence.
+     * Requires task.status == ACCEPTED AND task.acceptedBy == player.
+     * Missing serverVerified is treated as FALSE.
      */
     public boolean completeTaskWithEvidence(
             CanonicalWorldState state,
@@ -141,14 +144,52 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
             Map<String, String> evidence
     ) {
         EmergentTaskState task = state.emergentTasks().get(taskId);
-        if (task == null || !task.open()) return false;
+        if (task == null) return false;
+        if (!task.assignedTo(player)) return false;
+        if (evidence == null || !isServerVerified(evidence)) return false;
         if (!evidenceSatisfies(state, task, evidence)) {
             return false;
         }
         applyDeliveryEffects(state, task, evidence);
-        task.setStatus(com.livingmods.common.model.TaskStatus.COMPLETED);
+        task.setStatus(TaskStatus.COMPLETED);
         applyCompletionEffects(state, task, player);
         return true;
+    }
+
+    /**
+     * Simulation-driven completion when a physical outcome resolves a problem
+     * (e.g. bandit camp removed). Still requires the completing player to own the
+     * accepted task when a player is supplied; null player is world auto-resolution only.
+     */
+    public boolean completeFromSimulationOutcome(
+            CanonicalWorldState state,
+            UUID taskId,
+            PlayerId playerOrNull,
+            Map<String, String> evidence
+    ) {
+        EmergentTaskState task = state.emergentTasks().get(taskId);
+        if (task == null || !task.open()) return false;
+        if (playerOrNull != null) {
+            if (!task.assignedTo(playerOrNull)) return false;
+            if (evidence == null || !isServerVerified(evidence)) return false;
+        } else if (!task.problemTags().containsKey("autoComplete") && task.acceptedBy() != null) {
+            // Do not steal an accepted player task via anonymous simulation complete.
+            return false;
+        }
+        if (evidence != null && !evidenceSatisfies(state, task, evidence)) {
+            return false;
+        }
+        if (evidence != null) {
+            applyDeliveryEffects(state, task, evidence);
+        }
+        task.setStatus(TaskStatus.COMPLETED);
+        applyCompletionEffects(state, task, playerOrNull);
+        return true;
+    }
+
+    private static boolean isServerVerified(Map<String, String> evidence) {
+        // Missing key defaults to FALSE — never trust unverified player claims.
+        return "true".equalsIgnoreCase(evidence.get("serverVerified"));
     }
 
     private static boolean evidenceSatisfies(
@@ -165,16 +206,21 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
                 double need = parseDouble(task.problemTags().getOrDefault("amount", "10"), 10);
                 ResourceType delivered = parseResource(evidence.get("resource"));
                 double amount = parseDouble(evidence.get("amount"), 0);
-                boolean settlementMatch = task.settlementId().value().toString()
-                        .equals(evidence.getOrDefault("settlementId", task.settlementId().value().toString()))
-                        || s.id().toString().equals(evidence.get("settlementId"));
-                yield delivered == required && amount + 1e-6 >= need && settlementMatch
-                        && "true".equalsIgnoreCase(evidence.getOrDefault("serverVerified", "true"));
+                String evidenceSettlement = evidence.get("settlementId");
+                boolean settlementMatch = evidenceSettlement != null && !evidenceSettlement.isBlank()
+                        && (task.settlementId().value().toString().equals(evidenceSettlement)
+                        || s.id().toString().equals(evidenceSettlement));
+                yield delivered == required && amount + 1e-6 >= need && settlementMatch;
             }
             case CONSTRUCTION_RESOURCES -> {
+                double woodNeed = parseDouble(task.problemTags().getOrDefault("wood", "15"), 15);
+                double stoneNeed = parseDouble(task.problemTags().getOrDefault("stone", "15"), 15);
                 double wood = parseDouble(evidence.get("wood"), 0);
                 double stone = parseDouble(evidence.get("stone"), 0);
-                yield wood >= 15 && stone >= 15;
+                String evidenceSettlement = evidence.get("settlementId");
+                boolean settlementMatch = evidenceSettlement != null && !evidenceSettlement.isBlank()
+                        && task.settlementId().value().toString().equals(evidenceSettlement);
+                yield wood + 1e-6 >= woodNeed && stone + 1e-6 >= stoneNeed && settlementMatch;
             }
             case BANDIT_REMOVAL -> {
                 boolean cleared = "true".equalsIgnoreCase(evidence.get("campCleared"))
@@ -182,22 +228,31 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
                 String expectedCamp = task.problemTags().get("campId");
                 if (expectedCamp != null && !expectedCamp.isBlank()) {
                     String got = evidence.getOrDefault("campId", "");
-                    yield cleared && (got.isBlank() || got.equals(expectedCamp));
+                    yield cleared && got.equals(expectedCamp);
                 }
-                yield cleared || s.security() >= 0.45;
+                yield cleared;
             }
             case ESCORT, MISSING_CARAVAN -> {
-                String shipmentRaw = task.problemTags().getOrDefault("shipment",
-                        evidence.getOrDefault("shipmentId", ""));
+                String shipmentRaw = task.problemTags().getOrDefault("shipment", "");
                 if (shipmentRaw.isBlank()) {
-                    yield "true".equalsIgnoreCase(evidence.get("caravanRescued"))
-                            || "true".equalsIgnoreCase(evidence.get("caravanArrived"));
+                    // Require explicit trusted physical outcome — never a bare client boolean alone
+                    // without shipment identity when the task has none.
+                    yield "true".equalsIgnoreCase(evidence.get("caravanArrived"))
+                            && "true".equalsIgnoreCase(evidence.get("physicalOutcome"));
+                }
+                String gotShipment = evidence.getOrDefault("shipmentId", evidence.getOrDefault("shipment", ""));
+                if (!shipmentRaw.equals(gotShipment) && !gotShipment.isBlank()) {
+                    yield false;
                 }
                 ShipmentState sh = findShipment(state, shipmentRaw);
-                yield sh != null && (sh.delivered() || "true".equalsIgnoreCase(evidence.get("caravanRescued"))
+                yield sh != null && (sh.delivered()
+                        || "true".equalsIgnoreCase(evidence.get("caravanRescued"))
                         || "true".equalsIgnoreCase(evidence.get("caravanArrived")));
             }
-            case DIPLOMATIC_DELIVERY -> "true".equalsIgnoreCase(evidence.get("delivered"));
+            case DIPLOMATIC_DELIVERY ->
+                    // Explicit trusted physical outcome only — never a client boolean alone.
+                    "true".equalsIgnoreCase(evidence.get("delivered"))
+                            && "true".equalsIgnoreCase(evidence.get("physicalOutcome"));
         };
     }
 
@@ -222,8 +277,12 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
                 }
             }
             case CONSTRUCTION_RESOURCES -> {
-                stock.add(ResourceType.WOOD, parseDouble(evidence.get("wood"), 15));
-                stock.add(ResourceType.STONE, parseDouble(evidence.get("stone"), 15));
+                double wood = parseDouble(evidence.get("wood"),
+                        parseDouble(task.problemTags().get("wood"), 0));
+                double stone = parseDouble(evidence.get("stone"),
+                        parseDouble(task.problemTags().get("stone"), 0));
+                if (wood > 0) stock.add(ResourceType.WOOD, wood);
+                if (stone > 0) stock.add(ResourceType.STONE, stone);
             }
             default -> {
             }
@@ -277,19 +336,16 @@ public final class EmergentTaskEngine implements SimulationSubsystem {
         switch (task.type()) {
             case FOOD_DELIVERY -> s.setHunger(Math.max(0, s.hunger() - 0.2));
             case MEDICINE_DELIVERY -> {
-                // Stock already updated by evidence delivery; epidemic pressure eased by DiseaseEngine.
             }
             case CONSTRUCTION_RESOURCES ->
                     s.setDevelopmentDeficit(Math.max(0, s.developmentDeficit() - 1.0));
             case BANDIT_REMOVAL -> {
-                // Security rises only from physical camp clear evidence path; do not invent boosts here.
             }
             case ESCORT -> {
                 MarketState m = state.markets().get(s.id());
                 if (m != null) m.setCrisisSeverity(Math.max(0, m.crisisSeverity() - 0.25));
             }
             case MISSING_CARAVAN -> {
-                // Arrival handled by caravan outcome; no free stockpile gift.
             }
             case DIPLOMATIC_DELIVERY -> s.setLegitimacy(Math.min(100, s.legitimacy() + 2));
         }

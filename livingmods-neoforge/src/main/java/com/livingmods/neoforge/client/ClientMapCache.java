@@ -13,6 +13,7 @@ import java.util.Map;
 public final class ClientMapCache {
     private static volatile MapDataPayload mapData;
     private static final Map<String, String> dashboard = new LinkedHashMap<>();
+    private static final Map<String, String> playerContext = new LinkedHashMap<>();
 
     private ClientMapCache() {}
 
@@ -46,11 +47,29 @@ public final class ClientMapCache {
         }
     }
 
+    public static void acceptPlayerContext(Map<String, String> data) {
+        synchronized (playerContext) {
+            playerContext.clear();
+            if (data != null) {
+                playerContext.putAll(data);
+            }
+        }
+    }
+
+    public static Map<String, String> playerContextSnapshot() {
+        synchronized (playerContext) {
+            return Collections.unmodifiableMap(new LinkedHashMap<>(playerContext));
+        }
+    }
+
     /** Clear on disconnect / world switch so world A data never paints world B. */
     public static void clear() {
         mapData = null;
         synchronized (dashboard) {
             dashboard.clear();
+        }
+        synchronized (playerContext) {
+            playerContext.clear();
         }
     }
 }

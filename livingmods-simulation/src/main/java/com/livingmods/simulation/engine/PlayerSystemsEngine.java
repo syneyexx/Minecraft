@@ -63,16 +63,37 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
                 entry.getValue().put(rep.getKey(), v);
             }
         }
-        // Player realms: NPC admin continues tax collection / legitimacy maintenance.
+        // Player realms: NPC admin continues tax collection / legitimacy / policy-driven budgets.
         for (Map.Entry<PlayerId, KingdomId> ruled : state.playerReputation().ruledKingdoms().entrySet()) {
+            PlayerId player = ruled.getKey();
             KingdomState kingdom = state.kingdoms().get(ruled.getValue());
             if (kingdom == null) continue;
             kingdom.setLegitimacy(Math.min(100, kingdom.legitimacy() + 0.05));
-            // Routine treasury drip from settlements.
+            double defense = state.playerReputation().policy(player, "defense", 0.3);
+            double foodTarget = state.playerReputation().policy(player, "foodReserves", 40);
+            // Routine treasury drip from settlements (tax policy input).
             for (SettlementId sid : kingdom.settlementIds()) {
                 StockpileState stock = state.stockpiles().get(sid);
+                SettlementState s = state.settlements().get(sid);
                 if (stock != null && stock.get(ResourceType.GRAIN) > 10) {
                     kingdom.setTreasury(kingdom.treasury() + kingdom.taxRate() * 0.5);
+                }
+                // Tax pressure → gradual unrest (not instant button effect).
+                if (s != null && kingdom.taxRate() > 0.15) {
+                    s.setUnrest(Math.min(1.0, s.unrest() + (kingdom.taxRate() - 0.15) * 0.01));
+                } else if (s != null && kingdom.taxRate() < 0.06) {
+                    s.setUnrest(Math.max(0, s.unrest() - 0.005));
+                }
+                // Defense budget: spend treasury over time, slowly raise security.
+                if (s != null && defense > 0.2 && kingdom.treasury() >= defense * 0.5) {
+                    kingdom.setTreasury(kingdom.treasury() - defense * 0.5);
+                    s.setSecurity(Math.min(1.0, s.security() + defense * 0.01));
+                }
+                // Food reserve policy: markets import pressure when below target.
+                MarketState market = state.markets().get(sid);
+                if (stock != null && market != null && stock.get(ResourceType.GRAIN) < foodTarget) {
+                    market.setCrisisSeverity(Math.min(1.0,
+                            market.crisisSeverity() + 0.01 * Math.min(1.0, (foodTarget - stock.get(ResourceType.GRAIN)) / foodTarget)));
                 }
             }
         }
@@ -124,9 +145,63 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
         }
     }
 
+    public record FoundationPreview(
+            boolean eligible,
+            String message,
+            int goldCost,
+            boolean createsNewSettlement,
+            String capitalName
+    ) {}
+
     /**
-     * Practical foundation workflow under configurable requirements.
-     * New realm enters territory/government/population/economy/diplomacy/military graphs.
+     * Validate founding without mutating state. Call before payment + commit.
+     */
+    public FoundationPreview previewFoundation(
+            CanonicalWorldState state,
+            PlayerId player,
+            String realmName,
+            BlockPos2 center,
+            FoundationRequirements requirements
+    ) {
+        if (state.playerReputation().ruledKingdom(player) != null) {
+            return new FoundationPreview(false, "You already rule a realm.", 0, false, "");
+        }
+        FoundationRequirements req = requirements == null ? FoundationRequirements.defaults() : requirements;
+        int goldCost = (int) Math.ceil(req.minTreasuryContribution());
+        SettlementState capital = findClaimableSettlement(state, center, player, req);
+        boolean createsNew = capital == null;
+        if (capital != null) {
+            if (capital.housingUnits() < req.minSettlementHousing()) {
+                return new FoundationPreview(false,
+                        "Capital needs at least " + req.minSettlementHousing() + " housing units.",
+                        goldCost, false, capital.name());
+            }
+            if (req.requireTrustedStanding() && capital.ownerKingdom().isPresent()) {
+                FactionStanding standing = state.playerReputation().standing(player, capital.ownerKingdom().get());
+                if (!standing.atLeast(FactionStanding.TRUSTED)) {
+                    return new FoundationPreview(false,
+                            "Trusted standing required to claim this settlement.", goldCost, false, capital.name());
+                }
+            }
+            if (req.minReputation() > 0 && capital.ownerKingdom().isPresent()) {
+                double rep = state.playerReputation().reputation(player, capital.ownerKingdom().get());
+                if (rep < req.minReputation() / 100.0) {
+                    return new FoundationPreview(false, "Reputation too low to found here.",
+                            goldCost, false, capital.name());
+                }
+            }
+            return new FoundationPreview(true, "Ready to claim " + capital.name(),
+                    goldCost, false, capital.name());
+        }
+        // New settlement path — spacing validated by caller for hostile neighbors.
+        return new FoundationPreview(true,
+                "Ready to found " + (realmName == null || realmName.isBlank() ? "a new realm" : realmName),
+                goldCost, true, (realmName == null ? "New" : realmName) + " Hold");
+    }
+
+    /**
+     * Atomic foundation commit. Must only be called after preview + verified payment.
+     * Validates again before any mutation; never leaves partial realm state on failure.
      */
     public FoundationResult foundKingdom(
             CanonicalWorldState state,
@@ -137,37 +212,33 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
             FoundationRequirements requirements,
             SimulationContext ctx
     ) {
-        if (state.playerReputation().ruledKingdom(player) != null) {
-            return new FoundationResult(false, "You already rule a realm.", null);
-        }
         FoundationRequirements req = requirements == null ? FoundationRequirements.defaults() : requirements;
+        FoundationPreview preview = previewFoundation(state, player, realmName, center, req);
+        if (!preview.eligible()) {
+            return new FoundationResult(false, preview.message(), null);
+        }
 
-        // Prefer claiming an independent nearby settlement; otherwise found a hamlet.
         SettlementState capital = findClaimableSettlement(state, center, player, req);
+        boolean createdSettlement = false;
+        SettlementId createdId = null;
         if (capital == null) {
             capital = createCapitalSettlement(state, realmName, center, cultureId, ctx);
+            createdSettlement = true;
+            createdId = capital.id();
         }
 
+        // Re-validate after potential create (housing already seeded at 6).
         if (capital.housingUnits() < req.minSettlementHousing()) {
+            if (createdSettlement) rollbackCreatedSettlement(state, createdId);
             return new FoundationResult(false,
                     "Capital needs at least " + req.minSettlementHousing() + " housing units.", null);
-        }
-        if (req.requireTrustedStanding() && capital.ownerKingdom().isPresent()) {
-            FactionStanding standing = state.playerReputation().standing(player, capital.ownerKingdom().get());
-            if (!standing.atLeast(FactionStanding.TRUSTED)) {
-                return new FoundationResult(false, "Trusted standing required to claim this settlement.", null);
-            }
-        }
-        if (req.minReputation() > 0 && capital.ownerKingdom().isPresent()) {
-            double rep = state.playerReputation().reputation(player, capital.ownerKingdom().get());
-            if (rep < req.minReputation() / 100.0) {
-                return new FoundationResult(false, "Reputation too low to found here.", null);
-            }
         }
 
         KingdomId kingdomId = KingdomId.deterministic(state.seed(), state.kingdoms().size() + 500);
         CitizenId stewardId = ensureSteward(state, capital, cultureId, ctx);
 
+        // Treasury comes only from verified player contribution — never fabricated.
+        double treasury = req.minTreasuryContribution();
         KingdomState kingdom = new KingdomState(
                 kingdomId,
                 realmName == null || realmName.isBlank() ? "Player Realm" : realmName,
@@ -176,14 +247,13 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
                 capital.id(),
                 stewardId,
                 new ArrayList<>(List.of(capital.id())),
-                req.minTreasuryContribution(),
+                treasury,
                 0.08,
                 60.0
         );
         kingdom.setReligionKey("solar_cult");
         state.kingdoms().put(kingdomId, kingdom);
 
-        // Re-home capital under player kingdom by replacing settlement ownership via new instance.
         SettlementState owned = new SettlementState(
                 capital.id(),
                 capital.name(),
@@ -206,15 +276,14 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
 
         state.playerReputation().setRuledKingdom(player, kingdomId);
         state.playerReputation().adjust(player, kingdomId, 1.0);
+        state.playerReputation().setStanding(player, kingdomId, FactionStanding.RULER);
 
-        // Diplomacy: neutral to all existing kingdoms.
         for (KingdomId other : state.kingdoms().keySet()) {
             if (other.equals(kingdomId)) continue;
             state.diplomacy().setRelation(kingdomId, other,
                     com.livingmods.common.model.DiplomaticRelation.NEUTRAL);
         }
 
-        // Seed economy if missing.
         state.stockpiles().computeIfAbsent(owned.id(), StockpileState::new);
         state.markets().computeIfAbsent(owned.id(), MarketState::new);
         StockpileState stock = state.stockpiles().get(owned.id());
@@ -222,7 +291,6 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
         stock.add(ResourceType.WOOD, 20);
         stock.add(ResourceType.STONE, 15);
 
-        // Dynamic physical founding — never mutates immutable WorldPlan.
         seedPlayerRealmPhysicalIntents(state, owned, player, cultureId, ctx);
 
         state.appendHistory(new HistoricalEvent(
@@ -238,72 +306,49 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
         return new FoundationResult(true, "Founded " + kingdom.name(), kingdomId);
     }
 
+    private static void rollbackCreatedSettlement(CanonicalWorldState state, SettlementId id) {
+        if (id == null) return;
+        state.settlements().remove(id);
+        state.stockpiles().remove(id);
+        state.markets().remove(id);
+    }
+
+    /**
+     * Policies are durable inputs only — no instant unrest/security/deficit farming.
+     * EconomyEngine reads kingdom.taxRate(); other engines read playerReputation.policy(...).
+     */
     public void setPolicyTaxRate(CanonicalWorldState state, PlayerId player, double taxRate) {
         KingdomId id = state.playerReputation().ruledKingdom(player);
         if (id == null) return;
         KingdomState k = state.kingdoms().get(id);
         if (k != null) {
             k.setTaxRate(Math.max(0.0, Math.min(0.4, taxRate)));
-            // Economic consequence: higher tax raises unrest pressure, lower tax cuts treasury drip.
-            for (SettlementId sid : k.settlementIds()) {
-                SettlementState s = state.settlements().get(sid);
-                if (s == null) continue;
-                if (taxRate > 0.15) {
-                    s.setUnrest(Math.min(1.0, s.unrest() + (taxRate - 0.15) * 0.5));
-                } else {
-                    s.setUnrest(Math.max(0, s.unrest() - 0.02));
-                }
-            }
         }
+        state.playerReputation().setPolicy(player, "taxRate", Math.max(0.0, Math.min(0.4, taxRate)));
     }
 
     public void setPolicyDefense(CanonicalWorldState state, PlayerId player, double defensePriority) {
         KingdomId id = state.playerReputation().ruledKingdom(player);
         if (id == null) return;
-        for (SettlementId sid : state.kingdoms().get(id).settlementIds()) {
-            SettlementState s = state.settlements().get(sid);
-            if (s == null) continue;
-            s.setSecurity(Math.min(1.0, s.security() + defensePriority * 0.05));
-            s.setDevelopmentDeficit(s.developmentDeficit() + defensePriority * 0.1);
-        }
+        state.playerReputation().setPolicy(player, "defense", Math.max(0.0, Math.min(1.0, defensePriority)));
     }
 
     public void setPolicyFoodReserves(CanonicalWorldState state, PlayerId player, double reserveTarget) {
         KingdomId id = state.playerReputation().ruledKingdom(player);
         if (id == null) return;
-        for (SettlementId sid : state.kingdoms().get(id).settlementIds()) {
-            StockpileState stock = state.stockpiles().get(sid);
-            MarketState market = state.markets().get(sid);
-            if (stock == null || market == null) continue;
-            if (stock.get(ResourceType.GRAIN) < reserveTarget) {
-                market.setCrisisSeverity(Math.min(1.0, market.crisisSeverity() + 0.05));
-            }
-        }
+        state.playerReputation().setPolicy(player, "foodReserves", Math.max(5.0, Math.min(200.0, reserveTarget)));
     }
 
     public void setPolicyConstructionPriority(CanonicalWorldState state, PlayerId player, double priority) {
         KingdomId id = state.playerReputation().ruledKingdom(player);
         if (id == null) return;
-        for (SettlementId sid : state.kingdoms().get(id).settlementIds()) {
-            SettlementState s = state.settlements().get(sid);
-            if (s == null) continue;
-            s.setDevelopmentDeficit(Math.max(0.5, s.developmentDeficit() + priority * 0.25));
-        }
+        state.playerReputation().setPolicy(player, "construction", Math.max(0.0, Math.min(1.0, priority)));
     }
 
     public void setPolicyMigrationOpenness(CanonicalWorldState state, PlayerId player, boolean open) {
         KingdomId id = state.playerReputation().ruledKingdom(player);
         if (id == null) return;
-        for (SettlementId sid : state.kingdoms().get(id).settlementIds()) {
-            SettlementState s = state.settlements().get(sid);
-            if (s == null) continue;
-            if (open) {
-                s.setUnrest(Math.max(0, s.unrest() - 0.02));
-                s.setHousingUnits(s.housingUnits()); // openness consumed by MigrationEngine capacity checks
-            } else {
-                s.setSecurity(Math.min(1.0, s.security() + 0.02));
-            }
-        }
+        state.playerReputation().setPolicy(player, "migrationOpen", open ? 1.0 : 0.0);
     }
 
     private static void seedPlayerRealmPhysicalIntents(

@@ -20,7 +20,11 @@ public final class ClientGameplayScreens {
     }
 
     public static void openMarket(CitizenInteractionPayloads.MarketScreenData data) {
-        Minecraft.getInstance().setScreen(new MarketScreen(data));
+        if (Minecraft.getInstance().screen instanceof MarketScreen screen) {
+            screen.applyMarketData(data);
+        } else {
+            Minecraft.getInstance().setScreen(new MarketScreen(data));
+        }
     }
 
     public static void openRealm(CitizenInteractionPayloads.RealmPanel panel) {

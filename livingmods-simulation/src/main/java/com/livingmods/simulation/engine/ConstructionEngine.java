@@ -73,10 +73,14 @@ public final class ConstructionEngine implements SimulationSubsystem {
         double occupancy = occupied / (double) Math.max(1, housing);
         double labour = labourCapacity(state, settlement);
 
+        // Player realm construction policy raises planning priority (does not invent deficit).
+        double constructionPolicy = playerConstructionPolicy(state, settlement);
+        int priorityBoost = constructionPolicy >= 0.7 ? -1 : constructionPolicy <= 0.2 ? 1 : 0;
+
         // Housing shortage → house construction demand.
-        if (occupancy > 0.85 || settlement.developmentDeficit() > 0.5) {
+        if (occupancy > 0.85 || settlement.developmentDeficit() > 0.5 || constructionPolicy >= 0.6) {
             maybeOfferBuilding(state, settlement, BuildingRole.HOUSE, PhysicalIntentType.CONSTRUCT_BUILDING,
-                    PRIORITY_NORMAL, labour, ctx);
+                    Math.max(1, PRIORITY_NORMAL + priorityBoost), labour, ctx);
         }
         if (occupancy > 1.05 && settlement.tier().ordinal() >= SettlementTier.TOWN.ordinal()) {
             maybeOfferBuilding(state, settlement, BuildingRole.TOWNHOUSE, PhysicalIntentType.CONSTRUCT_BUILDING,
@@ -1002,5 +1006,17 @@ public final class ConstructionEngine implements SimulationSubsystem {
             return "north_south";
         }
         return "east_west";
+    }
+
+    /** Construction policy for player-ruled kingdoms — durable input, not instant deficit bump. */
+    private static double playerConstructionPolicy(CanonicalWorldState state, SettlementState settlement) {
+        if (settlement.ownerKingdom().isEmpty()) return 0.3;
+        var kingdomId = settlement.ownerKingdom().get();
+        for (var e : state.playerReputation().ruledKingdoms().entrySet()) {
+            if (kingdomId.equals(e.getValue())) {
+                return state.playerReputation().policy(e.getKey(), "construction", 0.3);
+            }
+        }
+        return 0.3;
     }
 }
