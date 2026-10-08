@@ -1,5 +1,6 @@
 package com.livingmods.neoforge.gameplay;
 
+import com.livingmods.common.model.PlayerLegalStatus;
 import com.livingmods.common.model.ResourceType;
 import com.livingmods.neoforge.LivingModsMod;
 import com.livingmods.neoforge.entity.CitizenEntity;
@@ -12,6 +13,7 @@ import com.livingmods.protocol.MessageType;
 import com.livingmods.protocol.PlayerActionRequest;
 import com.livingmods.protocol.PlayerActionResponse;
 import com.livingmods.protocol.PlayerActionType;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -22,10 +24,13 @@ import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Server-side player command bridge: verified Minecraft facts → typed PLAYER_ACTION → UI feedback.
@@ -33,6 +38,12 @@ import java.util.UUID;
  */
 public final class PlayerGameplayBridge {
     private static int tickCounter;
+    /** Pending market quotes awaiting physical commit (quoteId → gold). */
+    private static final ConcurrentHashMap<UUID, PendingQuote> pendingQuotes = new ConcurrentHashMap<>();
+
+    private record PendingQuote(UUID quoteId, UUID settlementId, String resource, int amount, boolean buy, int gold, long createdMs) {
+        boolean expired() { return System.currentTimeMillis() - createdMs > 55_000L; }
+    }
 
     private PlayerGameplayBridge() {}
 
@@ -43,7 +54,14 @@ public final class PlayerGameplayBridge {
         if (server == null) return;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             FactionDispositionCache.get().tickRefresh(player.getUUID());
+            BlockPos pos = player.blockPosition();
+            PlayerKnowledgeCache.get().tickRefresh(player.getUUID(), pos.getX(), pos.getY(), pos.getZ());
+            // Nearby observation — server-derived position only.
+            if (tickCounter % 160 == 0) {
+                discoverNearbySettlement(player);
+            }
         }
+        pendingQuotes.entrySet().removeIf(e -> e.getValue().expired());
     }
 
     @SubscribeEvent
@@ -65,20 +83,29 @@ public final class PlayerGameplayBridge {
     public static void onPlayerKill(LivingDeathEvent event) {
         if (!(event.getSource().getEntity() instanceof ServerPlayer player)) return;
         if (!(event.getEntity().level() instanceof net.minecraft.server.level.ServerLevel)) return;
-        // Crime consequences for attacking LivingMods entities — PhysicalInteractionBridge reports outcomes;
-        // here we attach player crime when the victim is a protected civilian/guard.
+        // UI/cache hints only — PhysicalInteractionBridge / PhysicalOutcomeApplier own canonical crime.
         if (event.getEntity() instanceof CitizenEntity) {
             notify(player, "Crime recorded: assault/murder of a citizen");
         } else if (event.getEntity() instanceof ProjectedHumanoidEntity projected) {
+            UUID faction = projected.factionIdOrNull();
             switch (projected.kind()) {
-                case GUARD -> notify(player, "You are wanted for attacking a guard");
+                case GUARD -> {
+                    notify(player, "You are wanted for attacking a guard");
+                    if (faction != null) {
+                        FactionDispositionCache.get().markWantedLocal(player.getUUID(), faction);
+                    }
+                }
                 case CARAVAN -> notify(player, "Caravan robbery noted by local authorities");
-                case SOLDIER -> notify(player, "Military hostilities escalate");
+                case SOLDIER -> {
+                    notify(player, "Military hostilities escalate");
+                    if (faction != null) {
+                        FactionDispositionCache.get().markWantedLocal(player.getUUID(), faction);
+                    }
+                }
+                case BANDIT -> notify(player, "Bandit slain");
                 default -> {
                 }
             }
-            // Mark wanted locally for AI until sidecar refresh lands.
-            FactionDispositionCache.get().putPlayerLegal(player.getUUID(), "WANTED", true);
         }
     }
 
@@ -94,6 +121,7 @@ public final class PlayerGameplayBridge {
         }
         Map<String, String> meta = new LinkedHashMap<>();
         meta.put("source", "citizen_interact");
+        BlockPos pos = player.blockPosition();
         PlayerActionRequest request = new PlayerActionRequest(
                 PlayerActionType.OPEN_INTERACTION,
                 player.getUUID(),
@@ -102,9 +130,7 @@ public final class PlayerGameplayBridge {
                 citizen.citizenIdOrNull(),
                 citizen.getUUID(),
                 new UUID(0, 0),
-                (int) citizen.getX(),
-                (int) citizen.getY(),
-                (int) citizen.getZ(),
+                pos.getX(), pos.getY(), pos.getZ(),
                 0L,
                 meta
         );
@@ -144,20 +170,21 @@ public final class PlayerGameplayBridge {
             notify(player, "Too far");
             return;
         }
+        BlockPos pos = player.blockPosition();
         switch (projected.kind()) {
             case CARAVAN -> {
                 String cargo = projected.cargoMeta();
                 notify(player, "Caravan" + (cargo.isBlank() ? "" : " cargo: " + cargo)
                         + " — trade/escort via nearby merchants or task journal");
-                // Offer escort discovery via QUERY context
                 requestAction(player, PlayerActionType.QUERY_PLAYER_CONTEXT, Map.of("caravanId",
                         projected.canonicalIdOrNull() == null ? "" : projected.canonicalIdOrNull().toString()),
-                        (int) projected.getX(), (int) projected.getY(), (int) projected.getZ(),
+                        pos.getX(), pos.getY(), pos.getZ(),
                         null, null, projected.canonicalIdOrNull());
             }
             case GUARD -> {
-                String legal = FactionDispositionCache.get().legalStatus(player.getUUID());
-                notify(player, "Guard: local watch. Your legal status: " + legal);
+                UUID faction = projected.factionIdOrNull();
+                String legal = FactionDispositionCache.get().legalStatus(player.getUUID(), faction);
+                notify(player, "Guard: local watch. Your legal status here: " + legal);
             }
             case BANDIT -> notify(player, "Bandits regard you with hostility.");
             case SOLDIER -> notify(player, "Soldier on campaign. Hostility follows war state.");
@@ -171,6 +198,7 @@ public final class PlayerGameplayBridge {
             notify(player, "Conversation expired");
             return;
         }
+        BlockPos pos = player.blockPosition();
         if (choice == null || choice.isBlank() || choice.equals("LEAVE")) {
             PlayerInteractionSessions.get().close(player.getUUID());
             return;
@@ -181,7 +209,7 @@ public final class PlayerGameplayBridge {
             meta.put("topic", topic);
             meta.put("intent", topic);
             requestAction(player, PlayerActionType.REQUEST_DIALOGUE_TOPIC, meta,
-                    (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+                    pos.getX(), pos.getY(), pos.getZ(),
                     session.citizenId(), session.settlementId(), session.sessionId(),
                     resp -> player.connection.send(CitizenInteractionPayloads.DialogueUpdate.fromResponse(resp)));
             return;
@@ -195,36 +223,46 @@ public final class PlayerGameplayBridge {
             Map<String, String> meta = Map.of("taskId", taskId);
             UUID tid = parseUuid(taskId);
             requestAction(player, PlayerActionType.ACCEPT_TASK, meta,
-                    (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+                    pos.getX(), pos.getY(), pos.getZ(),
                     session.citizenId(), session.settlementId(), tid,
                     resp -> {
                         notify(player, resp.message());
                         if (resp.success()) {
-                            player.connection.send(CitizenInteractionPayloads.TaskJournalUpdate.accepted(resp));
+                            player.connection.send(CitizenInteractionPayloads.TaskJournalUpdate.fromResponse(resp));
                         }
                     });
             return;
         }
         if (choice.equals("JOIN_FACTION") && session.kingdomId() != null) {
             requestAction(player, PlayerActionType.JOIN_FACTION, Map.of(),
-                    (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+                    pos.getX(), pos.getY(), pos.getZ(),
                     session.citizenId(), session.settlementId(), session.kingdomId(),
                     resp -> notify(player, resp.message()));
             return;
         }
         if (choice.equals("LEAVE_FACTION") && session.kingdomId() != null) {
             requestAction(player, PlayerActionType.LEAVE_FACTION, Map.of(),
-                    (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+                    pos.getX(), pos.getY(), pos.getZ(),
                     session.citizenId(), session.settlementId(), session.kingdomId(),
                     resp -> notify(player, resp.message()));
             return;
         }
         if (choice.equals("SURRENDER_TO_GUARDS")) {
-            Map<String, String> meta = new LinkedHashMap<>();
-            requestAction(player, PlayerActionType.SURRENDER_TO_GUARDS, meta,
-                    (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+            requestAction(player, PlayerActionType.SURRENDER_TO_GUARDS, Map.of(),
+                    pos.getX(), pos.getY(), pos.getZ(),
                     session.citizenId(), session.settlementId(), session.kingdomId(),
-                    resp -> notify(player, resp.message()));
+                    resp -> {
+                        notify(player, resp.message());
+                        if (resp.success() && session.kingdomId() != null) {
+                            try {
+                                PlayerLegalStatus st = PlayerLegalStatus.valueOf(
+                                        resp.data().getOrDefault("legalStatus", "FINE_OUTSTANDING"));
+                                FactionDispositionCache.get().clearWantedLocal(
+                                        player.getUUID(), session.kingdomId(), st);
+                            } catch (Exception ignored) {
+                            }
+                        }
+                    });
             return;
         }
         if (choice.equals("PAY_FINE")) {
@@ -234,14 +272,35 @@ public final class PlayerGameplayBridge {
         if (choice.equals("MANAGE_REALM") || choice.equals("FOUND_REALM_INFO") || choice.equals("VIEW_KINGDOM")
                 || choice.equals("DIPLOMACY") || choice.equals("VIEW_TASKS_HIGH")) {
             requestAction(player, PlayerActionType.QUERY_PLAYER_CONTEXT, Map.of("panel", choice),
-                    (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+                    pos.getX(), pos.getY(), pos.getZ(),
                     session.citizenId(), session.settlementId(), session.kingdomId(),
-                    resp -> player.connection.send(CitizenInteractionPayloads.RealmPanel.fromResponse(resp, choice)));
+                    resp -> {
+                        PlayerKnowledgeCache.get().applyContext(player.getUUID(), resp.data());
+                        player.connection.send(CitizenInteractionPayloads.RealmPanel.fromResponse(resp, choice));
+                    });
         }
     }
 
-    public static void handleMarketBuy(ServerPlayer player, UUID settlementId, String resource, int amount) {
+    /** Session-bound market quote then physical commit. */
+    public static void handleMarketTransaction(ServerPlayer player, UUID sessionId, UUID settlementId,
+                                               String resource, int amount, boolean buy) {
         amount = Math.max(1, Math.min(64, amount));
+        var session = PlayerInteractionSessions.get().require(player, sessionId);
+        if (session == null) {
+            notify(player, "Market session expired — talk to a merchant again");
+            return;
+        }
+        if (session.settlementId() == null || !session.settlementId().equals(settlementId)) {
+            notify(player, "Market settlement mismatch");
+            return;
+        }
+        // Distance: ensure player still near session target entity if present.
+        Entity target = player.level() instanceof net.minecraft.server.level.ServerLevel sl
+                ? sl.getEntity(session.targetEntityId()) : null;
+        if (target != null && player.distanceTo(target) > PlayerInteractionSessions.MAX_DISTANCE) {
+            notify(player, "Too far from merchant");
+            return;
+        }
         ResourceType type;
         try {
             type = ResourceType.valueOf(resource.toUpperCase(java.util.Locale.ROOT));
@@ -249,168 +308,233 @@ public final class PlayerGameplayBridge {
             notify(player, "Unknown resource");
             return;
         }
-        // Quote via GET_MARKET_STATE then validate payment.
-        SidecarClient client = WorldSessionLifecycle.activeClient();
-        if (client == null || !client.isReady()) {
-            notify(player, "Market unavailable");
-            return;
-        }
-        try {
-            var query = new com.livingmods.protocol.RequestPayloads.SettlementQuery(settlementId);
-            final int buyAmount = amount;
-            client.sendAsync(MessageType.GET_MARKET_STATE, query.encode()).thenAccept(env -> {
-                player.getServer().execute(() -> {
-                    try {
-                        Map<String, String> market = com.livingmods.protocol.PayloadIo.decodeStrings(env.payload());
-                        if (!"ok".equals(market.get("status"))) {
-                            notify(player, "No market here");
-                            return;
-                        }
-                        double unit = Double.parseDouble(market.getOrDefault("price_" + type.name(), "1"));
-                        // Apply rough reputation markup locally; canonical re-validates stock.
-                        int goldNeeded = Math.max(1, (int) Math.ceil(unit * buyAmount));
-                        if (!consumeCurrency(player, goldNeeded)) {
-                            notify(player, "Need " + goldNeeded + " gold ingots");
-                            return;
-                        }
-                        Optional<Item> item = ResourceItemMapping.itemFor(type);
-                        if (item.isEmpty()) {
-                            refundCurrency(player, goldNeeded);
-                            notify(player, "Resource not tradeable as items");
-                            return;
-                        }
-                        if (!player.getInventory().add(new ItemStack(item.get(), buyAmount))) {
-                            refundCurrency(player, goldNeeded);
-                            notify(player, "Inventory full");
-                            return;
-                        }
-                        Map<String, String> meta = new LinkedHashMap<>();
-                        meta.put("resource", type.name());
-                        meta.put("amount", String.valueOf(buyAmount));
-                        meta.put("serverVerified", "true");
-                        meta.put("paymentConsumed", "true");
-                        meta.put("paymentGold", String.valueOf(goldNeeded));
-                        requestAction(player, PlayerActionType.BUY_RESOURCE, meta,
-                                (int) player.getX(), (int) player.getY(), (int) player.getZ(),
-                                null, settlementId, null,
-                                resp -> {
-                                    if (!resp.success()) {
-                                        // Roll back items + currency on canonical rejection.
-                                        removeItems(player, item.get(), buyAmount);
-                                        refundCurrency(player, goldNeeded);
-                                    }
-                                    notify(player, resp.message());
-                                });
-                    } catch (Exception e) {
-                        notify(player, "Market transaction failed");
-                    }
-                });
-            });
-        } catch (Exception e) {
-            notify(player, "Market request failed");
-        }
-    }
-
-    public static void handleMarketSell(ServerPlayer player, UUID settlementId, String resource, int amount) {
-        amount = Math.max(1, Math.min(64, amount));
-        Optional<Item> item = ResourceItemMapping.itemFor(resource);
-        if (item.isEmpty()) {
-            notify(player, "Cannot sell that resource");
-            return;
-        }
-        if (!consumeItems(player, item.get(), amount)) {
-            notify(player, "You lack the items");
-            return;
-        }
+        BlockPos pos = player.blockPosition();
         Map<String, String> meta = new LinkedHashMap<>();
-        meta.put("resource", resource.toUpperCase(java.util.Locale.ROOT));
+        meta.put("resource", type.name());
         meta.put("amount", String.valueOf(amount));
-        meta.put("serverVerified", "true");
-        meta.put("inventoryConsumed", "true");
-        final int sellAmount = amount;
-        requestAction(player, PlayerActionType.SELL_RESOURCE, meta,
-                (int) player.getX(), (int) player.getY(), (int) player.getZ(),
-                null, settlementId, null,
+        meta.put("buy", String.valueOf(buy));
+        meta.put("direction", buy ? "BUY" : "SELL");
+        final int tradeAmount = amount;
+        requestAction(player, PlayerActionType.MARKET_QUOTE, meta,
+                pos.getX(), pos.getY(), pos.getZ(),
+                session.citizenId(), session.settlementId(), session.sessionId(),
                 resp -> {
                     if (!resp.success()) {
-                        player.getInventory().add(new ItemStack(item.get(), sellAmount));
                         notify(player, resp.message());
                         return;
                     }
+                    UUID quoteId = parseUuid(resp.data().get("quoteId"));
                     int gold = 1;
                     try {
                         gold = Integer.parseInt(resp.data().getOrDefault("paymentGold", "1"));
                     } catch (Exception ignored) {
                     }
-                    player.getInventory().add(new ItemStack(ResourceItemMapping.currencyItem(), Math.max(1, gold)));
-                    notify(player, resp.message());
+                    pendingQuotes.put(quoteId, new PendingQuote(
+                            quoteId, session.settlementId(), type.name(), tradeAmount, buy, gold,
+                            System.currentTimeMillis()));
+                    commitMarketQuote(player, session, quoteId, type, tradeAmount, buy, gold);
                 });
     }
 
+    private static void commitMarketQuote(
+            ServerPlayer player,
+            PlayerInteractionSessions.Session session,
+            UUID quoteId,
+            ResourceType type,
+            int amount,
+            boolean buy,
+            int gold
+    ) {
+        ServerInventoryTransaction tx = new ServerInventoryTransaction(player);
+        Optional<Item> item = ResourceItemMapping.itemFor(type);
+        if (item.isEmpty()) {
+            notify(player, "Resource not tradeable as items");
+            return;
+        }
+        BlockPos pos = player.blockPosition();
+        if (buy) {
+            if (!tx.consumeCurrency(gold)) {
+                notify(player, "Need " + gold + " gold ingots");
+                return;
+            }
+            if (!tx.give(item.get(), amount)) {
+                tx.rollback();
+                notify(player, "Inventory full");
+                return;
+            }
+            Map<String, String> meta = new LinkedHashMap<>();
+            meta.put("quoteId", quoteId.toString());
+            meta.put("serverVerified", "true");
+            meta.put("paymentGold", String.valueOf(gold));
+            meta.put("resource", type.name());
+            meta.put("amount", String.valueOf(amount));
+            meta.put("buy", "true");
+            requestAction(player, PlayerActionType.MARKET_COMMIT, meta,
+                    pos.getX(), pos.getY(), pos.getZ(),
+                    session.citizenId(), session.settlementId(), session.sessionId(),
+                    resp -> {
+                        if (!resp.success()) {
+                            tx.rollback();
+                            notify(player, resp.message());
+                            return;
+                        }
+                        tx.commit();
+                        notify(player, resp.message());
+                        refreshMarket(player, session);
+                    });
+        } else {
+            if (!tx.consume(item.get(), amount)) {
+                notify(player, "You lack the items");
+                return;
+            }
+            Map<String, String> meta = new LinkedHashMap<>();
+            meta.put("quoteId", quoteId.toString());
+            meta.put("serverVerified", "true");
+            meta.put("inventoryConsumed", "true");
+            meta.put("paymentGold", String.valueOf(gold));
+            meta.put("resource", type.name());
+            meta.put("amount", String.valueOf(amount));
+            meta.put("buy", "false");
+            requestAction(player, PlayerActionType.MARKET_COMMIT, meta,
+                    pos.getX(), pos.getY(), pos.getZ(),
+                    session.citizenId(), session.settlementId(), session.sessionId(),
+                    resp -> {
+                        if (!resp.success()) {
+                            tx.rollback();
+                            notify(player, resp.message());
+                            return;
+                        }
+                        if (!tx.giveCurrency(gold)) {
+                            // Items already consumed; try add gold with room — if fail, restore items.
+                            tx.rollback();
+                            notify(player, "Inventory full — sale cancelled");
+                            return;
+                        }
+                        tx.commit();
+                        notify(player, resp.message());
+                        refreshMarket(player, session);
+                    });
+        }
+    }
+
     public static void handleRealmAction(ServerPlayer player, PlayerActionType type, Map<String, String> meta) {
+        BlockPos pos = player.blockPosition();
         requestAction(player, type, meta == null ? Map.of() : meta,
-                (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+                pos.getX(), pos.getY(), pos.getZ(),
                 null, null, null,
                 resp -> notify(player, resp.message()));
     }
 
-    public static void handleFoundRealm(ServerPlayer player, String name, String culture, int x, int z) {
-        Map<String, String> meta = new LinkedHashMap<>();
-        meta.put("realmName", name == null ? "New Realm" : name);
-        meta.put("culture", culture == null ? "avalon" : culture);
-        PlayerActionRequest request = new PlayerActionRequest(
-                PlayerActionType.FOUND_REALM, player.getUUID(),
-                new UUID(0, 0), new UUID(0, 0), new UUID(0, 0), new UUID(0, 0), new UUID(0, 0),
-                x, (int) player.getY(), z, 0L, meta);
-        SidecarClient client = WorldSessionLifecycle.activeClient();
-        if (client == null || !client.isReady()) {
-            notify(player, "Cannot found realm — systems offline");
-            return;
-        }
-        try {
-            client.sendAsync(MessageType.PLAYER_ACTION, request.encode()).thenAccept(env -> {
-                player.getServer().execute(() -> {
-                    try {
-                        PlayerActionResponse resp = PlayerActionResponse.decode(env.payload());
-                        notify(player, resp.message());
-                        if (resp.success()) {
-                            notify(player, "Founding construction underway");
-                        }
-                    } catch (Exception e) {
-                        notify(player, "Founding failed");
+    public static void handleFoundRealm(ServerPlayer player, String name, String culture) {
+        BlockPos pos = player.blockPosition();
+        Map<String, String> previewMeta = new LinkedHashMap<>();
+        previewMeta.put("realmName", name == null ? "New Realm" : name);
+        previewMeta.put("culture", culture == null ? "avalon" : culture);
+        requestAction(player, PlayerActionType.PREVIEW_FOUND_REALM, previewMeta,
+                pos.getX(), pos.getY(), pos.getZ(),
+                null, null, null,
+                preview -> {
+                    if (!preview.success()) {
+                        notify(player, preview.message());
+                        return;
                     }
+                    int goldCost = 25;
+                    try {
+                        goldCost = Integer.parseInt(preview.data().getOrDefault("goldCost", "25"));
+                    } catch (Exception ignored) {
+                    }
+                    ServerInventoryTransaction tx = new ServerInventoryTransaction(player);
+                    if (!tx.consumeCurrency(goldCost)) {
+                        notify(player, "Need " + goldCost + " gold ingots to found a realm");
+                        return;
+                    }
+                    Map<String, String> meta = new LinkedHashMap<>();
+                    meta.put("realmName", name == null ? "New Realm" : name);
+                    meta.put("culture", culture == null ? "avalon" : culture);
+                    meta.put("serverVerified", "true");
+                    meta.put("paymentConsumed", "true");
+                    meta.put("paymentGold", String.valueOf(goldCost));
+                    BlockPos p2 = player.blockPosition();
+                    requestAction(player, PlayerActionType.FOUND_REALM, meta,
+                            p2.getX(), p2.getY(), p2.getZ(),
+                            null, null, null,
+                            resp -> {
+                                if (!resp.success()) {
+                                    tx.rollback();
+                                    notify(player, resp.message());
+                                    return;
+                                }
+                                tx.commit();
+                                notify(player, resp.message());
+                                notify(player, "Founding construction underway");
+                                FactionDispositionCache.get().tickRefresh(player.getUUID());
+                            });
                 });
-            });
-        } catch (Exception e) {
-            notify(player, "Founding request failed");
-        }
     }
 
     public static void handleTaskDelivery(ServerPlayer player, UUID taskId, UUID settlementId, String resource, double amount) {
         boolean ok = PhysicalInteractionBridge.reportTaskDelivery(player, taskId, settlementId, resource, amount);
-        notify(player, ok ? "Delivery submitted" : "Delivery failed — check inventory");
+        notify(player, ok ? "Delivery submitted" : "Delivery failed — check inventory / accepted task");
     }
 
     public static void handleAbandonTask(ServerPlayer player, UUID taskId) {
+        BlockPos pos = player.blockPosition();
         Map<String, String> meta = Map.of("taskId", taskId.toString());
         requestAction(player, PlayerActionType.ABANDON_TASK, meta,
-                (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+                pos.getX(), pos.getY(), pos.getZ(),
                 null, null, taskId,
                 resp -> notify(player, resp.message()));
     }
 
-    public static void discoverNearbySettlement(ServerPlayer player) {
-        discoverAt(player, (int) player.getX(), (int) player.getZ());
+    public static void requestTaskJournal(ServerPlayer player) {
+        BlockPos pos = player.blockPosition();
+        requestAction(player, PlayerActionType.QUERY_TASK_JOURNAL, Map.of(),
+                pos.getX(), pos.getY(), pos.getZ(),
+                null, null, null,
+                resp -> player.connection.send(CitizenInteractionPayloads.TaskJournalUpdate.fromResponse(resp)));
     }
 
-    public static void discoverAt(ServerPlayer player, int x, int z) {
-        int px = x == 0 && z == 0 ? (int) player.getX() : x;
-        int pz = x == 0 && z == 0 ? (int) player.getZ() : z;
-        requestAction(player, PlayerActionType.DISCOVER_SETTLEMENT, Map.of(),
-                px, (int) player.getY(), pz,
+    public static void requestDashboard(ServerPlayer player) {
+        BlockPos pos = player.blockPosition();
+        // Dashboard metrics via existing LivingModsNetwork path + player context.
+        com.livingmods.neoforge.network.LivingModsNetwork.sendDashboardTo(player);
+        requestAction(player, PlayerActionType.QUERY_PLAYER_CONTEXT, Map.of("dashboard", "true"),
+                pos.getX(), pos.getY(), pos.getZ(),
                 null, null, null,
                 resp -> {
-                    if (resp.success()) notify(player, resp.message());
+                    PlayerKnowledgeCache.get().applyContext(player.getUUID(), resp.data());
+                    FactionDispositionCache.get().tickRefresh(player.getUUID());
+                    player.connection.send(new CitizenInteractionPayloads.DashboardContext(resp.data()));
+                });
+    }
+
+    public static void requestRealmPanel(ServerPlayer player, String panel) {
+        BlockPos pos = player.blockPosition();
+        requestAction(player, PlayerActionType.QUERY_PLAYER_CONTEXT, Map.of("panel", panel == null ? "MANAGE_REALM" : panel),
+                pos.getX(), pos.getY(), pos.getZ(),
+                null, null, null,
+                resp -> {
+                    PlayerKnowledgeCache.get().applyContext(player.getUUID(), resp.data());
+                    player.connection.send(CitizenInteractionPayloads.RealmPanel.fromResponse(resp,
+                            panel == null ? "MANAGE_REALM" : panel));
+                });
+    }
+
+    /** Server-authoritative nearby discovery only — never uses client map click coords. */
+    public static void discoverNearbySettlement(ServerPlayer player) {
+        BlockPos pos = player.blockPosition();
+        requestAction(player, PlayerActionType.DISCOVER_SETTLEMENT, Map.of(),
+                pos.getX(), pos.getY(), pos.getZ(),
+                null, null, null,
+                resp -> {
+                    if (resp.success()) {
+                        PlayerKnowledgeCache.get().applyContext(player.getUUID(),
+                                Map.of("knownSettlements",
+                                        resp.data().getOrDefault("settlementId", "") + "|"
+                                                + resp.data().getOrDefault("name", "")
+                                                + "||||||||OBSERVED"));
+                        notify(player, resp.message());
+                    }
                 });
     }
 
@@ -439,26 +563,54 @@ public final class PlayerGameplayBridge {
         }
     }
 
+    private static void refreshMarket(ServerPlayer player, PlayerInteractionSessions.Session session) {
+        openMarket(player, session);
+    }
+
     private static void payFine(ServerPlayer player, PlayerInteractionSessions.Session session) {
-        int estimate = 20;
-        if (!consumeCurrency(player, estimate)) {
-            notify(player, "Need gold to pay fine");
-            return;
-        }
-        Map<String, String> meta = new LinkedHashMap<>();
-        meta.put("serverVerified", "true");
-        meta.put("amount", String.valueOf(estimate));
-        requestAction(player, PlayerActionType.PAY_FINE, meta,
-                (int) player.getX(), (int) player.getY(), (int) player.getZ(),
+        BlockPos pos = player.blockPosition();
+        requestAction(player, PlayerActionType.QUERY_FINE, Map.of(),
+                pos.getX(), pos.getY(), pos.getZ(),
                 session.citizenId(), session.settlementId(), session.kingdomId(),
-                resp -> {
-                    if (!resp.success()) {
-                        refundCurrency(player, estimate);
-                    } else {
-                        FactionDispositionCache.get().putPlayerLegal(player.getUUID(),
-                                resp.data().getOrDefault("legalStatus", "CLEAR"), false);
+                quote -> {
+                    if (!quote.success()) {
+                        notify(player, quote.message());
+                        return;
                     }
-                    notify(player, resp.message());
+                    int required = 0;
+                    try {
+                        required = Integer.parseInt(quote.data().getOrDefault("outstandingFine", "0"));
+                    } catch (Exception ignored) {
+                    }
+                    if (required <= 0) {
+                        notify(player, "No outstanding fine");
+                        return;
+                    }
+                    ServerInventoryTransaction tx = new ServerInventoryTransaction(player);
+                    if (!tx.consumeCurrency(required)) {
+                        notify(player, "Need " + required + " gold ingots to pay fine in full");
+                        return;
+                    }
+                    Map<String, String> meta = new LinkedHashMap<>();
+                    meta.put("serverVerified", "true");
+                    meta.put("amount", String.valueOf(required));
+                    BlockPos p2 = player.blockPosition();
+                    requestAction(player, PlayerActionType.PAY_FINE, meta,
+                            p2.getX(), p2.getY(), p2.getZ(),
+                            session.citizenId(), session.settlementId(), session.kingdomId(),
+                            resp -> {
+                                if (!resp.success()) {
+                                    tx.rollback();
+                                    notify(player, resp.message());
+                                    return;
+                                }
+                                tx.commit();
+                                if (session.kingdomId() != null) {
+                                    FactionDispositionCache.get().clearWantedLocal(
+                                            player.getUUID(), session.kingdomId(), PlayerLegalStatus.CLEAR);
+                                }
+                                notify(player, resp.message());
+                            });
                 });
     }
 
@@ -495,7 +647,8 @@ public final class PlayerGameplayBridge {
         if (type == PlayerActionType.JOIN_FACTION || type == PlayerActionType.LEAVE_FACTION
                 || type == PlayerActionType.PAY_FINE || type == PlayerActionType.SURRENDER_TO_GUARDS
                 || type == PlayerActionType.REQUEST_DIPLOMATIC_ACTION
-                || type == PlayerActionType.DECLARE_SUPPORT_IN_WAR) {
+                || type == PlayerActionType.DECLARE_SUPPORT_IN_WAR
+                || type == PlayerActionType.QUERY_FINE) {
             kingdomId = targetOrKingdom == null ? new UUID(0, 0) : targetOrKingdom;
         } else {
             targetId = targetOrKingdom == null ? new UUID(0, 0) : targetOrKingdom;
@@ -519,36 +672,6 @@ public final class PlayerGameplayBridge {
         } catch (Exception e) {
             LivingModsMod.LOG.debug("Player action IPC failed: {}", e.toString());
         }
-    }
-
-    private static boolean consumeCurrency(ServerPlayer player, int amount) {
-        return consumeItems(player, ResourceItemMapping.currencyItem(), amount);
-    }
-
-    private static void refundCurrency(ServerPlayer player, int amount) {
-        player.getInventory().add(new ItemStack(ResourceItemMapping.currencyItem(), amount));
-    }
-
-    private static boolean consumeItems(ServerPlayer player, Item item, int needed) {
-        int counted = 0;
-        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            ItemStack stack = player.getInventory().getItem(i);
-            if (stack.is(item)) counted += stack.getCount();
-        }
-        if (counted < needed) return false;
-        int remaining = needed;
-        for (int i = 0; i < player.getInventory().getContainerSize() && remaining > 0; i++) {
-            ItemStack stack = player.getInventory().getItem(i);
-            if (!stack.is(item)) continue;
-            int take = Math.min(remaining, stack.getCount());
-            stack.shrink(take);
-            remaining -= take;
-        }
-        return true;
-    }
-
-    private static void removeItems(ServerPlayer player, Item item, int amount) {
-        consumeItems(player, item, amount);
     }
 
     private static void notify(ServerPlayer player, String message) {

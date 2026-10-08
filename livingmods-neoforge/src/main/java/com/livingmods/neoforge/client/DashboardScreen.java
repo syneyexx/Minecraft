@@ -1,29 +1,20 @@
 package com.livingmods.neoforge.client;
 
 import com.livingmods.neoforge.network.CitizenInteractionPayloads;
-import com.livingmods.neoforge.network.LivingModsNetwork;
-import com.livingmods.neoforge.sidecar.SidecarClient;
-import com.livingmods.neoforge.sidecar.SidecarProcessManager;
-import com.livingmods.neoforge.sidecar.WorldSessionLifecycle;
-import com.livingmods.protocol.MessageType;
-import com.livingmods.protocol.PlayerActionRequest;
-import com.livingmods.protocol.PlayerActionResponse;
-import com.livingmods.protocol.PlayerActionType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
- * Civilization / player overview dashboard. SIDECAR tab remains technical diagnostics.
+ * Civilization / player overview dashboard.
+ * Client is presentation-only — requests go C2S → server → LiveStateCache/sidecar → S2C.
  */
 public final class DashboardScreen extends Screen {
     private enum Tab {
@@ -32,7 +23,6 @@ public final class DashboardScreen extends Screen {
 
     private Tab tab = Tab.WORLD;
     private final Map<String, String> metrics = new LinkedHashMap<>();
-    private final Map<String, String> playerContext = new LinkedHashMap<>();
     private long lastRefreshMs;
     private int selectedRow;
 
@@ -58,63 +48,12 @@ public final class DashboardScreen extends Screen {
         lastRefreshMs = System.currentTimeMillis();
         metrics.clear();
         metrics.putAll(ClientMapCache.dashboardSnapshot());
-
-        SidecarClient client = WorldSessionLifecycle.activeClient();
-        if (client != null) {
-            metrics.putAll(client.diagnostics());
-            metrics.put("connected", String.valueOf(client.isReady()));
-            metrics.put("pid", String.valueOf(SidecarProcessManager.pid()));
-            metrics.put("simLag", String.valueOf(client.roundTripLatency()));
-            if (client.isReady()) {
-                client.sendAsync(MessageType.GET_WORLD_SUMMARY, new byte[0]).thenAccept(env -> {
-                    try {
-                        Map<String, String> remote = com.livingmods.protocol.PayloadIo.decodeStrings(env.payload());
-                        ClientMapCache.mergeDashboard(remote);
-                    } catch (Exception ignored) {
-                    }
-                });
-                Minecraft mc = Minecraft.getInstance();
-                if (mc.player != null) {
-                    try {
-                        PlayerActionRequest req = new PlayerActionRequest(
-                                PlayerActionType.QUERY_PLAYER_CONTEXT, mc.player.getUUID(),
-                                new UUID(0, 0), new UUID(0, 0), new UUID(0, 0), new UUID(0, 0),
-                                new UUID(0, 0), (int) mc.player.getX(), (int) mc.player.getY(),
-                                (int) mc.player.getZ(), 0L, Map.of());
-                        client.sendAsync(MessageType.PLAYER_ACTION, req.encode()).thenAccept(env -> {
-                            try {
-                                PlayerActionResponse resp = PlayerActionResponse.decode(env.payload());
-                                synchronized (playerContext) {
-                                    playerContext.clear();
-                                    playerContext.putAll(resp.data());
-                                }
-                            } catch (Exception ignored) {
-                            }
-                        });
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
-        } else {
-            metrics.put("connected", "false");
-            metrics.put("pid", String.valueOf(SidecarProcessManager.pid()));
-            metrics.putIfAbsent("queueDepth", "n/a");
+        Map<String, String> ctx = ClientMapCache.playerContextSnapshot();
+        if (!ctx.isEmpty()) {
+            metrics.put("hasPlayerContext", "true");
         }
-
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.getSingleplayerServer() != null && mc.player != null) {
-            ServerPlayer sp = mc.getSingleplayerServer().getPlayerList().getPlayer(mc.player.getUUID());
-            if (sp != null) {
-                LivingModsNetwork.sendDashboardTo(sp);
-            }
-        }
-        metrics.putAll(ClientMapCache.dashboardSnapshot());
-        if (!metrics.containsKey("queueDepth") || "0".equals(metrics.get("queueDepth"))
-                && !"true".equals(metrics.get("connected"))) {
-            if (!"true".equals(metrics.get("connected"))) {
-                metrics.put("queueDepth", "n/a");
-            }
-        }
+        // Server-authoritative path — never SidecarClient from client.
+        PacketDistributor.sendToServer(new CitizenInteractionPayloads.DashboardRequest());
     }
 
     @Override
@@ -146,10 +85,7 @@ public final class DashboardScreen extends Screen {
     }
 
     private List<String> linesForTab(Tab tab) {
-        Map<String, String> ctx;
-        synchronized (playerContext) {
-            ctx = new LinkedHashMap<>(playerContext);
-        }
+        Map<String, String> ctx = ClientMapCache.playerContextSnapshot();
         List<String> lines = new ArrayList<>();
         switch (tab) {
             case WORLD -> {
@@ -166,13 +102,12 @@ public final class DashboardScreen extends Screen {
                 String packed = ctx.getOrDefault("knownKingdoms", "");
                 if (packed.isBlank()) {
                     lines.add("No kingdoms discovered yet — explore or talk to citizens.");
-                    lines.add("Live count: " + metrics.getOrDefault("kingdomsLive",
+                    lines.add("Live count (world): " + metrics.getOrDefault("kingdomsLive",
                             metrics.getOrDefault("planKingdoms", "—")));
                 } else {
                     for (String row : packed.split(";")) {
                         if (row.isBlank()) continue;
                         String[] p = row.split("\\|", -1);
-                        // id|name|culture|gov|standing|attitude|war|treasury
                         if (p.length >= 7) {
                             lines.add(p[1] + "  " + p[2] + " / " + p[3]
                                     + "  standing=" + p[4] + "  " + p[5] + "  " + p[6]
@@ -187,17 +122,14 @@ public final class DashboardScreen extends Screen {
                 String packed = ctx.getOrDefault("knownSettlements", "");
                 if (packed.isBlank()) {
                     lines.add("No settlements known — visit or receive rumors.");
-                    lines.add("Live count: " + metrics.getOrDefault("settlementsLive",
-                            metrics.getOrDefault("planSettlements", "—")));
                 } else {
                     for (String row : packed.split(";")) {
                         if (row.isBlank()) continue;
                         String[] p = row.split("\\|", -1);
-                        // id|name|tier|housing|hunger|security|unrest|kingdom|knowledge
                         if (p.length >= 8) {
                             lines.add(p[1] + " [" + p[2] + "] houses=" + p[3]
                                     + " food=" + p[4] + " sec=" + p[5] + " unrest=" + p[6]
-                                    + " (" + p[8] + ")");
+                                    + " (" + (p.length > 8 ? p[8] : "?") + ")");
                         } else {
                             lines.add(row);
                         }
@@ -213,19 +145,15 @@ public final class DashboardScreen extends Screen {
             }
             case DIPLOMACY -> {
                 boolean ruler = !blank(ctx.get("ruledKingdomId"), "").isBlank();
-                lines.add(ruler ? "You rule a realm — diplomacy actions available in Realm UI."
-                        : "Read-only: join a kingdom or found a realm for diplomacy authority.");
+                lines.add(ruler ? "You rule a realm — open Realm UI (F12 / steward)."
+                        : "Read-only: join a kingdom or found a realm for diplomacy.");
                 lines.add("Treaties (live): " + metrics.getOrDefault("treaties", "—"));
                 lines.add("Active wars: " + blank(ctx.get("activeWars"), metrics.getOrDefault("warActive", "—")));
-                if (ruler) {
-                    lines.add("Open realm panel from a steward/ruler conversation (MANAGE_REALM).");
-                }
             }
             case WAR -> {
                 String wars = ctx.getOrDefault("activeWars", "");
                 if (wars.isBlank()) {
                     lines.add("No known active wars.");
-                    lines.add("Reported wars: " + metrics.getOrDefault("warActive", "0"));
                 } else {
                     for (String row : wars.split(";")) {
                         if (row.isBlank()) continue;
@@ -237,7 +165,6 @@ public final class DashboardScreen extends Screen {
                         }
                     }
                 }
-                lines.add("Armies (overlay): " + metrics.getOrDefault("armiesLive", "—"));
                 lines.add("Allegiance: " + blank(ctx.get("ruledKingdomName"), "none / civilian"));
             }
             case HISTORY -> {
@@ -251,6 +178,7 @@ public final class DashboardScreen extends Screen {
                 }
             }
             case SIDECAR -> {
+                // Diagnostics only — values come from server DashboardDataPayload.
                 add(lines, "connected");
                 add(lines, "connectionState");
                 add(lines, "pid");
@@ -314,22 +242,12 @@ public final class DashboardScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_J) {
-            String tasks = "";
-            synchronized (playerContext) {
-                tasks = playerContext.getOrDefault("tasks", "");
-            }
-            List<String> list = new ArrayList<>();
-            if (!tasks.isBlank()) {
-                for (String row : tasks.split(";")) {
-                    if (!row.isBlank()) list.add(row);
-                }
-            }
-            Minecraft.getInstance().setScreen(new TaskJournalScreen(list));
+            PacketDistributor.sendToServer(new CitizenInteractionPayloads.JournalRequest());
             return true;
         }
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R) {
             PacketDistributor.sendToServer(new CitizenInteractionPayloads.RealmAction(
-                    "DISCOVER", "", "", 0, 0));
+                    "OPEN_REALM", "MANAGE_REALM", "", 0, 0));
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);

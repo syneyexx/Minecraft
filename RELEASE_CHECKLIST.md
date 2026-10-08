@@ -13,7 +13,7 @@ Legend for notes: write `pass` / `fail` / `blocked` + short evidence (seed, coor
 - [ ] `./gradlew buildAll -x test` completes
 - [ ] `./gradlew :livingmods-sidecar:sidecarJar` produces embeddable jar
 - [ ] NeoForge mod loads on 1.21.1 / loader 21.1.x without crash on title screen
-- [ ] `LivingModsVersions` axes match `gradle.properties` documentation (protocol 3, worldgen 2, save schema 4, physical revision 2, mod 0.1.0)
+- [ ] `LivingModsVersions` axes match `gradle.properties` documentation (protocol 4, worldgen 3, save schema 6, physical revision 2, structure catalog 1, mod 0.1.0)
 
 ## B. World creates
 
@@ -147,6 +147,30 @@ Legend for notes: write `pass` / `fail` / `blocked` + short evidence (seed, coor
 - [ ] Sidecar crash triggers ≤3 restarts then FAILED without killing Minecraft
 - [ ] Error payloads visible in logs for handshake/save failures
 - [ ] Memory stable enough for a multi-hour local session (qualitative)
+
+## M4/M5 Player gameplay (manual — leave unchecked until runtime-proven)
+
+- [ ] Citizen dialogue opens via interaction session (distance-bounded)
+- [ ] Market buy/sell requires valid merchant session
+- [ ] Exact GOLD_INGOT accounting matches canonical quote/commit price
+- [ ] Market rollback cannot delete/duplicate unrelated inventory stacks
+- [ ] Task accept / journal (J) / complete with real objectives (no hardcoded GRAIN×10)
+- [ ] Task persistence across save/reload
+- [ ] Faction membership join/leave through citizen
+- [ ] Jurisdiction-specific guard hostility (wanted in A ≠ hostile in B)
+- [ ] Already-spawned guards react to fine paid / war changes without IPC in AI
+- [ ] Surrender / fine workflow uses exact canonical outstanding fine (full payment)
+- [ ] Player realm founding uses server position + consumes founding gold
+- [ ] Founding physical construction intents appear without mutating plan.bin
+- [ ] Failed founding leaves no orphan settlement/kingdom/steward
+- [ ] Realm policy effects accrue over simulation time (not instant button farming)
+- [ ] Diplomacy proposals can be accepted or rejected by NPC evaluation
+- [ ] Realm diplomacy UI lists known kingdoms by name (no raw UUID typing)
+- [ ] War allegiance / disposition updates for soldiers
+- [ ] Non-omniscient map (unknown settlements not sent; click does not discover remote)
+- [ ] Nearby observation discovers settlements from real player position
+- [ ] Save/reload of player reputation / legal / knowledge / policies / tasks / structure assetId (schema 6)
+- [ ] Dashboard never calls sidecar from the client
 
 ## Q. Release gate (all must be true)
 

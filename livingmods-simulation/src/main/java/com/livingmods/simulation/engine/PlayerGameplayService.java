@@ -63,6 +63,7 @@ public final class PlayerGameplayService {
     private final DialogueEngine dialogue = new DialogueEngine();
     private final EmergentTaskEngine tasks = new EmergentTaskEngine();
     private final CultureRegistry cultures = new CultureRegistry();
+    private final MarketQuoteStore marketQuotes = new MarketQuoteStore();
 
     public PlayerActionResponse handle(
             CanonicalWorldState state,
@@ -97,6 +98,11 @@ public final class PlayerGameplayService {
             case SURRENDER_TO_GUARDS -> surrender(state, player, request, ctx);
             case DISCOVER_SETTLEMENT -> discoverSettlement(state, player, request);
             case QUERY_PLAYER_CONTEXT -> queryContext(state, player, request);
+            case MARKET_QUOTE -> marketQuote(state, player, request, ctx);
+            case MARKET_COMMIT -> marketCommit(state, player, request, ctx);
+            case QUERY_TASK_JOURNAL -> queryTaskJournal(state, player, request);
+            case PREVIEW_FOUND_REALM -> previewFoundRealm(state, player, request);
+            case QUERY_FINE -> queryFine(state, player, request);
         };
     }
 
@@ -361,9 +367,29 @@ public final class PlayerGameplayService {
         data.put("taskId", task.id().toString());
         data.put("title", task.title());
         data.put("type", task.type().name());
+        data.put("taskType", task.type().name());
         data.put("settlementId", task.settlementId().value().toString());
+        SettlementState dest = state.settlements().get(task.settlementId());
+        data.put("settlementName", dest == null ? "" : dest.name());
         data.put("status", task.status().name());
         data.put("description", task.description());
+        data.put("resource", task.problemTags().getOrDefault("resource", ""));
+        data.put("amount", task.problemTags().getOrDefault("amount", ""));
+        data.put("wood", task.problemTags().getOrDefault("wood", ""));
+        data.put("stone", task.problemTags().getOrDefault("stone", ""));
+        data.put("campId", task.problemTags().getOrDefault("campId", ""));
+        data.put("shipment", task.problemTags().getOrDefault("shipment", ""));
+        // Also emit packed tasks row for typed journal decode.
+        data.put("tasks", task.id() + "|" + task.status().name() + "|" + task.type().name()
+                + "|" + sanitizePipe(task.title()) + "|" + sanitizePipe(task.description())
+                + "|" + task.settlementId().value() + "|" + sanitizePipe(dest == null ? "" : dest.name())
+                + "|" + task.problemTags().getOrDefault("resource", "")
+                + "|" + task.problemTags().getOrDefault("amount", "")
+                + "|" + task.problemTags().getOrDefault("wood", "")
+                + "|" + task.problemTags().getOrDefault("stone", "")
+                + "|" + task.problemTags().getOrDefault("campId", "")
+                + "|" + task.problemTags().getOrDefault("shipment", "")
+                + "|true|");
         state.appendHistory(new HistoricalEvent(
                 HistoricalEventId.deterministic(state.seed(), state.history().size()),
                 CivilizationEventType.PLAYER_REPUTATION_CHANGED,
@@ -398,8 +424,8 @@ public final class PlayerGameplayService {
     }
 
     /**
-     * Buy: NeoForge must pre-verify payment items and inventory space, then set meta
-     * serverVerified=true, paymentConsumed=true, amount.
+     * Legacy buy path retained for compatibility; prefer MARKET_QUOTE + MARKET_COMMIT.
+     * Requires serverVerified and exact paymentGold matching quote semantics.
      */
     private PlayerActionResponse buyResource(
             CanonicalWorldState state,
@@ -428,21 +454,26 @@ public final class PlayerGameplayService {
         KingdomId kingdom = settlementKingdom(state, sid);
         double priceMult = priceMultiplier(state, player, kingdom);
         double unitPrice = market.price(resource) * priceMult;
-        double total = unitPrice * amount;
-        // Payment already consumed on NeoForge side in GOLD_INGOT; debit stockpile gold credit.
+        int goldIngots = Math.max(1, (int) Math.ceil(unitPrice * amount));
+        int claimedGold = request.metaInt("paymentGold", -1);
+        if (claimedGold != goldIngots) {
+            return PlayerActionResponse.fail(PlayerActionType.BUY_RESOURCE,
+                    "Payment mismatch — re-quote required");
+        }
         stock.add(resource, -amount);
-        stock.add(CURRENCY, total);
+        stock.add(CURRENCY, goldIngots);
         SettlementState settlement = state.settlements().get(sid);
         if (settlement != null && settlement.ownerKingdom().isPresent()) {
             KingdomState k = state.kingdoms().get(settlement.ownerKingdom().get());
-            if (k != null) k.setTreasury(k.treasury() + total * 0.2);
+            if (k != null) k.setTreasury(k.treasury() + goldIngots * 0.2);
         }
         playerSystems.recordPlayerAction(state, player, kingdom, 0.02, ctx);
         Map<String, String> data = new LinkedHashMap<>();
         data.put("resource", resource.name());
         data.put("amount", String.valueOf(amount));
         data.put("unitPrice", String.format(Locale.ROOT, "%.3f", unitPrice));
-        data.put("total", String.format(Locale.ROOT, "%.3f", total));
+        data.put("total", String.valueOf(goldIngots));
+        data.put("paymentGold", String.valueOf(goldIngots));
         data.put("stock", String.format(Locale.ROOT, "%.1f", stock.get(resource)));
         return PlayerActionResponse.ok(PlayerActionType.BUY_RESOURCE, "Purchased " + amount + " " + resource, data);
     }
@@ -467,24 +498,166 @@ public final class PlayerGameplayService {
         StockpileState stock = state.stockpiles().computeIfAbsent(sid, StockpileState::new);
         KingdomId kingdom = settlementKingdom(state, sid);
         double priceMult = priceMultiplier(state, player, kingdom);
-        double unitPrice = market.price(resource) * 0.7 / priceMult; // sell below buy; reputation helps
-        double total = unitPrice * amount;
-        // Settlement liquidity: needs treasury/gold or accepts goods into stockpile.
+        double unitPrice = market.price(resource) * 0.7 / priceMult;
+        int goldIngots = Math.max(1, (int) Math.ceil(unitPrice * amount));
         KingdomState k = state.kingdoms().get(kingdom);
-        if (k != null && k.treasury() < total * 0.1 && stock.get(CURRENCY) < total) {
+        if (k != null && k.treasury() < goldIngots * 0.1 && stock.get(CURRENCY) < goldIngots) {
             return PlayerActionResponse.fail(PlayerActionType.SELL_RESOURCE, "Market cannot pay");
         }
         stock.add(resource, amount);
-        stock.add(CURRENCY, -Math.min(stock.get(CURRENCY), total));
-        if (k != null) k.setTreasury(Math.max(0, k.treasury() - total * 0.1));
+        stock.add(CURRENCY, -Math.min(stock.get(CURRENCY), goldIngots));
+        if (k != null) k.setTreasury(Math.max(0, k.treasury() - goldIngots * 0.1));
         playerSystems.recordPlayerAction(state, player, kingdom, 0.03, ctx);
         Map<String, String> data = new LinkedHashMap<>();
         data.put("resource", resource.name());
         data.put("amount", String.valueOf(amount));
         data.put("unitPrice", String.format(Locale.ROOT, "%.3f", unitPrice));
-        data.put("total", String.format(Locale.ROOT, "%.3f", total));
-        data.put("paymentGold", String.valueOf((int) Math.ceil(total)));
+        data.put("total", String.valueOf(goldIngots));
+        data.put("paymentGold", String.valueOf(goldIngots));
         return PlayerActionResponse.ok(PlayerActionType.SELL_RESOURCE, "Sold " + amount + " " + resource, data);
+    }
+
+    private PlayerActionResponse marketQuote(
+            CanonicalWorldState state,
+            PlayerId player,
+            PlayerActionRequest request,
+            SimulationContext ctx
+    ) {
+        SettlementId sid = SettlementId.of(nz(request.settlementId()));
+        ResourceType resource = parseResource(request.meta("resource"));
+        int amount = Math.max(1, Math.min(MAX_TRADE_AMOUNT, request.metaInt("amount", 1)));
+        boolean buy = !"false".equalsIgnoreCase(request.meta("buy"))
+                && !"SELL".equalsIgnoreCase(request.meta("direction"));
+        if (resource == null) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_QUOTE, "Unknown resource");
+        }
+        MarketState market = state.markets().get(sid);
+        StockpileState stock = state.stockpiles().get(sid);
+        if (market == null || stock == null) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_QUOTE, "No market");
+        }
+        KingdomId kingdom = settlementKingdom(state, sid);
+        double priceMult = priceMultiplier(state, player, kingdom);
+        double unitPrice;
+        int goldIngots;
+        if (buy) {
+            if (stock.get(resource) + 1e-6 < amount) {
+                return PlayerActionResponse.fail(PlayerActionType.MARKET_QUOTE, "Insufficient stock");
+            }
+            unitPrice = market.price(resource) * priceMult;
+            goldIngots = Math.max(1, (int) Math.ceil(unitPrice * amount));
+        } else {
+            unitPrice = market.price(resource) * 0.7 / priceMult;
+            goldIngots = Math.max(1, (int) Math.ceil(unitPrice * amount));
+            KingdomState k = state.kingdoms().get(kingdom);
+            if (k != null && k.treasury() < goldIngots * 0.1 && stock.get(CURRENCY) < goldIngots) {
+                return PlayerActionResponse.fail(PlayerActionType.MARKET_QUOTE, "Market cannot pay");
+            }
+        }
+        UUID quoteId = UUID.nameUUIDFromBytes(
+                (player.value() + "|" + sid + "|" + resource + "|" + amount + "|" + buy + "|" + ctx.time().absoluteTicks())
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        MarketQuoteStore.Quote quote = new MarketQuoteStore.Quote(
+                quoteId, player, sid, resource, amount, buy, goldIngots, unitPrice,
+                System.currentTimeMillis(), ctx.time().absoluteTicks());
+        marketQuotes.put(quote);
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("quoteId", quoteId.toString());
+        data.put("resource", resource.name());
+        data.put("amount", String.valueOf(amount));
+        data.put("buy", String.valueOf(buy));
+        data.put("paymentGold", String.valueOf(goldIngots));
+        data.put("unitPrice", String.format(Locale.ROOT, "%.3f", unitPrice));
+        data.put("settlementId", sid.value().toString());
+        data.put("stock", String.format(Locale.ROOT, "%.1f", stock.get(resource)));
+        data.put("expiresMs", "60000");
+        return PlayerActionResponse.ok(PlayerActionType.MARKET_QUOTE,
+                (buy ? "Buy" : "Sell") + " quote: " + goldIngots + " gold", data);
+    }
+
+    private PlayerActionResponse marketCommit(
+            CanonicalWorldState state,
+            PlayerId player,
+            PlayerActionRequest request,
+            SimulationContext ctx
+    ) {
+        if (!"true".equalsIgnoreCase(request.meta("serverVerified"))) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "Unverified transaction");
+        }
+        UUID quoteId;
+        try {
+            quoteId = UUID.fromString(request.meta("quoteId"));
+        } catch (Exception e) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "Missing quote");
+        }
+        MarketQuoteStore.Quote quote = marketQuotes.consume(quoteId, player);
+        if (quote == null) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "Quote expired or already used");
+        }
+        SettlementId sid = quote.settlementId();
+        UUID reqSid = nz(request.settlementId());
+        if (!sid.value().equals(reqSid)
+                && !(reqSid.getMostSignificantBits() == 0L && reqSid.getLeastSignificantBits() == 0L)) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "Settlement mismatch");
+        }
+        ResourceType resource = quote.resource();
+        int amount = quote.amount();
+        int goldIngots = quote.goldIngots();
+        int claimed = request.metaInt("paymentGold", -1);
+        if (claimed != goldIngots) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "Payment mismatch");
+        }
+        MarketState market = state.markets().get(sid);
+        StockpileState stock = state.stockpiles().get(sid);
+        if (market == null || stock == null) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "No market");
+        }
+        KingdomId kingdom = settlementKingdom(state, sid);
+        if (quote.buy()) {
+            if (stock.get(resource) + 1e-6 < amount) {
+                return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "Stock changed");
+            }
+            stock.add(resource, -amount);
+            stock.add(CURRENCY, goldIngots);
+            SettlementState settlement = state.settlements().get(sid);
+            if (settlement != null && settlement.ownerKingdom().isPresent()) {
+                KingdomState k = state.kingdoms().get(settlement.ownerKingdom().get());
+                if (k != null) k.setTreasury(k.treasury() + goldIngots * 0.2);
+            }
+            playerSystems.recordPlayerAction(state, player, kingdom, 0.02, ctx);
+            Map<String, String> data = tradeData(resource, amount, quote.unitPrice(), goldIngots, stock);
+            data.put("buy", "true");
+            return PlayerActionResponse.ok(PlayerActionType.MARKET_COMMIT,
+                    "Purchased " + amount + " " + resource, data);
+        }
+        if (!"true".equalsIgnoreCase(request.meta("inventoryConsumed"))) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "Inventory not consumed");
+        }
+        KingdomState k = state.kingdoms().get(kingdom);
+        if (k != null && k.treasury() < goldIngots * 0.1 && stock.get(CURRENCY) < goldIngots) {
+            return PlayerActionResponse.fail(PlayerActionType.MARKET_COMMIT, "Market cannot pay");
+        }
+        stock.add(resource, amount);
+        stock.add(CURRENCY, -Math.min(stock.get(CURRENCY), goldIngots));
+        if (k != null) k.setTreasury(Math.max(0, k.treasury() - goldIngots * 0.1));
+        playerSystems.recordPlayerAction(state, player, kingdom, 0.03, ctx);
+        Map<String, String> data = tradeData(resource, amount, quote.unitPrice(), goldIngots, stock);
+        data.put("buy", "false");
+        return PlayerActionResponse.ok(PlayerActionType.MARKET_COMMIT,
+                "Sold " + amount + " " + resource, data);
+    }
+
+    private static Map<String, String> tradeData(
+            ResourceType resource, int amount, double unitPrice, int gold, StockpileState stock
+    ) {
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("resource", resource.name());
+        data.put("amount", String.valueOf(amount));
+        data.put("unitPrice", String.format(Locale.ROOT, "%.3f", unitPrice));
+        data.put("total", String.valueOf(gold));
+        data.put("paymentGold", String.valueOf(gold));
+        data.put("stock", String.format(Locale.ROOT, "%.1f", stock.get(resource)));
+        return data;
     }
 
     private double priceMultiplier(CanonicalWorldState state, PlayerId player, KingdomId kingdom) {
@@ -573,12 +746,58 @@ public final class PlayerGameplayService {
                 Map.of("standing", state.playerReputation().standing(player, kingdom).name()));
     }
 
+    private PlayerActionResponse previewFoundRealm(
+            CanonicalWorldState state,
+            PlayerId player,
+            PlayerActionRequest request
+    ) {
+        String name = request.meta("realmName");
+        if (name.isBlank()) name = "New Realm";
+        String cultureKey = CultureKeys.sanitize(request.meta("culture"));
+        BlockPos2 center = BlockPos2.of(request.blockX(), request.blockZ());
+        var req = PlayerSystemsEngine.FoundationRequirements.defaults();
+        SettlementState near = nearestSettlement(state, center, 128);
+        if (near != null && near.ownerKingdom().isPresent()) {
+            KingdomId owner = near.ownerKingdom().get();
+            if (state.playerReputation().reputation(player, owner) < 0
+                    || hasSevereCrime(state, player, owner)) {
+                return PlayerActionResponse.fail(PlayerActionType.PREVIEW_FOUND_REALM,
+                        "Cannot found a realm while hostile to nearby kingdom");
+            }
+        }
+        for (SettlementState s : state.settlements().values()) {
+            if (s.center().distanceTo(center) < 48 && s.ownerKingdom().isPresent()) {
+                return PlayerActionResponse.fail(PlayerActionType.PREVIEW_FOUND_REALM,
+                        "Too close to claimed territory");
+            }
+        }
+        var preview = playerSystems.previewFoundation(state, player, name, center, req);
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("eligible", String.valueOf(preview.eligible()));
+        data.put("goldCost", String.valueOf(preview.goldCost()));
+        data.put("createsNewSettlement", String.valueOf(preview.createsNewSettlement()));
+        data.put("capitalName", preview.capitalName());
+        data.put("culture", cultureKey);
+        data.put("realmName", name);
+        data.put("blockX", String.valueOf(center.x()));
+        data.put("blockZ", String.valueOf(center.z()));
+        if (!preview.eligible()) {
+            return PlayerActionResponse.fail(PlayerActionType.PREVIEW_FOUND_REALM, preview.message());
+        }
+        return PlayerActionResponse.ok(PlayerActionType.PREVIEW_FOUND_REALM, preview.message(), data);
+    }
+
     private PlayerActionResponse foundRealm(
             CanonicalWorldState state,
             PlayerId player,
             PlayerActionRequest request,
             SimulationContext ctx
     ) {
+        if (!"true".equalsIgnoreCase(request.meta("serverVerified"))
+                || !"true".equalsIgnoreCase(request.meta("paymentConsumed"))) {
+            return PlayerActionResponse.fail(PlayerActionType.FOUND_REALM,
+                    "Founding requires verified physical contribution");
+        }
         String name = request.meta("realmName");
         if (name.isBlank()) name = "New Realm";
         if (name.length() > 48) name = name.substring(0, 48);
@@ -587,7 +806,12 @@ public final class PlayerGameplayService {
         CultureId cultureId = culture.id();
         BlockPos2 center = BlockPos2.of(request.blockX(), request.blockZ());
         var req = PlayerSystemsEngine.FoundationRequirements.defaults();
-        // Enforce reputation if claiming near a kingdom settlement
+        int expectedGold = (int) Math.ceil(req.minTreasuryContribution());
+        int paid = request.metaInt("paymentGold", -1);
+        if (paid != expectedGold) {
+            return PlayerActionResponse.fail(PlayerActionType.FOUND_REALM,
+                    "Founding cost is " + expectedGold + " gold ingots");
+        }
         SettlementState near = nearestSettlement(state, center, 128);
         if (near != null && near.ownerKingdom().isPresent()) {
             KingdomId owner = near.ownerKingdom().get();
@@ -597,12 +821,15 @@ public final class PlayerGameplayService {
                         "Cannot found a realm while hostile to nearby kingdom");
             }
         }
-        // Spacing / ownership conflict
         for (SettlementState s : state.settlements().values()) {
             if (s.center().distanceTo(center) < 48 && s.ownerKingdom().isPresent()) {
                 return PlayerActionResponse.fail(PlayerActionType.FOUND_REALM,
                         "Too close to claimed territory");
             }
+        }
+        var preview = playerSystems.previewFoundation(state, player, name, center, req);
+        if (!preview.eligible()) {
+            return PlayerActionResponse.fail(PlayerActionType.FOUND_REALM, preview.message());
         }
         var result = playerSystems.foundKingdom(state, player, name, center, cultureId, req, ctx);
         if (!result.success()) {
@@ -614,6 +841,7 @@ public final class PlayerGameplayService {
         data.put("culture", cultureKey);
         data.put("foundingStatus", "FOUNDING_CONSTRUCTION");
         data.put("realmName", name);
+        data.put("paymentGold", String.valueOf(expectedGold));
         return PlayerActionResponse.ok(PlayerActionType.FOUND_REALM, result.message(), data);
     }
 
@@ -624,15 +852,11 @@ public final class PlayerGameplayService {
             return PlayerActionResponse.fail(PlayerActionType.SET_TAX_POLICY, "Not a realm ruler");
         }
         double rate = Math.max(0, Math.min(0.4, request.metaDouble("value", 0.08)));
-        // Treasury consequence: lowering tax reduces immediate treasury yield expectation via policy store.
         playerSystems.setPolicyTaxRate(state, player, rate);
-        state.playerReputation().setPolicy(player, "taxRate", rate);
-        KingdomId id = state.playerReputation().ruledKingdom(player);
-        KingdomState k = state.kingdoms().get(id);
-        if (k != null && rate < 0.05) {
-            k.setTreasury(Math.max(0, k.treasury() - 2)); // short-term revenue drop
-        }
-        return policyOk(PlayerActionType.SET_TAX_POLICY, "Tax rate set to " + rate, "taxRate", rate, ctx, player);
+        return policyOk(PlayerActionType.SET_TAX_POLICY,
+                "Tax rate set to " + String.format(Locale.ROOT, "%.3f", rate)
+                        + " — revenue accrues over simulation time",
+                "taxRate", rate, ctx, player);
     }
 
     private PlayerActionResponse setDefense(
@@ -642,18 +866,10 @@ public final class PlayerGameplayService {
             return PlayerActionResponse.fail(PlayerActionType.SET_DEFENSE_POLICY, "Not a realm ruler");
         }
         double priority = Math.max(0, Math.min(1, request.metaDouble("value", 0.5)));
-        KingdomId id = state.playerReputation().ruledKingdom(player);
-        KingdomState k = state.kingdoms().get(id);
-        if (k != null) {
-            double cost = priority * 5.0;
-            if (k.treasury() < cost) {
-                return PlayerActionResponse.fail(PlayerActionType.SET_DEFENSE_POLICY, "Insufficient treasury");
-            }
-            k.setTreasury(k.treasury() - cost);
-        }
         playerSystems.setPolicyDefense(state, player, priority);
-        state.playerReputation().setPolicy(player, "defense", priority);
-        return policyOk(PlayerActionType.SET_DEFENSE_POLICY, "Defense priority updated", "defense", priority, ctx, player);
+        return policyOk(PlayerActionType.SET_DEFENSE_POLICY,
+                "Defense priority set — security budgets apply over time",
+                "defense", priority, ctx, player);
     }
 
     private PlayerActionResponse setFood(
@@ -664,8 +880,9 @@ public final class PlayerGameplayService {
         }
         double target = Math.max(5, Math.min(200, request.metaDouble("value", 40)));
         playerSystems.setPolicyFoodReserves(state, player, target);
-        state.playerReputation().setPolicy(player, "foodReserves", target);
-        return policyOk(PlayerActionType.SET_FOOD_POLICY, "Food reserve target set", "foodReserves", target, ctx, player);
+        return policyOk(PlayerActionType.SET_FOOD_POLICY,
+                "Food reserve target set — markets react over time",
+                "foodReserves", target, ctx, player);
     }
 
     private PlayerActionResponse setConstruction(
@@ -675,19 +892,9 @@ public final class PlayerGameplayService {
             return PlayerActionResponse.fail(PlayerActionType.SET_CONSTRUCTION_POLICY, "Not a realm ruler");
         }
         double priority = Math.max(0, Math.min(1, request.metaDouble("value", 0.5)));
-        KingdomId id = state.playerReputation().ruledKingdom(player);
-        KingdomState k = state.kingdoms().get(id);
-        if (k != null) {
-            double cost = priority * 3.0;
-            if (k.treasury() < cost * 0.5) {
-                return PlayerActionResponse.fail(PlayerActionType.SET_CONSTRUCTION_POLICY,
-                        "Treasury too low for construction drive");
-            }
-            k.setTreasury(Math.max(0, k.treasury() - cost * 0.5));
-        }
         playerSystems.setPolicyConstructionPriority(state, player, priority);
-        state.playerReputation().setPolicy(player, "construction", priority);
-        return policyOk(PlayerActionType.SET_CONSTRUCTION_POLICY, "Construction priority updated",
+        return policyOk(PlayerActionType.SET_CONSTRUCTION_POLICY,
+                "Construction priority set — planners fund works over time",
                 "construction", priority, ctx, player);
     }
 
@@ -700,7 +907,6 @@ public final class PlayerGameplayService {
         boolean open = !"false".equalsIgnoreCase(request.meta("value"))
                 && request.metaDouble("value", 1) >= 0.5;
         playerSystems.setPolicyMigrationOpenness(state, player, open);
-        state.playerReputation().setPolicy(player, "migrationOpen", open ? 1.0 : 0.0);
         return policyOk(PlayerActionType.SET_MIGRATION_POLICY,
                 open ? "Borders open to migrants" : "Borders tightened",
                 "migrationOpen", open ? 1.0 : 0.0, ctx, player);
@@ -737,16 +943,40 @@ public final class PlayerGameplayService {
         if (otherK == null) {
             return PlayerActionResponse.fail(PlayerActionType.REQUEST_DIPLOMATIC_ACTION, "Unknown target kingdom");
         }
+        // Target must be known to the player (no raw UUID injection of unknowns).
+        var knowledge = state.playerReputation().knowledge().kingdomKnowledge(player, other);
+        if (knowledge == PlayerKnowledgeState.KnowledgeLevel.UNKNOWN
+                && !other.equals(state.playerReputation().ruledKingdom(player))) {
+            return PlayerActionResponse.fail(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
+                    "Target kingdom unknown — discover it first");
+        }
         String kind = request.meta("diplomacyType").toUpperCase(Locale.ROOT);
         if (kind.isBlank()) kind = request.meta("treaty").toUpperCase(Locale.ROOT);
         KingdomState self = state.kingdoms().get(ruled);
-        DiplomaticRelation current = state.diplomacy().relation(ruled, other);
+
+        DiplomacyProposalEvaluator.Evaluation eval =
+                DiplomacyProposalEvaluator.evaluate(state, player, ruled, other, kind);
+        if (eval.decision() == DiplomacyProposalEvaluator.Decision.INVALID) {
+            return PlayerActionResponse.fail(PlayerActionType.REQUEST_DIPLOMATIC_ACTION, eval.reason());
+        }
+        if (eval.decision() == DiplomacyProposalEvaluator.Decision.REJECTED) {
+            state.appendHistory(new HistoricalEvent(
+                    HistoricalEventId.deterministic(state.seed(), state.history().size()),
+                    CivilizationEventType.TREATY_SIGNED,
+                    ctx.time(),
+                    "Diplomacy rejected",
+                    otherK.name() + " rejected " + kind + " from player realm",
+                    Optional.empty(),
+                    Map.of("a", ruled.toString(), "b", other.toString(), "kind", kind, "result", "REJECTED")
+            ));
+            return PlayerActionResponse.ok(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
+                    eval.reason(),
+                    Map.of("result", "REJECTED", "target", otherK.name(), "diplomacyType", kind));
+        }
+
+        // ACCEPTED — apply state change once.
         return switch (kind) {
             case "PEACE", "REQUEST_PEACE" -> {
-                if (current != DiplomaticRelation.AT_WAR && current != DiplomaticRelation.HOSTILE) {
-                    yield PlayerActionResponse.fail(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
-                            "Not at war with " + otherK.name());
-                }
                 for (WarState war : state.wars().values()) {
                     if (!war.active()) continue;
                     if ((war.aggressor().equals(ruled) && war.defender().equals(other))
@@ -755,21 +985,26 @@ public final class PlayerGameplayService {
                     }
                 }
                 state.diplomacy().setRelation(ruled, other, DiplomaticRelation.TENSE);
-                state.diplomacy().setScore(ruled, other, -15);
+                state.diplomacy().setScore(ruled, other, Math.max(-15, state.diplomacy().score(ruled, other) + 10));
+                state.appendHistory(new HistoricalEvent(
+                        HistoricalEventId.deterministic(state.seed(), state.history().size()),
+                        CivilizationEventType.TREATY_SIGNED,
+                        ctx.time(),
+                        "Peace accepted",
+                        "Peace concluded with " + otherK.name(),
+                        Optional.empty(),
+                        Map.of("a", ruled.toString(), "b", other.toString(), "result", "ACCEPTED")
+                ));
                 yield PlayerActionResponse.ok(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
                         "Peace concluded with " + otherK.name(),
-                        Map.of("relation", "TENSE", "target", otherK.name()));
+                        Map.of("result", "ACCEPTED", "relation", "TENSE", "target", otherK.name()));
             }
             case "TREATY", "TRADE", "ALLIANCE", "NON_AGGRESSION" -> {
-                TreatyType treatyType = switch (kind) {
+                TreatyType treatyType = eval.treatyType() != null ? eval.treatyType() : switch (kind) {
                     case "ALLIANCE" -> TreatyType.ALLIANCE;
                     case "NON_AGGRESSION" -> TreatyType.NON_AGGRESSION;
                     default -> TreatyType.TRADE;
                 };
-                if (current == DiplomaticRelation.AT_WAR) {
-                    yield PlayerActionResponse.fail(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
-                            "Cannot treat while at war — seek peace first");
-                }
                 if (self != null && self.treasury() < 10) {
                     yield PlayerActionResponse.fail(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
                             "Treasury too low for diplomatic gifts");
@@ -786,15 +1021,16 @@ public final class PlayerGameplayService {
                         HistoricalEventId.deterministic(state.seed(), state.history().size()),
                         CivilizationEventType.TREATY_SIGNED,
                         ctx.time(),
-                        "Treaty signed",
+                        "Treaty accepted",
                         treatyType.name() + " with " + otherK.name(),
                         Optional.empty(),
-                        Map.of("a", ruled.toString(), "b", other.toString(), "type", treatyType.name())
+                        Map.of("a", ruled.toString(), "b", other.toString(), "type", treatyType.name(),
+                                "result", "ACCEPTED")
                 ));
                 yield PlayerActionResponse.ok(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
                         treatyType.name() + " treaty with " + otherK.name(),
-                        Map.of("treaty", treatyType.name(), "relation",
-                                state.diplomacy().relation(ruled, other).name()));
+                        Map.of("result", "ACCEPTED", "treaty", treatyType.name(), "relation",
+                                state.diplomacy().relation(ruled, other).name(), "target", otherK.name()));
             }
             case "BREAK", "BREAK_TREATY" -> {
                 boolean broken = false;
@@ -813,7 +1049,8 @@ public final class PlayerGameplayService {
                 state.diplomacy().setScore(ruled, other, state.diplomacy().score(ruled, other) - 20);
                 state.diplomacy().setRelation(ruled, other, DiplomaticRelation.TENSE);
                 yield PlayerActionResponse.ok(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
-                        "Treaty broken with " + otherK.name(), Map.of("relation", "TENSE"));
+                        "Treaty broken with " + otherK.name(),
+                        Map.of("result", "ACCEPTED", "relation", "TENSE", "target", otherK.name()));
             }
             case "IMPROVE" -> {
                 if (self != null && self.treasury() < 5) {
@@ -825,7 +1062,8 @@ public final class PlayerGameplayService {
                         DiplomacyState.categoricalFromScore(state.diplomacy().score(ruled, other)));
                 yield PlayerActionResponse.ok(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
                         "Relations improved with " + otherK.name(),
-                        Map.of("relation", state.diplomacy().relation(ruled, other).name()));
+                        Map.of("result", "ACCEPTED", "relation",
+                                state.diplomacy().relation(ruled, other).name(), "target", otherK.name()));
             }
             default -> PlayerActionResponse.fail(PlayerActionType.REQUEST_DIPLOMATIC_ACTION,
                     "Unsupported diplomacy type: " + kind);
@@ -885,6 +1123,33 @@ public final class PlayerGameplayService {
                 "You pledged military support to " + k.name(), data);
     }
 
+    private PlayerActionResponse queryFine(
+            CanonicalWorldState state,
+            PlayerId player,
+            PlayerActionRequest request
+    ) {
+        KingdomId kingdom = KingdomId.of(nz(request.kingdomId()));
+        SettlementId sid = SettlementId.of(nz(request.settlementId()));
+        PlayerLegalRecord legal = state.playerReputation().legalRecord(player, kingdom);
+        if (legal == null) {
+            legal = state.playerReputation().legalRecordForSettlement(player, sid);
+        }
+        Map<String, String> data = new LinkedHashMap<>();
+        if (legal == null || legal.outstandingFine() <= 0) {
+            data.put("outstandingFine", "0");
+            data.put("legalStatus", legal == null ? "CLEAR" : legal.status().name());
+            data.put("fullPaymentOnly", "true");
+            return PlayerActionResponse.ok(PlayerActionType.QUERY_FINE, "No outstanding fine", data);
+        }
+        int gold = (int) Math.ceil(legal.outstandingFine());
+        data.put("outstandingFine", String.valueOf(gold));
+        data.put("legalStatus", legal.status().name());
+        data.put("fullPaymentOnly", "true");
+        data.put("kingdomId", kingdom == null ? "" : kingdom.value().toString());
+        return PlayerActionResponse.ok(PlayerActionType.QUERY_FINE,
+                "Outstanding fine: " + gold + " gold ingots", data);
+    }
+
     private PlayerActionResponse payFine(
             CanonicalWorldState state,
             PlayerId player,
@@ -899,20 +1164,21 @@ public final class PlayerGameplayService {
         if (legal == null || legal.outstandingFine() <= 0) {
             return PlayerActionResponse.fail(PlayerActionType.PAY_FINE, "No outstanding fine");
         }
-        double paid = request.metaDouble("amount", legal.outstandingFine());
-        legal.setOutstandingFine(Math.max(0, legal.outstandingFine() - paid));
-        if (legal.outstandingFine() <= 0) {
-            legal.setStatus(PlayerLegalStatus.CLEAR);
-            legal.openCrimeIds().clear();
-        } else {
-            legal.setStatus(PlayerLegalStatus.FINE_OUTSTANDING);
+        int required = (int) Math.ceil(legal.outstandingFine());
+        int paid = request.metaInt("amount", -1);
+        // Full payment only — partial payments are not silently accepted.
+        if (paid != required) {
+            return PlayerActionResponse.fail(PlayerActionType.PAY_FINE,
+                    "Full payment required: " + required + " gold ingots");
         }
+        legal.setOutstandingFine(0);
+        legal.setStatus(PlayerLegalStatus.CLEAR);
+        legal.openCrimeIds().clear();
         KingdomState k = state.kingdoms().get(kingdom);
         if (k != null) k.setTreasury(k.treasury() + paid);
         playerSystems.recordPlayerAction(state, player, kingdom, 0.05, ctx);
-        return PlayerActionResponse.ok(PlayerActionType.PAY_FINE, "Fine paid",
-                Map.of("remaining", String.format(Locale.ROOT, "%.1f", legal.outstandingFine()),
-                        "legalStatus", legal.status().name()));
+        return PlayerActionResponse.ok(PlayerActionType.PAY_FINE, "Fine paid in full",
+                Map.of("remaining", "0", "legalStatus", "CLEAR", "paid", String.valueOf(paid)));
     }
 
     private PlayerActionResponse surrender(
@@ -950,22 +1216,75 @@ public final class PlayerGameplayService {
             PlayerId player,
             PlayerActionRequest request
     ) {
-        SettlementId sid = SettlementId.of(nz(request.settlementId()));
-        SettlementState s = state.settlements().get(sid);
+        // Server-derived coordinates only — NeoForge must pass ServerPlayer.blockPosition().
+        BlockPos2 pos = BlockPos2.of(request.blockX(), request.blockZ());
+        SettlementState s = nearestSettlement(state, pos, 48);
         if (s == null) {
-            // Discover nearest by coordinates
-            s = nearestSettlement(state, BlockPos2.of(request.blockX(), request.blockZ()), 96);
-            if (s == null) {
-                return PlayerActionResponse.fail(PlayerActionType.DISCOVER_SETTLEMENT, "No settlement nearby");
-            }
-            sid = s.id();
+            return PlayerActionResponse.fail(PlayerActionType.DISCOVER_SETTLEMENT,
+                    "No settlement nearby to observe");
         }
         state.playerReputation().knowledge().discoverSettlement(
-                player, sid, PlayerKnowledgeState.KnowledgeLevel.OBSERVED);
+                player, s.id(), PlayerKnowledgeState.KnowledgeLevel.OBSERVED);
         s.ownerKingdom().ifPresent(k -> state.playerReputation().knowledge().discoverKingdom(
                 player, k, PlayerKnowledgeState.KnowledgeLevel.KNOWN));
         return PlayerActionResponse.ok(PlayerActionType.DISCOVER_SETTLEMENT, "Discovered " + s.name(),
-                Map.of("settlementId", sid.value().toString(), "name", s.name()));
+                Map.of("settlementId", s.id().value().toString(), "name", s.name(),
+                        "knowledge", "OBSERVED"));
+    }
+
+    private PlayerActionResponse queryTaskJournal(
+            CanonicalWorldState state,
+            PlayerId player,
+            PlayerActionRequest request
+    ) {
+        List<String> entries = new ArrayList<>();
+        int n = 0;
+        for (EmergentTaskState task : state.emergentTasks().values()) {
+            boolean relevant = task.assignedTo(player)
+                    || task.status() == TaskStatus.DISCOVERED
+                    || task.status() == TaskStatus.OPEN
+                    || (task.acceptedBy() != null && task.acceptedBy().equals(player));
+            if (!relevant) continue;
+            if (task.status() == TaskStatus.OPEN && !task.assignedTo(player)
+                    && task.status() != TaskStatus.DISCOVERED) {
+                // Only show discovered/accepted/own tasks in journal
+                continue;
+            }
+            if (task.status() == TaskStatus.OPEN) continue;
+            SettlementState s = state.settlements().get(task.settlementId());
+            String settlementName = s == null ? "" : s.name();
+            Map<String, String> tags = task.problemTags();
+            String objective = task.type().name();
+            String resource = tags.getOrDefault("resource", "");
+            String amount = tags.getOrDefault("amount", "");
+            String wood = tags.getOrDefault("wood", "");
+            String stone = tags.getOrDefault("stone", "");
+            String campId = tags.getOrDefault("campId", "");
+            String shipment = tags.getOrDefault("shipment", "");
+            // id|status|type|title|desc|settlementId|settlementName|resource|amount|wood|stone|campId|shipment|accepted
+            entries.add(String.join("|",
+                    task.id().toString(),
+                    task.status().name(),
+                    task.type().name(),
+                    sanitizePipe(task.title()),
+                    sanitizePipe(task.description()),
+                    task.settlementId().value().toString(),
+                    sanitizePipe(settlementName),
+                    resource, amount, wood, stone, campId, shipment,
+                    task.assignedTo(player) ? "true" : "false",
+                    sanitizePipe(task.progressNote())));
+            if (++n >= 24) break;
+        }
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("tasks", String.join(";", entries));
+        data.put("count", String.valueOf(entries.size()));
+        return PlayerActionResponse.ok(PlayerActionType.QUERY_TASK_JOURNAL,
+                entries.isEmpty() ? "No tasks" : entries.size() + " tasks", data);
+    }
+
+    private static String sanitizePipe(String s) {
+        if (s == null) return "";
+        return s.replace('|', '/').replace(';', ',');
     }
 
     private PlayerActionResponse queryContext(
@@ -991,23 +1310,48 @@ public final class PlayerGameplayService {
             data.put("policyConstruction", String.valueOf(state.playerReputation().policy(player, "construction", 0.3)));
             data.put("policyMigration", String.valueOf(state.playerReputation().policy(player, "migrationOpen", 1)));
         }
+
+        // Auto-observe settlements near server-derived player position.
+        if (request.blockX() != 0 || request.blockZ() != 0) {
+            SettlementState near = nearestSettlement(state, BlockPos2.of(request.blockX(), request.blockZ()), 48);
+            if (near != null) {
+                state.playerReputation().knowledge().discoverSettlement(
+                        player, near.id(), PlayerKnowledgeState.KnowledgeLevel.OBSERVED);
+                near.ownerKingdom().ifPresent(kid ->
+                        state.playerReputation().knowledge().discoverKingdom(
+                                player, kid, PlayerKnowledgeState.KnowledgeLevel.KNOWN));
+            }
+        }
+
         List<String> taskLines = new ArrayList<>();
         for (EmergentTaskState task : state.emergentTasks().values()) {
-            if (task.assignedTo(player) || task.status() == TaskStatus.DISCOVERED) {
-                taskLines.add(task.id() + "|" + task.status().name() + "|" + task.title()
-                        + "|" + task.settlementId().value());
+            if (task.assignedTo(player) || task.status() == TaskStatus.DISCOVERED
+                    || (task.acceptedBy() != null && task.acceptedBy().equals(player))) {
+                SettlementState s = state.settlements().get(task.settlementId());
+                taskLines.add(task.id() + "|" + task.status().name() + "|" + sanitizePipe(task.title())
+                        + "|" + task.settlementId().value()
+                        + "|" + sanitizePipe(task.description())
+                        + "|" + task.type().name()
+                        + "|" + task.problemTags().getOrDefault("resource", "")
+                        + "|" + task.problemTags().getOrDefault("amount", "")
+                        + "|" + task.problemTags().getOrDefault("wood", "")
+                        + "|" + task.problemTags().getOrDefault("stone", "")
+                        + "|" + task.problemTags().getOrDefault("campId", "")
+                        + "|" + task.problemTags().getOrDefault("shipment", "")
+                        + "|" + (s == null ? "" : sanitizePipe(s.name())));
             }
             if (taskLines.size() >= 16) break;
         }
         data.put("tasks", String.join(";", taskLines));
+
         List<String> culturesList = new ArrayList<>();
         for (CultureDefinition c : cultures.surfaceCultures()) {
             culturesList.add(c.key() + ":" + c.displayName());
         }
         data.put("cultures", String.join(",", culturesList));
 
-        // Known kingdoms / settlements for dashboard
         List<String> kingdoms = new ArrayList<>();
+        List<String> dispositionRows = new ArrayList<>();
         for (var e : state.playerReputation().knowledge().kingdoms().getOrDefault(player, Map.of()).entrySet()) {
             KingdomState k = state.kingdoms().get(e.getKey());
             if (k == null) continue;
@@ -1020,13 +1364,47 @@ public final class PlayerGameplayService {
                     break;
                 }
             }
+            String relation = state.diplomacy().relation(
+                    ruled == null ? e.getKey() : ruled, e.getKey()).name();
             kingdoms.add(e.getKey().value() + "|" + k.name() + "|" + CultureKeys.resolve(k.cultureId())
                     + "|" + k.governmentType().name() + "|" + standing + "|" + attitude + "|" + war
-                    + "|" + String.format(Locale.ROOT, "%.1f", k.treasury()));
+                    + "|" + String.format(Locale.ROOT, "%.1f", k.treasury())
+                    + "|" + relation + "|" + e.getValue().name());
+            var disp = FactionDispositionResolver.playerTowardKingdom(state, player, e.getKey());
+            PlayerLegalRecord legal = state.playerReputation().legalRecord(player, e.getKey());
+            boolean wanted = legal != null && legal.isWantedOrWorse();
+            boolean citizen = state.playerReputation().standing(player, e.getKey())
+                    .atLeast(FactionStanding.CITIZEN);
+            dispositionRows.add(e.getKey().value() + "|" + disp.name()
+                    + "|" + (legal == null ? "CLEAR" : legal.status().name())
+                    + "|" + wanted + "|" + citizen);
             if (kingdoms.size() >= 24) break;
         }
-        // If player knows nothing yet, include nearby plan kingdoms as RUMORED via coordinates? keep empty.
+        // Always include ruled kingdom disposition
+        if (ruled != null) {
+            boolean found = dispositionRows.stream().anyMatch(r -> r.startsWith(ruled.value().toString()));
+            if (!found) {
+                dispositionRows.add(ruled.value() + "|ALLIED|CLEAR|false|true");
+            }
+        }
+        // Include legal jurisdictions even if kingdom not in knowledge map
+        for (var e : state.playerReputation().legalByKingdom().getOrDefault(player, Map.of()).entrySet()) {
+            boolean found = dispositionRows.stream().anyMatch(r -> r.startsWith(e.getKey().value().toString()));
+            if (found) continue;
+            var disp = FactionDispositionResolver.playerTowardKingdom(state, player, e.getKey());
+            boolean wanted = e.getValue().isWantedOrWorse();
+            dispositionRows.add(e.getKey().value() + "|" + disp.name()
+                    + "|" + e.getValue().status().name() + "|" + wanted + "|false");
+        }
         data.put("knownKingdoms", String.join(";", kingdoms));
+        data.put("dispositionByKingdom", String.join(";", dispositionRows));
+
+        List<String> legalSettlements = new ArrayList<>();
+        for (var e : state.playerReputation().legalBySettlement().getOrDefault(player, Map.of()).entrySet()) {
+            legalSettlements.add(e.getKey().value() + "|" + e.getValue().status().name());
+            if (legalSettlements.size() >= 32) break;
+        }
+        data.put("legalBySettlement", String.join(";", legalSettlements));
 
         List<String> settlements = new ArrayList<>();
         for (var e : state.playerReputation().knowledge().settlements().getOrDefault(player, Map.of()).entrySet()) {
@@ -1037,22 +1415,40 @@ public final class PlayerGameplayService {
                     + "|" + String.format(Locale.ROOT, "%.2f", s.security())
                     + "|" + String.format(Locale.ROOT, "%.2f", s.unrest())
                     + "|" + s.ownerKingdom().map(id -> id.value().toString()).orElse("")
-                    + "|" + e.getValue().name());
+                    + "|" + e.getValue().name()
+                    + "|" + s.center().x() + "|" + s.center().z());
             if (settlements.size() >= 32) break;
         }
         data.put("knownSettlements", String.join(";", settlements));
 
+        var camps = state.playerReputation().knowledge().knownCamps().getOrDefault(player, java.util.Set.of());
+        data.put("knownCamps", camps.stream().map(UUID::toString).reduce((a, b) -> a + "," + b).orElse(""));
+        var markers = state.playerReputation().knowledge().knownTaskMarkers().getOrDefault(player, java.util.Set.of());
+        data.put("knownTaskMarkers", markers.stream().map(UUID::toString).reduce((a, b) -> a + "," + b).orElse(""));
+
         List<String> wars = new ArrayList<>();
         for (WarState w : state.wars().values()) {
             if (!w.active()) continue;
+            // Only expose wars involving known kingdoms or player's realm
+            boolean known = ruled != null && (w.aggressor().equals(ruled) || w.defender().equals(ruled));
+            if (!known) {
+                var kn = state.playerReputation().knowledge().kingdoms().getOrDefault(player, Map.of());
+                known = kn.containsKey(w.aggressor()) || kn.containsKey(w.defender());
+            }
+            if (!known) continue;
             KingdomState a = state.kingdoms().get(w.aggressor());
             KingdomState d = state.kingdoms().get(w.defender());
             wars.add(w.id().value() + "|"
                     + (a == null ? "?" : a.name()) + "|"
-                    + (d == null ? "?" : d.name()));
+                    + (d == null ? "?" : d.name())
+                    + "|" + w.aggressor().value() + "|" + w.defender().value());
             if (wars.size() >= 12) break;
         }
         data.put("activeWars", String.join(";", wars));
+
+        // Founding cost for UI
+        var freq = PlayerSystemsEngine.FoundationRequirements.defaults();
+        data.put("foundingGoldCost", String.valueOf((int) Math.ceil(freq.minTreasuryContribution())));
 
         List<String> history = new ArrayList<>();
         int h = 0;

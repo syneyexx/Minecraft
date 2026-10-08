@@ -224,6 +224,7 @@ public final class WorldSessionLifecycle {
         LiveStateCache.get().clear();
         com.livingmods.neoforge.gameplay.FactionDispositionCache.get().clear();
         com.livingmods.neoforge.gameplay.PlayerInteractionSessions.get().clear();
+        com.livingmods.neoforge.gameplay.PlayerKnowledgeCache.get().clear();
         timeSyncBridge.reset();
         activeWorldId = null;
         activeIdentity = null;

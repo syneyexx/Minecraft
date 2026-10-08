@@ -21,6 +21,10 @@ public final class ClientNetworkBridge {
         ClientMapCache.acceptDashboard(metrics);
     }
 
+    public static void acceptDashboardContext(Map<String, String> data) {
+        ClientMapCache.acceptPlayerContext(data);
+    }
+
     public static void clearCaches() {
         ClientMapCache.clear();
     }

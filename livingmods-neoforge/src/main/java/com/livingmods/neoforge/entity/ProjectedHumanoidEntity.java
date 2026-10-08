@@ -85,7 +85,31 @@ public class ProjectedHumanoidEntity extends PathfinderMob {
         targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, ProjectedHumanoidEntity.class, 10, true, false,
                 other -> other instanceof ProjectedHumanoidEntity foe && isHostileToward(foe)));
         targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, Player.class, 10, true, false,
-                p -> hostileToPlayer));
+                living -> living instanceof Player p && isHostileTowardPlayer(p)));
+    }
+
+    /**
+     * Evaluate hostility against a specific player using jurisdiction-aware cache.
+     * Bandits are always hostile; guards/soldiers use FactionDispositionCache.
+     * No IPC — cache only.
+     */
+    public boolean isHostileTowardPlayer(Player player) {
+        if (player == null) return false;
+        Kind self = kind();
+        if (self == Kind.BANDIT) return true;
+        if (self == Kind.CARAVAN || self == Kind.MIGRANT || self == Kind.REFUGEE) return false;
+        // Re-evaluate from cache so already-spawned entities react to legal/war changes.
+        if (factionId != null) {
+            if (self == Kind.GUARD) {
+                UUID settlement = getPersistentData().hasUUID("livingmods_settlement")
+                        ? getPersistentData().getUUID("livingmods_settlement") : factionId;
+                return com.livingmods.neoforge.gameplay.FactionDispositionCache.get()
+                        .guardsHostileToPlayer(player.getUUID(), settlement, factionId);
+            }
+            return com.livingmods.neoforge.gameplay.FactionDispositionCache.get()
+                    .hostileToPlayer(player.getUUID(), factionId);
+        }
+        return hostileToPlayer;
     }
 
     public void bind(

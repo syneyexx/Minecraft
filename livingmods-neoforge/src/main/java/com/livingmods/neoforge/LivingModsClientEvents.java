@@ -4,7 +4,6 @@ import com.livingmods.neoforge.client.ClientMapCache;
 import com.livingmods.neoforge.client.DashboardScreen;
 import com.livingmods.neoforge.client.LivingModsKeyMappings;
 import com.livingmods.neoforge.client.MapScreen;
-import com.livingmods.neoforge.client.TaskJournalScreen;
 import com.livingmods.neoforge.network.CitizenInteractionPayloads;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
@@ -14,8 +13,6 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
-
-import java.util.ArrayList;
 
 @EventBusSubscriber(modid = LivingModsMod.MOD_ID, value = Dist.CLIENT)
 public final class LivingModsClientEvents {
@@ -44,9 +41,8 @@ public final class LivingModsClientEvents {
             mc.setScreen(new DashboardScreen());
         }
         while (LivingModsKeyMappings.OPEN_JOURNAL.consumeClick()) {
-            mc.setScreen(new TaskJournalScreen(new ArrayList<>()));
-            PacketDistributor.sendToServer(new CitizenInteractionPayloads.RealmAction(
-                    "DISCOVER", "", "", 0, 0));
+            // C2S journal request → server queries canonical → S2C opens/updates journal.
+            PacketDistributor.sendToServer(new CitizenInteractionPayloads.JournalRequest());
         }
     }
 }

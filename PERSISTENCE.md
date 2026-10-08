@@ -10,7 +10,7 @@ LivingMods persists three distinct artifacts. Do not conflate them.
 | World plan | `world/livingmods/worldplan/plan.bin` | Magic `LMPP`, format **2** (full plan), `WORLDGEN_VERSION`, seed, `contentHash`, counts, then `PlanBinaryCodec` payload |
 | Plan meta (optional quick check) | `world/livingmods/worldplan/meta.bin` | Seed/hash/version/counts without full payload |
 | Seed marker | `world/livingmods/worldplan/seed.dat` | `long` seed written on server start |
-| Canonical save | `world/livingmods/sidecar/canonical.bin` | Magic `LMCS`, schema **4** (reads schema 3), full graph + DynamicPhysicalState |
+| Canonical save | `world/livingmods/sidecar/canonical.bin` | Magic `LMCS`, schema **6** (reads ≥3), full graph + DynamicPhysicalState + player gameplay + structure assetId |
 | WAL | `world/livingmods/sidecar/canonical.wal` | Append-only revision + contentHash records |
 | Sidecar logs | `…/sidecar/livingmods-sidecar.log`, `livingmods-minecraft.log` | Process logs |
 
@@ -24,7 +24,7 @@ Sidecar save directory is `server.getWorldPath(ROOT)/livingmods/sidecar` (same w
 
 **Correction vs older docs:** the plan is **not** “regenerated every boot from seed.” Regeneration happens only when no readable full plan exists.
 
-## Canonical save (schema 5)
+## Canonical save (schema 6)
 
 `CanonicalSaveFormat` encodes/decodes:
 
@@ -38,8 +38,9 @@ Sidecar save directory is `server.getWorldPath(ROOT)/livingmods/sidecar` (same w
 - time ticks, save revision, plan content hash, world/session UUIDs
 - **DynamicPhysicalState** (schema ≥ 4): physical intents, dynamic structures, settlement geometry
 - **Player gameplay addendum** (schema ≥ 5): settlement reputation, faction standing, ruled kingdoms, legal records, knowledge/cartography, realm policies, emergent task lifecycle
+- **Structure library identity** (schema ≥ 6): `DynamicStructureRecord.assetId` (empty string when absent on older saves)
 
-Schema 3–4 saves still load (missing schema-5 fields default empty). New writes use schema 5.
+Schema 3–5 saves still load (missing newer fields default empty). New writes use schema 6.
 
 `CanonicalStore.saveBarrier` pauses the bound `SimulationEngine` at a phase boundary, writes snapshot, appends WAL.
 

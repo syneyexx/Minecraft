@@ -41,9 +41,20 @@ public record MapDataPayload(
         return TYPE;
     }
 
-    public record SettlementMarker(String id, String name, String kingdom, String tier, int x, int z, boolean capital) {}
+    /**
+     * @param knowledge UNKNOWN/RUMORED/KNOWN/OBSERVED — server-filtered; client must not invent markers.
+     */
+    public record SettlementMarker(String id, String name, String kingdom, String tier, int x, int z, boolean capital, String knowledge) {
+        public SettlementMarker(String id, String name, String kingdom, String tier, int x, int z, boolean capital) {
+            this(id, name, kingdom, tier, x, z, capital, "KNOWN");
+        }
+    }
     public record RoadSegment(int x1, int z1, int x2, int z2, String roadClass) {}
-    public record KingdomOverlay(String id, String name, int color, int capitalX, int capitalZ, List<Integer> borderXZ) {}
+    public record KingdomOverlay(String id, String name, int color, int capitalX, int capitalZ, List<Integer> borderXZ, String knowledge) {
+        public KingdomOverlay(String id, String name, int color, int capitalX, int capitalZ, List<Integer> borderXZ) {
+            this(id, name, color, capitalX, capitalZ, borderXZ, "KNOWN");
+        }
+    }
     public record ArmyMarker(String id, String kingdom, int x, int z, int strength) {}
     public record EpidemicMarker(String pathogen, int x, int z, double severity) {}
     public record MigrationMarker(String reason, int x, int z, int population) {}
@@ -64,6 +75,7 @@ public record MapDataPayload(
             buf.writeVarInt(s.x);
             buf.writeVarInt(s.z);
             buf.writeBoolean(s.capital);
+            buf.writeUtf(s.knowledge == null ? "KNOWN" : s.knowledge, 16);
         }
         buf.writeVarInt(payload.roads.size());
         for (RoadSegment r : payload.roads) {
@@ -84,6 +96,7 @@ public record MapDataPayload(
             for (int v : k.borderXZ) {
                 buf.writeVarInt(v);
             }
+            buf.writeUtf(k.knowledge == null ? "KNOWN" : k.knowledge, 16);
         }
         buf.writeVarInt(payload.armies.size());
         for (ArmyMarker a : payload.armies) {
@@ -128,7 +141,7 @@ public record MapDataPayload(
         for (int i = 0; i < sc; i++) {
             settlements.add(new SettlementMarker(
                     buf.readUtf(256), buf.readUtf(256), buf.readUtf(256), buf.readUtf(64),
-                    buf.readVarInt(), buf.readVarInt(), buf.readBoolean()));
+                    buf.readVarInt(), buf.readVarInt(), buf.readBoolean(), buf.readUtf(16)));
         }
         int rc = boundCount(buf.readVarInt(), MAX_MARKERS);
         List<RoadSegment> roads = new ArrayList<>(rc);
@@ -148,7 +161,7 @@ public record MapDataPayload(
             for (int j = 0; j < bc; j++) {
                 border.add(buf.readVarInt());
             }
-            kingdoms.add(new KingdomOverlay(id, name, color, cx, cz, border));
+            kingdoms.add(new KingdomOverlay(id, name, color, cx, cz, border, buf.readUtf(16)));
         }
         int ac = boundCount(buf.readVarInt(), MAX_MARKERS);
         List<ArmyMarker> armies = new ArrayList<>(ac);

@@ -99,7 +99,11 @@ public final class MigrationEngine implements SimulationSubsystem {
                     .filter(s -> !s.id().equals(source.id()))
                     .filter(s -> {
                         StockpileState dsp = state.stockpiles().get(s.id());
-                        return dsp != null && dsp.get(ResourceType.GRAIN) > 20 && s.hunger() < 0.3;
+                        if (dsp == null || dsp.get(ResourceType.GRAIN) <= 20 || s.hunger() >= 0.3) {
+                            return false;
+                        }
+                        // Player realm migrationOpen policy gates acceptance attractiveness.
+                        return migrationOpenFor(state, s);
                     })
                     .min(Comparator.comparingDouble(s -> s.center().distanceTo(source.center())))
                     .orElse(null);
@@ -276,5 +280,17 @@ public final class MigrationEngine implements SimulationSubsystem {
             if (list.size() >= limit) break;
         }
         return list;
+    }
+
+    /** Player migrationOpen policy — closed borders reduce destination attractiveness. */
+    private static boolean migrationOpenFor(CanonicalWorldState state, SettlementState settlement) {
+        if (settlement.ownerKingdom().isEmpty()) return true;
+        var kingdomId = settlement.ownerKingdom().get();
+        for (var e : state.playerReputation().ruledKingdoms().entrySet()) {
+            if (kingdomId.equals(e.getValue())) {
+                return state.playerReputation().policy(e.getKey(), "migrationOpen", 1.0) >= 0.5;
+            }
+        }
+        return true;
     }
 }

@@ -269,11 +269,10 @@ public final class MapScreen extends Screen {
                 int pz = worldToScreenZ(data, s.z(), mapTop, mapH);
                 if (Math.abs(mouseX - px) <= 6 && Math.abs(mouseY - pz) <= 6) {
                     selectedSettlement = s.name() + " (" + s.tier() + ") @" + s.x() + "," + s.z()
-                            + (s.capital() ? " [capital]" : "");
+                            + (s.capital() ? " [capital]" : "")
+                            + (s.knowledge() == null || s.knowledge().isBlank() ? "" : " [" + s.knowledge() + "]");
                     selectedKingdom = s.kingdom().isEmpty() ? "Independent" : s.kingdom();
-                    // Ask server to mark discovery when selecting a nearby settlement.
-                    PacketDistributor.sendToServer(new com.livingmods.neoforge.network.CitizenInteractionPayloads.RealmAction(
-                            "DISCOVER", "", "", s.x(), s.z()));
+                    // Selection only — never grant knowledge by clicking a remote marker.
                     return true;
                 }
             }

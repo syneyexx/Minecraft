@@ -123,9 +123,10 @@ public final class GuardProjectionBinder {
             if (guard == null) break;
             guard.moveTo(x + o[0] + 0.5, y, z + o[1] + 0.5, 0, 0);
             boolean hostile = false;
+            UUID kingdom = faction == null ? settlementId : faction;
             for (ServerPlayer nearby : level.players()) {
                 if (com.livingmods.neoforge.gameplay.FactionDispositionCache.get()
-                        .hostileToPlayer(nearby.getUUID(), faction == null ? settlementId : faction)) {
+                        .guardsHostileToPlayer(nearby.getUUID(), settlementId, kingdom)) {
                     hostile = true;
                     break;
                 }
