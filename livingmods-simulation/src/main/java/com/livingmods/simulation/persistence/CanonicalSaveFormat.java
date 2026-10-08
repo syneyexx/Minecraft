@@ -89,7 +89,9 @@ import java.util.UUID;
  * (citizen family/housing/schedule, economy/trade caravans, politics/war/justice).
  */
 public final class CanonicalSaveFormat {
-    public static final int SCHEMA_VERSION = 3;
+    /** Schema 4 adds DynamicPhysicalState (intents / dynamic structures / settlement geometry). */
+    public static final int SCHEMA_VERSION = 4;
+    public static final int MIN_SUPPORTED_SCHEMA = 3;
     public static final int MAGIC = 0x4C4D4353; // LMCS
     public static final int MAX_ENTITIES = 500_000;
     public static final int MAX_NESTED = 65_536;
@@ -98,6 +100,10 @@ public final class CanonicalSaveFormat {
     private CanonicalSaveFormat() {}
 
     private static int readCount(DataInputStream in, int max, String label) throws IOException {
+        return readCountPublic(in, max, label);
+    }
+
+    static int readCountPublic(DataInputStream in, int max, String label) throws IOException {
         int n = in.readInt();
         if (n < 0 || n > max) {
             throw new IOException("invalid " + label + " count: " + n + " (max " + max + ")");
@@ -209,6 +215,7 @@ public final class CanonicalSaveFormat {
         writeSieges(out, state);
         writeFactions(out, state);
         writeIntelligence(out, state.intelligence());
+        DynamicPhysicalCodec.write(out, state.dynamicPhysical());
 
         out.flush();
         return bos.toByteArray();
@@ -221,8 +228,9 @@ public final class CanonicalSaveFormat {
             throw new IOException("bad save magic");
         }
         int version = in.readInt();
-        if (version != SCHEMA_VERSION) {
-            throw new IOException("unsupported schema: " + version + " (expected " + SCHEMA_VERSION + ")");
+        if (version < MIN_SUPPORTED_SCHEMA || version > SCHEMA_VERSION) {
+            throw new IOException("unsupported schema: " + version
+                    + " (supported " + MIN_SUPPORTED_SCHEMA + ".." + SCHEMA_VERSION + ")");
         }
         long seed = in.readLong();
         long ticks = in.readLong();
@@ -341,6 +349,9 @@ public final class CanonicalSaveFormat {
         readSieges(in, state);
         readFactions(in, state);
         readIntelligence(in, state.intelligence());
+        if (version >= 4) {
+            DynamicPhysicalCodec.read(in, state.dynamicPhysical());
+        }
 
         state.rebuildIndexes();
         return state;
@@ -353,7 +364,7 @@ public final class CanonicalSaveFormat {
             throw new IOException("bad save magic");
         }
         int version = in.readInt();
-        if (version != SCHEMA_VERSION) {
+        if (version < MIN_SUPPORTED_SCHEMA || version > SCHEMA_VERSION) {
             throw new IOException("unsupported schema: " + version);
         }
         long seed = in.readLong();

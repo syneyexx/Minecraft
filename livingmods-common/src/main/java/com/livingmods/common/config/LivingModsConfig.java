@@ -29,10 +29,15 @@ public record LivingModsConfig(
         boolean frontierEnabled,
         long catchUpBudgetSteps,
         int mapDetailLevel,
-        boolean debugMode
+        boolean debugMode,
+        int maxReconciliationOpsPerTick,
+        int armyProjectionCap,
+        int caravanProjectionCap,
+        int banditProjectionCap,
+        boolean dynamicConstructionEnabled
 ) {
     /** Bump when property keys/semantics change; load migrates older files. */
-    public static final int CONFIG_FORMAT_VERSION = 1;
+    public static final int CONFIG_FORMAT_VERSION = 2;
 
     public static int defaultWorkerThreads() {
         return Math.max(1, Runtime.getRuntime().availableProcessors() / 3);
@@ -56,7 +61,12 @@ public record LivingModsConfig(
                 true,
                 4096L,
                 1,
-                false
+                false,
+                4,
+                24,
+                12,
+                16,
+                true
         );
     }
 
@@ -74,6 +84,10 @@ public record LivingModsConfig(
         civilizationRadiusBlocks = clampInt(civilizationRadiusBlocks, 1024, 100_000);
         catchUpBudgetSteps = clampLong(catchUpBudgetSteps, 16L, 100_000L);
         mapDetailLevel = clampInt(mapDetailLevel, 0, 3);
+        maxReconciliationOpsPerTick = clampInt(maxReconciliationOpsPerTick, 1, 64);
+        armyProjectionCap = clampInt(armyProjectionCap, 0, 128);
+        caravanProjectionCap = clampInt(caravanProjectionCap, 0, 64);
+        banditProjectionCap = clampInt(banditProjectionCap, 0, 64);
     }
 
     public static LivingModsConfig loadOrDefaults(Path configDir) {
@@ -134,7 +148,12 @@ public record LivingModsConfig(
                 parseBool(props, "frontierEnabled", d.frontierEnabled),
                 parseLong(props, "catchUpBudgetSteps", d.catchUpBudgetSteps),
                 parseInt(props, "mapDetailLevel", d.mapDetailLevel),
-                parseBool(props, "debugMode", d.debugMode)
+                parseBool(props, "debugMode", d.debugMode),
+                parseInt(props, "maxReconciliationOpsPerTick", d.maxReconciliationOpsPerTick),
+                parseInt(props, "armyProjectionCap", d.armyProjectionCap),
+                parseInt(props, "caravanProjectionCap", d.caravanProjectionCap),
+                parseInt(props, "banditProjectionCap", d.banditProjectionCap),
+                parseBool(props, "dynamicConstructionEnabled", d.dynamicConstructionEnabled)
         );
     }
 
@@ -158,6 +177,11 @@ public record LivingModsConfig(
         props.setProperty("catchUpBudgetSteps", String.valueOf(catchUpBudgetSteps));
         props.setProperty("mapDetailLevel", String.valueOf(mapDetailLevel));
         props.setProperty("debugMode", String.valueOf(debugMode));
+        props.setProperty("maxReconciliationOpsPerTick", String.valueOf(maxReconciliationOpsPerTick));
+        props.setProperty("armyProjectionCap", String.valueOf(armyProjectionCap));
+        props.setProperty("caravanProjectionCap", String.valueOf(caravanProjectionCap));
+        props.setProperty("banditProjectionCap", String.valueOf(banditProjectionCap));
+        props.setProperty("dynamicConstructionEnabled", String.valueOf(dynamicConstructionEnabled));
         return props;
     }
 
@@ -167,7 +191,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, workers, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode
+                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -177,7 +202,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode
+                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -187,7 +213,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode
+                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -197,7 +224,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                radius, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode
+                radius, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -207,7 +235,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, enabled, catchUpBudgetSteps, mapDetailLevel, debugMode
+                civilizationRadiusBlocks, enabled, catchUpBudgetSteps, mapDetailLevel, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -217,7 +246,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode
+                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -227,7 +257,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 scale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode
+                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -237,7 +268,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, frontierEnabled, steps, mapDetailLevel, debugMode
+                civilizationRadiusBlocks, frontierEnabled, steps, mapDetailLevel, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -247,7 +279,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, level, debugMode
+                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, level, debugMode,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 
@@ -257,7 +290,8 @@ public record LivingModsConfig(
                 planningRegionSizeChunks, simulationWorkerThreads, maximumRegionalJobs, simulationBudgetMillis,
                 physicalCitizenProjectionCap, physicalWildlifeProjectionCap,
                 civilizationDensityScale, mapFogOfWarForStrategicInfo, ipcRequestTimeoutMillis,
-                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debug
+                civilizationRadiusBlocks, frontierEnabled, catchUpBudgetSteps, mapDetailLevel, debug,
+                maxReconciliationOpsPerTick, armyProjectionCap, caravanProjectionCap, banditProjectionCap, dynamicConstructionEnabled
         );
     }
 

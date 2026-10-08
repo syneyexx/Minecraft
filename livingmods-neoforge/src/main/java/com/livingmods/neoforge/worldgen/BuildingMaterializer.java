@@ -331,11 +331,13 @@ public final class BuildingMaterializer {
         BlockPos2 best = null;
         double bestDist = Double.MAX_VALUE;
         BlockPos2 door2 = BlockPos2.of(door.getX(), door.getZ());
-        for (BlockPos2 street : settlement.streetNetwork()) {
-            double d = door2.distanceTo(street);
-            if (d < bestDist) {
-                bestDist = d;
-                best = street;
+        if (settlement != null && settlement.streetNetwork() != null) {
+            for (BlockPos2 street : settlement.streetNetwork()) {
+                double d = door2.distanceTo(street);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = street;
+                }
             }
         }
         // Walk out from door toward street / facing direction

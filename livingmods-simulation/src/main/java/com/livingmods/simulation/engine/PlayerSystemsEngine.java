@@ -205,6 +205,9 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
         stock.add(ResourceType.WOOD, 20);
         stock.add(ResourceType.STONE, 15);
 
+        // Dynamic physical founding — never mutates immutable WorldPlan.
+        seedPlayerRealmPhysicalIntents(state, owned, player, ctx);
+
         state.appendHistory(new HistoricalEvent(
                 HistoricalEventId.deterministic(state.seed(), state.history().size()),
                 CivilizationEventType.SETTLEMENT_FOUNDED,
@@ -223,7 +226,188 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
         if (id == null) return;
         KingdomState k = state.kingdoms().get(id);
         if (k != null) {
-            k.setTaxRate(taxRate);
+            k.setTaxRate(Math.max(0.0, Math.min(0.4, taxRate)));
+            // Economic consequence: higher tax raises unrest pressure, lower tax cuts treasury drip.
+            for (SettlementId sid : k.settlementIds()) {
+                SettlementState s = state.settlements().get(sid);
+                if (s == null) continue;
+                if (taxRate > 0.15) {
+                    s.setUnrest(Math.min(1.0, s.unrest() + (taxRate - 0.15) * 0.5));
+                } else {
+                    s.setUnrest(Math.max(0, s.unrest() - 0.02));
+                }
+            }
+        }
+    }
+
+    public void setPolicyDefense(CanonicalWorldState state, PlayerId player, double defensePriority) {
+        KingdomId id = state.playerReputation().ruledKingdom(player);
+        if (id == null) return;
+        for (SettlementId sid : state.kingdoms().get(id).settlementIds()) {
+            SettlementState s = state.settlements().get(sid);
+            if (s == null) continue;
+            s.setSecurity(Math.min(1.0, s.security() + defensePriority * 0.05));
+            s.setDevelopmentDeficit(s.developmentDeficit() + defensePriority * 0.1);
+        }
+    }
+
+    public void setPolicyFoodReserves(CanonicalWorldState state, PlayerId player, double reserveTarget) {
+        KingdomId id = state.playerReputation().ruledKingdom(player);
+        if (id == null) return;
+        for (SettlementId sid : state.kingdoms().get(id).settlementIds()) {
+            StockpileState stock = state.stockpiles().get(sid);
+            MarketState market = state.markets().get(sid);
+            if (stock == null || market == null) continue;
+            if (stock.get(ResourceType.GRAIN) < reserveTarget) {
+                market.setCrisisSeverity(Math.min(1.0, market.crisisSeverity() + 0.05));
+            }
+        }
+    }
+
+    public void setPolicyConstructionPriority(CanonicalWorldState state, PlayerId player, double priority) {
+        KingdomId id = state.playerReputation().ruledKingdom(player);
+        if (id == null) return;
+        for (SettlementId sid : state.kingdoms().get(id).settlementIds()) {
+            SettlementState s = state.settlements().get(sid);
+            if (s == null) continue;
+            s.setDevelopmentDeficit(Math.max(0.5, s.developmentDeficit() + priority * 0.25));
+        }
+    }
+
+    public void setPolicyMigrationOpenness(CanonicalWorldState state, PlayerId player, boolean open) {
+        KingdomId id = state.playerReputation().ruledKingdom(player);
+        if (id == null) return;
+        for (SettlementId sid : state.kingdoms().get(id).settlementIds()) {
+            SettlementState s = state.settlements().get(sid);
+            if (s == null) continue;
+            if (open) {
+                s.setUnrest(Math.max(0, s.unrest() - 0.02));
+                s.setHousingUnits(s.housingUnits()); // openness consumed by MigrationEngine capacity checks
+            } else {
+                s.setSecurity(Math.min(1.0, s.security() + 0.02));
+            }
+        }
+    }
+
+    private static void seedPlayerRealmPhysicalIntents(
+            CanonicalWorldState state,
+            SettlementState capital,
+            PlayerId player,
+            SimulationContext ctx
+    ) {
+        var physical = state.dynamicPhysical();
+        physical.putSettlementGeometry(new com.livingmods.simulation.physical.DynamicSettlementGeometry(
+                capital.id(),
+                capital.center(),
+                com.livingmods.common.geo.BoundingBox2.around(capital.center(), 48),
+                true
+        ));
+
+        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.MANOR,
+                capital.center(), "civic_center", ctx);
+        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.HOUSE,
+                BlockPos2.of(capital.center().x() + 12, capital.center().z()), "starter_housing", ctx);
+        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.HOUSE,
+                BlockPos2.of(capital.center().x() - 12, capital.center().z() + 4), "starter_housing", ctx);
+        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.WAREHOUSE,
+                BlockPos2.of(capital.center().x(), capital.center().z() + 14), "storage", ctx);
+        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.FARMHOUSE,
+                BlockPos2.of(capital.center().x() + 18, capital.center().z() + 18), "food_production", ctx);
+
+        var roadId = com.livingmods.common.id.PhysicalIntentId.deterministic(
+                state.seed(), physical.intents().size() + 400_000L);
+        var road = new com.livingmods.simulation.physical.PhysicalIntent(
+                roadId,
+                com.livingmods.common.model.PhysicalIntentType.EXTEND_ROAD,
+                "player_realm",
+                capital.id().value(),
+                Optional.of(capital.id()),
+                capital.ownerKingdom(),
+                Optional.empty(),
+                Optional.empty(),
+                capital.center(),
+                com.livingmods.common.geo.BoundingBox2.of(
+                        capital.center().x() - 2, capital.center().z() - 2,
+                        capital.center().x() + 24, capital.center().z() + 2),
+                1,
+                com.livingmods.common.model.PhysicalIntentStatus.READY,
+                ctx.time(),
+                3,
+                Map.of("cause", "player_foundation", "player", player.toString()),
+                Map.of(ResourceType.STONE, 8.0, ResourceType.WOOD, 4.0),
+                "avalon"
+        );
+        seedChunks(road);
+        physical.putIntent(road);
+
+        var zoneId = com.livingmods.common.id.PhysicalIntentId.deterministic(
+                state.seed(), physical.intents().size() + 401_000L);
+        var zone = new com.livingmods.simulation.physical.PhysicalIntent(
+                zoneId,
+                com.livingmods.common.model.PhysicalIntentType.FOUND_PLAYER_SETTLEMENT,
+                "player_realm",
+                capital.id().value(),
+                Optional.of(capital.id()),
+                capital.ownerKingdom(),
+                Optional.empty(),
+                Optional.empty(),
+                capital.center(),
+                com.livingmods.common.geo.BoundingBox2.around(capital.center(), 48),
+                1,
+                com.livingmods.common.model.PhysicalIntentStatus.READY,
+                ctx.time(),
+                2,
+                Map.of("cause", "player_foundation", "player", player.toString()),
+                Map.of(),
+                "avalon"
+        );
+        seedChunks(zone);
+        physical.putIntent(zone);
+    }
+
+    private static void seedFoundingBuilding(
+            CanonicalWorldState state,
+            SettlementState capital,
+            com.livingmods.common.model.BuildingRole role,
+            BlockPos2 plot,
+            String cause,
+            SimulationContext ctx
+    ) {
+        var physical = state.dynamicPhysical();
+        var structureId = com.livingmods.common.id.StructureId.deterministic(
+                state.seed(), physical.structures().size() + physical.intents().size() + 410_000L);
+        var intentId = com.livingmods.common.id.PhysicalIntentId.deterministic(
+                state.seed(), physical.intents().size() + 420_000L + role.ordinal());
+        int half = role == com.livingmods.common.model.BuildingRole.MANOR ? 6 : 4;
+        var intent = new com.livingmods.simulation.physical.PhysicalIntent(
+                intentId,
+                com.livingmods.common.model.PhysicalIntentType.CONSTRUCT_BUILDING,
+                "player_realm",
+                structureId.value(),
+                Optional.of(capital.id()),
+                capital.ownerKingdom(),
+                Optional.of(structureId),
+                Optional.of(role),
+                plot,
+                com.livingmods.common.geo.BoundingBox2.around(plot, half),
+                1,
+                com.livingmods.common.model.PhysicalIntentStatus.READY,
+                ctx.time(),
+                2,
+                Map.of("cause", cause, "role", role.name()),
+                Map.of(ResourceType.WOOD, 10.0, ResourceType.STONE, 8.0),
+                "avalon"
+        );
+        seedChunks(intent);
+        physical.putIntent(intent);
+    }
+
+    private static void seedChunks(com.livingmods.simulation.physical.PhysicalIntent intent) {
+        var fp = intent.footprint();
+        for (int cx = fp.minX() >> 4; cx <= fp.maxX() >> 4; cx++) {
+            for (int cz = fp.minZ() >> 4; cz <= fp.maxZ() >> 4; cz++) {
+                intent.markChunkPending(cx, cz);
+            }
         }
     }
 

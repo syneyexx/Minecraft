@@ -118,12 +118,13 @@ public final class ProjectionPlan {
             if (!c.alive()) continue;
             SettlementState s = state.settlements().get(c.settlementId());
             BlockPos2 pos = s == null ? center : offsetForCitizen(c, s.center());
+            // Y=-1 signals Minecraft must resolve safe surface / building floor locally.
             selected.add(new ProjectedCitizen(
                     c.id(),
                     c.displayName(),
                     c.schedule(),
                     pos.x(),
-                    64,
+                    -1,
                     pos.z(),
                     c.projectionRevision()
             ));

@@ -24,7 +24,7 @@ Sidecar save directory is `server.getWorldPath(ROOT)/livingmods/sidecar` (same w
 
 **Correction vs older docs:** the plan is **not** “regenerated every boot from seed.” Regeneration happens only when no readable full plan exists.
 
-## Canonical save (schema 3)
+## Canonical save (schema 4)
 
 `CanonicalSaveFormat` encodes/decodes:
 
@@ -36,8 +36,20 @@ Sidecar save directory is `server.getWorldPath(ROOT)/livingmods/sidecar` (same w
 - ecology, technology, dynasties, factions, player reputation
 - history markers / bounded event lists
 - time ticks, save revision, plan content hash, world/session UUIDs
+- **DynamicPhysicalState** (schema ≥ 4): physical intents, dynamic structures, settlement geometry
+
+Schema 3 saves still load (empty DynamicPhysicalState). New writes use schema 4.
 
 `CanonicalStore.saveBarrier` pauses the bound `SimulationEngine` at a phase boundary, writes snapshot, appends WAL.
+
+## Dynamic physical vs WorldPlan
+
+| Artifact | Mutability | Role |
+|----------|------------|------|
+| `plan.bin` | Immutable after first successful plan | Initial world blueprint |
+| `DynamicPhysicalState` in `canonical.bin` | Live | Construction, expansion, camps, founding, damage after initial gen |
+
+Never rewrite live geometry into `plan.bin`.
 
 Triggered by IPC `SAVE_REQUEST` and host shutdown paths.
 

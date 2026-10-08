@@ -1,0 +1,46 @@
+---
+description: Physical reconciliation implementation notes for MineLife agents
+globs:
+  - "**/physical/**"
+  - "**/ConstructionEngine.java"
+  - "**/SafeChunkWriter.java"
+  - "**/SessionHandler.java"
+alwaysApply: false
+---
+
+# Physical reconciliation rules
+
+## Intent lifecycle
+
+`PLANNED → READY → MATERIALIZING → MATERIALIZED`
+Also: `BLOCKED`, `FAILED_RETRYABLE` (bounded retries), `FAILED_TERMINAL`, `SUPERSEDED`, `REMOVED`
+
+Status is explicit on the intent record — never infer from missing map entries.
+
+## Realization constraints
+
+- Chunk-local slices; intent stays pending while destination chunks unloaded
+- No force-load of large areas
+- Bounded ops per server tick (`maxReconciliationOpsPerTick`)
+- Idempotent: completed intents must not re-materialize after restart
+- Failures log intentId/type/settlement/chunk/reason/retryCount — no per-block spam
+
+## Provenance
+
+`BlockProvenance`: LIVINGMODS_ORIGINAL, LIVINGMODS_DYNAMIC, VANILLA_NATURAL, FOREIGN_MOD, PLAYER_MODIFIED, UNKNOWN_PROTECTED
+
+Unknown/protected → plan around, replan, or block intent. Never destructive overwrite.
+
+## Outcomes
+
+Use `PhysicalOutcomePayload` / `PhysicalOutcomeType`. Sidecar applies via `PhysicalOutcomeApplier`.
+Client reputation deltas and arbitrary task completion are not authoritative.
+
+## Construction flow
+
+population/housing/profession/security/war damage
+→ ConstructionEngine reserves stockpile resources + labour check
+→ PhysicalIntent READY
+→ PhysicalReconciliationEngine materializes with BuildingMaterializer
+→ INTENT_MATERIALIZED outcome
+→ housingUnits / physicalCapacity / DynamicStructureRecord updated

@@ -14,7 +14,11 @@ import com.livingmods.protocol.MessageType;
 import com.livingmods.protocol.PayloadIo;
 import com.livingmods.protocol.ProtocolConstants;
 import com.livingmods.protocol.RequestPayloads;
+import com.livingmods.common.model.PhysicalOutcomeType;
+import com.livingmods.protocol.PhysicalOutcomePayload;
 import com.livingmods.simulation.engine.PlayerSystemsEngine;
+import com.livingmods.simulation.physical.PhysicalIntent;
+import com.livingmods.simulation.physical.PhysicalOutcomeApplier;
 import com.livingmods.simulation.state.CitizenState;
 import com.livingmods.simulation.state.SettlementState;
 import com.livingmods.simulation.tick.SimulationContext;
@@ -41,6 +45,7 @@ public final class SessionHandler implements Runnable {
     private final java.net.Socket socket;
     private final AtomicLong messageId = new AtomicLong(1);
     private final PlayerSystemsEngine playerSystems = new PlayerSystemsEngine();
+    private final PhysicalOutcomeApplier outcomeApplier = new PhysicalOutcomeApplier();
     private UUID sessionId;
     private volatile boolean handshaken;
 
@@ -112,10 +117,53 @@ public final class SessionHandler implements Runnable {
             case GET_MAP_OVERLAY -> onMapOverlay(envelope, out);
             case SUBSCRIBE_REGION -> onSubscribe(envelope, out, true);
             case UNSUBSCRIBE_REGION -> onSubscribe(envelope, out, false);
-            case REPORT_PHYSICAL_OUTCOME, PLAYER_ACTION -> onPlayerAction(envelope, out);
+            case REPORT_PHYSICAL_OUTCOME -> onPhysicalOutcome(envelope, out);
+            case PLAYER_ACTION -> onPlayerAction(envelope, out);
             default -> sendError(out, envelope.requestId(), ErrorPayload.MALFORMED,
                     "Unsupported type " + type);
         }
+    }
+
+    private void onPhysicalOutcome(Envelope envelope, OutputStream out) throws IOException {
+        if (host.isFrozen()) {
+            sendError(out, envelope.requestId(), ErrorPayload.NOT_READY, "Host frozen");
+            return;
+        }
+        PhysicalOutcomeType type;
+        Map<String, String> evidence;
+        try {
+            PhysicalOutcomePayload typed = PhysicalOutcomePayload.decode(envelope.payload());
+            type = typed.outcomeType();
+            evidence = typed.evidenceWithIdentity();
+        } catch (Exception typedFail) {
+            // Backward-compatible string-map outcomes during mixed clients.
+            try {
+                evidence = new LinkedHashMap<>(PayloadIo.decodeStrings(envelope.payload()));
+                String raw = firstNonBlank(evidence.get("outcomeType"), evidence.get("type"), evidence.get("outcome"));
+                if (raw == null) {
+                    sendError(out, envelope.requestId(), ErrorPayload.MALFORMED, "Missing outcomeType");
+                    return;
+                }
+                type = PhysicalOutcomeType.valueOf(raw.toUpperCase(java.util.Locale.ROOT));
+            } catch (Exception e) {
+                sendError(out, envelope.requestId(), ErrorPayload.MALFORMED, "Invalid physical outcome payload");
+                return;
+            }
+        }
+        SimulationContext ctx = new SimulationContext(
+                host.state().seed(),
+                host.state().time(),
+                host.state().saveRevision()
+        );
+        Map<String, String> response;
+        try {
+            response = outcomeApplier.apply(host.state(), type, evidence, ctx);
+        } catch (Exception e) {
+            LOG.warning("Physical outcome apply failed: " + e);
+            sendError(out, envelope.requestId(), ErrorPayload.INTERNAL, e.getMessage());
+            return;
+        }
+        sendResponse(out, envelope.requestId(), response);
     }
 
     private void onHandshake(Envelope envelope, OutputStream out) throws IOException {
@@ -278,7 +326,13 @@ public final class SessionHandler implements Runnable {
             } catch (Exception ignored) {
             }
         }
-        return PlayerSystemsEngine.demoPlayer();
+        // Production path requires a real Minecraft player UUID — never silently book demo.
+        sendDemoFallbackWarning();
+        return PlayerId.of(new UUID(0L, 0L));
+    }
+
+    private void sendDemoFallbackWarning() {
+        LOG.warning("PLAYER_ACTION missing playerId — rejecting demo fallback; using nil player id");
     }
 
     private KingdomId parseKingdom(Map<String, String> fields) {
@@ -544,6 +598,38 @@ public final class SessionHandler implements Runnable {
         }
         data.put("citizenIds", String.join(",", ids));
         data.put("citizensPacked", String.join(";", packed));
+        List<String> caravanIds = new ArrayList<>();
+        List<String> caravansPacked = new ArrayList<>();
+        for (var shId : plan.caravans()) {
+            var sh = host.state().shipments().get(shId);
+            if (sh == null) continue;
+            caravanIds.add(shId.value().toString());
+            var pos = sh.currentPosition();
+            caravansPacked.add(String.join("|",
+                    shId.value().toString(),
+                    String.valueOf(pos.x()),
+                    String.valueOf(pos.z()),
+                    sh.goods().name(),
+                    String.format(java.util.Locale.ROOT, "%.0f", sh.quantity()),
+                    String.valueOf(sh.guards())));
+        }
+        List<String> armyIds = new ArrayList<>();
+        List<String> armiesPacked = new ArrayList<>();
+        for (var armyId : plan.armies()) {
+            var army = host.state().armies().get(armyId);
+            if (army == null) continue;
+            armyIds.add(armyId.value().toString());
+            armiesPacked.add(String.join("|",
+                    armyId.value().toString(),
+                    army.owner().value().toString(),
+                    String.valueOf(army.position().x()),
+                    String.valueOf(army.position().z()),
+                    String.valueOf(army.manpower())));
+        }
+        data.put("caravanIds", String.join(",", caravanIds));
+        data.put("caravansPacked", String.join(";", caravansPacked));
+        data.put("armyIds", String.join(",", armyIds));
+        data.put("armiesPacked", String.join(";", armiesPacked));
         sendResponse(out, envelope.requestId(), data);
     }
 
@@ -562,11 +648,43 @@ public final class SessionHandler implements Runnable {
             data.put("developmentDeficit",
                     String.format(java.util.Locale.ROOT, "%.1f", s.developmentDeficit()));
             data.put("needsConstruction", String.valueOf(s.developmentDeficit() > 0.5));
+            data.put("dynamicHousing", String.valueOf(
+                    host.state().dynamicPhysical().activeHousingUnits(s.id())));
+            List<String> packed = new ArrayList<>();
+            for (PhysicalIntent intent : host.state().dynamicPhysical().readyForSettlement(s.id())) {
+                packed.add(String.join("|",
+                        intent.id().value().toString(),
+                        intent.type().name(),
+                        intent.status().name(),
+                        String.valueOf(intent.priority()),
+                        String.valueOf(intent.footprint().minX()),
+                        String.valueOf(intent.footprint().minZ()),
+                        String.valueOf(intent.footprint().maxX()),
+                        String.valueOf(intent.footprint().maxZ()),
+                        intent.buildingRole().map(Enum::name).orElse(""),
+                        intent.cultureKey() == null ? "" : intent.cultureKey(),
+                        s.id().value().toString(),
+                        intent.structureId().map(id -> id.value().toString()).orElse(""),
+                        intent.provenance().getOrDefault("variant", "")
+                ));
+            }
+            data.put("intentsPacked", String.join(";", packed));
+            data.put("intentCount", String.valueOf(packed.size()));
         }
         sendResponse(out, envelope.requestId(), data);
     }
 
     private void onMapOverlay(Envelope envelope, OutputStream out) throws IOException {
+        RequestPayloads.NearbyQuery q;
+        try {
+            q = RequestPayloads.NearbyQuery.decode(envelope.payload());
+        } catch (Exception e) {
+            q = new RequestPayloads.NearbyQuery(0, 0, 2048, 64);
+        }
+        int cx = q.blockX();
+        int cz = q.blockZ();
+        int radius = Math.max(256, q.radius());
+        long r2 = (long) radius * radius;
         Map<String, String> data = new LinkedHashMap<>();
         data.put("status", "ok");
         data.put("kingdoms", String.valueOf(host.worldPlan().kingdoms().size()));
@@ -574,6 +692,87 @@ public final class SessionHandler implements Runnable {
         data.put("roads", String.valueOf(host.worldPlan().roads().size()));
         data.put("wars", String.valueOf(host.state().wars().size()));
         data.put("epidemics", String.valueOf(host.state().epidemics().size()));
+
+        List<String> armies = new ArrayList<>();
+        for (var army : host.state().armies().values()) {
+            long dx = (long) army.position().x() - cx;
+            long dz = (long) army.position().z() - cz;
+            if (dx * dx + dz * dz > r2) continue;
+            armies.add(String.join("|",
+                    army.id().value().toString(),
+                    army.owner().value().toString(),
+                    String.valueOf(army.position().x()),
+                    String.valueOf(army.position().z()),
+                    String.valueOf(army.manpower())));
+            if (armies.size() >= q.limit()) break;
+        }
+        List<String> caravans = new ArrayList<>();
+        for (var sh : host.state().shipments().values()) {
+            if (sh.delivered() || sh.looted()) continue;
+            var pos = sh.currentPosition();
+            long dx = (long) pos.x() - cx;
+            long dz = (long) pos.z() - cz;
+            if (dx * dx + dz * dz > r2) continue;
+            caravans.add(String.join("|",
+                    sh.id().value().toString(),
+                    String.valueOf(pos.x()),
+                    String.valueOf(pos.z()),
+                    sh.goods().name(),
+                    String.format(java.util.Locale.ROOT, "%.0f", sh.quantity())));
+            if (caravans.size() >= q.limit()) break;
+        }
+        List<String> epidemics = new ArrayList<>();
+        for (var ep : host.state().epidemics().values()) {
+            if (!ep.active()) continue;
+            for (var sid : ep.affectedSettlements()) {
+                SettlementState s = host.state().settlements().get(sid);
+                if (s == null) continue;
+                long dx = (long) s.center().x() - cx;
+                long dz = (long) s.center().z() - cz;
+                if (dx * dx + dz * dz > r2) continue;
+                epidemics.add(String.join("|",
+                        ep.pathogenKey() == null ? "disease" : ep.pathogenKey(),
+                        String.valueOf(s.center().x()),
+                        String.valueOf(s.center().z()),
+                        String.format(java.util.Locale.ROOT, "%.2f", ep.severity())));
+                if (epidemics.size() >= q.limit()) break;
+            }
+        }
+        List<String> migrations = new ArrayList<>();
+        for (var mig : host.state().migrations().values()) {
+            var pos = mig.position();
+            if (pos == null) continue;
+            long dx = (long) pos.x() - cx;
+            long dz = (long) pos.z() - cz;
+            if (dx * dx + dz * dz > r2) continue;
+            migrations.add(String.join("|",
+                    mig.reasonKey() == null ? "migration" : mig.reasonKey(),
+                    String.valueOf(pos.x()),
+                    String.valueOf(pos.z()),
+                    String.valueOf(mig.population())));
+            if (migrations.size() >= q.limit()) break;
+        }
+        List<String> construction = new ArrayList<>();
+        for (PhysicalIntent intent : host.state().dynamicPhysical().activeIntentsByPriority()) {
+            if (!intent.settlementId().isPresent()) continue;
+            var pos = intent.targetPosition();
+            long dx = (long) pos.x() - cx;
+            long dz = (long) pos.z() - cz;
+            if (dx * dx + dz * dz > r2) continue;
+            construction.add(String.join("|",
+                    intent.id().value().toString(),
+                    intent.type().name(),
+                    String.valueOf(pos.x()),
+                    String.valueOf(pos.z()),
+                    intent.status().name()));
+            if (construction.size() >= q.limit()) break;
+        }
+        data.put("armiesPacked", String.join(";", armies));
+        data.put("caravansPacked", String.join(";", caravans));
+        data.put("epidemicsPacked", String.join(";", epidemics));
+        data.put("migrationsPacked", String.join(";", migrations));
+        data.put("constructionPacked", String.join(";", construction));
+        data.put("sieges", String.valueOf(host.state().sieges().values().stream().filter(sg -> sg.active()).count()));
         sendResponse(out, envelope.requestId(), data);
     }
 

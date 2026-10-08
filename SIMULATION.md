@@ -33,7 +33,8 @@ Subsystems (all registered in the engine constructor):
 | `MigrationEngine` | Citizen migration + refugee outcomes |
 | `EcologyEngine` | Data-driven multi-archetype species (not a Lotka–Volterra toy) |
 | `TechnologyEngine` | Tech tree with prerequisites / schools |
-| `ConstructionEngine` | Construction pressure from canonical needs |
+| `ConstructionEngine` | Housing/profession/security/war demand → resource reservation → PhysicalIntent |
+| `BanditryEngine` | Dynamic camps from security/trade/unrest/war causes |
 | `DialogueEngine` | Template dialogue; EN + NL intent keywords; knowledge-bounded |
 | `HistoryEngine` | Meaningful events → markers + rumors |
 | `EmergentTaskEngine` | Tasks from canonical problems; completion mutates state |

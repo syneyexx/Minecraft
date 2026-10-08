@@ -4,6 +4,7 @@ import com.livingmods.neoforge.command.LivingModsCommands;
 import com.livingmods.neoforge.entity.CitizenEntity;
 import com.livingmods.neoforge.entity.LivingModsEntities;
 import com.livingmods.neoforge.integrations.ModIntegrations;
+import com.livingmods.neoforge.physical.PhysicalInteractionBridge;
 import com.livingmods.neoforge.sidecar.WorldSessionLifecycle;
 import com.livingmods.neoforge.worldgen.ChunkMaterializationHandler;
 import com.livingmods.neoforge.worldgen.MaterializationAttachments;
@@ -32,6 +33,7 @@ public final class LivingModsMod {
         NeoForge.EVENT_BUS.addListener(LivingModsCommands::register);
         NeoForge.EVENT_BUS.register(ChunkMaterializationHandler.class);
         NeoForge.EVENT_BUS.register(WorldSessionLifecycle.class);
+        NeoForge.EVENT_BUS.register(PhysicalInteractionBridge.class);
         // LivingModsClientEvents is Dist.CLIENT via @EventBusSubscriber — do not register on dedicated servers.
         ModIntegrations.logAvailability();
         LOG.info("LivingMods loaded");
