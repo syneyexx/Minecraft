@@ -3,6 +3,7 @@ package com.livingmods.tools;
 import com.livingmods.common.config.LivingModsConfig;
 import com.livingmods.testkit.SimulationBench;
 import com.livingmods.testkit.WorldPlanFixtures;
+import com.livingmods.tools.culturelibrary.CultureLibraryCli;
 import com.livingmods.worldgen.WorldPlanner;
 import com.livingmods.worldgen.plan.WorldPlan;
 
@@ -17,6 +18,11 @@ public final class LivingModsTools {
         switch (args[0]) {
             case "plan" -> planCommand(args);
             case "bench" -> benchCommand(args);
+            case "culture-library" -> {
+                String[] rest = new String[Math.max(0, args.length - 1)];
+                System.arraycopy(args, 1, rest, 0, rest.length);
+                CultureLibraryCli.run(rest);
+            }
             default -> printUsage();
         }
     }
@@ -40,5 +46,6 @@ public final class LivingModsTools {
         System.out.println("LivingModsTools commands:");
         System.out.println("  plan [seed]");
         System.out.println("  bench [seed] [hours]");
+        System.out.println("  culture-library <author|search|import|validate|report|resume|names> ...");
     }
 }

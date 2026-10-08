@@ -1,0 +1,79 @@
+{
+  "key": "varangian",
+  "maleNames": [
+    "Rurik", "Oleg", "Vladimir", "Igor", "Svyatoslav", "Yaroslav", "Boris", "Gleb", 
+    "Mstislav", "Dmitri", "Aleksandr", "Bogdan", "Dragomir", "Fyodor", "Ilya", "Kirill", 
+    "Leonid", "Mikhail", "Nikita", "Pavel", "Roman", "Stanislav", "Timofei", "Vadim", 
+    "Yevgeny", "Zinoviy", "Rostislav", "Svyatopolk", "Vsevolod", "Rugor", "Oleandr", "Vladil", 
+    "Igeny", "Svyimir", "Yarori", "Bonid", "Gleadim", "Mstieg", "Dmlav", "Alerill", 
+    "Bogdei", "Drrik", "Fyogleb", "Ilyaya", "Kilav", "Leoolod", "Mikhis", "Nidor", 
+    "Pavoman", "Romalk", "Stlav", "Timomir", "Vadiel", "Yelav", "Zinslav", "Rostan", 
+    "Svita", "Vseoviy", "Rurior", "Olndr", "Vlahail", "Igorny", "Svmir", "Yaritri", 
+    "Boriid", "Gldim", "Mstoleg", "Dmitav", "Alill", "Bogofei", "Dragik", "Fyleb", 
+    "Ilyilya", "Kiriav", "Lelod", "Mikoris", "Nikior", "Paman", "Rompolk", "Stanav", 
+    "Timir", "Vadavel", "Yevgav", "Zilav", "Rosgdan", "Svyata", "Vsviy", "Rurigor", 
+    "Olegdr", "Vlail", "Igogeny", "Svyair", "Yatri", "Boronid", "Glebim", "Msleg", 
+    "Dmislav", "Alekll", "Bofei", "Draurik", "Fyodeb", "Illya", "Kirslav", "Leonod", 
+    "Miris", "Nikodor", "Pavean", "Roolk", "Staslav", "Timoir", "Vavel", "Yevslav", 
+    "Zinoav", "Rodan", "Svykita", "Vseviy"
+  ],
+  "femaleNames": [
+    "Olga", "Yaroslava", "Nadya", "Katya", "Irina", "Svetlana", "Anya", "Masha", 
+    "Vera", "Zoya", "Anastasia", "Daria", "Elena", "Galina", "Ksenia", "Larisa", 
+    "Marina", "Natalya", "Oksana", "Polina", "Raisa", "Sofiya", "Tamara", "Ulyana", 
+    "Valentina", "Yelena", "Zhanna", "Lyudmila", "Nadezhda", "Oltya", "Yarasia", "Nadyya", 
+    "Kaina", "Iriadya", "Svetya", "Anina", "Masyana", "Verava", "Zoera", "Anarisa", 
+    "Darira", "Ellga", "Galasha", "Laiya", "Marzhda", "Nataya", "Okina", "Polaisa", 
+    "Raisla", "Soana", "Tamlena", "Vanna", "Yelrina", "Zhania", "Lyana", "Nadlena", 
+    "Olgaya", "Yasia", "Nadalya", "Katyna", "Irdya", "Svezoya", "Anyana", "Maana", 
+    "Verlava", "Zoyara", "Anisa", "Darmara", "Elenga", "Gasha", "Kseenia", "Lariya", 
+    "Mahda", "Natanya", "Poisa", "Raimila", "Sofina", "Taena", "Ulylina", "Valena", 
+    "Yeina", "Zhaaria", "Lyudna", "Naena", "Olgatya", "Yaroia", "Nalya", "Kattina", 
+    "Irinya", "Svoya", "Anyrina", "Mashna", "Veava", "Zoyvera", "Anassa", "Daara", 
+    "Eleolga", "Galiha", "Ksnia", "Larfiya", "Marida", "Nanya", "Okslina", "Polisa", 
+    "Raila", "Soflana", "Tamana", "Ulina", "Valanna", "Zhria", "Lyusana", "Nadena"
+  ],
+  "familyNames": [
+    "Stormborn", "Icevein", "Longship", "Frosthelm", "Wavebreaker", "Runestone", "Northmark", "Belov", 
+    "Chernov", "Dubrov", "Ivanov", "Kuznetsov", "Lebedev", "Morozov", "Orlov", "Petrov", 
+    "Sokolov", "Stelm", "Iceanov", "Longrn", "Frlov", "Wavrlov", "Runeer", "Nosov", 
+    "Belvein", "Cherov", "Durov", "Ivatone", "Kuznev", "Lehip", "Morbrov", "Orloov", 
+    "Peark", "Sokozov", "Storlm", "Icnov", "Lonborn", "Frosov", "Walov", "Runaker", 
+    "Nortov", "Beein", "Ivone", "Kuzedev", "Lebeip", "Morov", "Orlolov", "Petrrk", 
+    "Sozov", "Stohelm", "Icevov", "Loorn", "Froelov", "Waveov", "Ruker", "Nortsov", 
+    "Beloin", "Chnov", "Dubtrov", "Ivanne", "Kudev", "Lebship", "Moroov", "Petmark", 
+    "Sokoov"
+  ],
+  "settlementPrefixes": [
+    "Ice", "Storm", "North", "Frost", "Wave", "Rune", "High", "Old", 
+    "New", "Great", "Little", "South", "East", "West", "Upper", "Lower", 
+    "Far", "Near", "Bright", "Dark", "White", "Black", "Red", "Gold", 
+    "Silver", "Icost", "Stottle", "Nortar", "Frver", "Wavhigh", "Runest", "Hiite", 
+    "Oldorth", "Newat", "Grfar", "Litgold", "Soutne", "Eaast", "Wesdark", "Upperm", 
+    "Lonew", "Farower", "Neared", "Brave", "Darouth", "Whitht", "Blice", "Redold", 
+    "Golder", "Siack"
+  ],
+  "settlementSuffixes": [
+    "burg", "haven", "port", "grad", "holm", "vik", "ton", "ford", 
+    "wick", "field", "wood", "brook", "vale", "moor", "ridge", "gate", 
+    "hall", "stead", "mere", "fell", "marsh", "cliff", "bay", "reach", 
+    "Burad", "Havwood", "Portad", "Grurg", "Holford", "Vikge", "Toiff", "Forholm", 
+    "Wickok", "Fiere", "Wooaven", "Broock", "Vaate", "Moobay", "Ridgik", "Gaale", 
+    "Halfell", "Steart", "Meeld", "Felhall", "Marsch", "Clton", "Baymoor", "Reacsh"
+  ],
+  "rulerTitles": [
+    "Prince", "Boyar", "Grand Prince", "Lord", "Lady", "High", "Grand", "Chief", 
+    "Master", "Elder", "Warden", "Steward", "Regent", "Princess", "Duke", "Duchess", 
+    "Marshal", "Chancellor", "Speaker", "Keeper"
+  ],
+  "dynastyPrefixes": [
+    "House", "Druzhina of", "Line of", "Clan", "Blood of", "Order of", "Circle of", "Banner of", 
+    "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", 
+    "Flame of", "Star of", "Stone of", "Root of"
+  ],
+  "kingdomPatterns": [
+    "Principality of {prefix}{suffix}", "Realm of {family}", "{title}'s Northern Hold", "Kingdom of {prefix}{suffix}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", "League of {prefix}", 
+    "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", "Confederation of {suffix}", 
+    "Grand Duchy of {family}", "Satrapy of {prefix}", "Khanate of {prefix}{suffix}", "Theocracy of {prefix}"
+  ]
+}

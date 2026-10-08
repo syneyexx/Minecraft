@@ -1,0 +1,67 @@
+{
+  "key": "yamato",
+  "maleNames": [
+    "Hiroshi", "Kenji", "Takeshi", "Akira", "Ryo", "Daichi", "Haruto", "Sora", 
+    "Kaito", "Yuto", "Isamu", "Jiro", "Kazuo", "Makoto", "Noboru", "Osamu", 
+    "Shin", "Taro", "Wataru", "Yoichi", "Hayato", "Itsuki", "Ren", "Sota", 
+    "Naoki", "Masato", "Takumi", "Yuji", "Ken", "Riku", "Hiira", "Kensamu", 
+    "Takero", "Akoki", "Ryoenji", "Daicto", "Haamu", "Sorren", "Kaitku", "Yuuto", 
+    "Isakoto", "Jiroto", "Kauji", "Makryo", "Noboro", "Osaru", "Shisato", "Tarohi", 
+    "Wauto", "Yoishin", "Hayata", "Itshi", "Rensora", "Sotaru", "Nauki", "Masken", 
+    "Takuhi", "Yuzuo", "Kenichi", "Rikumi"
+  ],
+  "femaleNames": [
+    "Yuki", "Hana", "Aiko", "Sakura", "Mio", "Emi", "Nana", "Rina", 
+    "Kaori", "Yui", "Akane", "Chiyo", "Etsuko", "Fumiko", "Haruka", "Izumi", 
+    "Junko", "Keiko", "Mika", "Noriko", "Reiko", "Satomi", "Tomoko", "Umeko", 
+    "Yoko", "Aoi", "Hina", "Mei", "Riko", "Saki", "Yuura", "Hankane", 
+    "Aikoko", "Saoko", "Miohana", "Emiri", "Naumi", "Rinmoko", "Kaorki", "Yuana", 
+    "Akamiko", "Chiyko", "Etmei", "Fummio", "Haruyo", "Izika", "Junaoi", "Keikko", 
+    "Miyui", "Norunko", "Reikko", "Sauki", "Tomrina", "Umekka", "Yoomi", "Aoiriko", 
+    "Hinami", "Meuko", "Rikriko", "Sakina"
+  ],
+  "familyNames": [
+    "Takahashi", "Yamamoto", "Sato", "Suzuki", "Watanabe", "Ito", "Nakamura", "Fujimoto", 
+    "Hasegawa", "Ishikawa", "Kobayashi", "Matsuda", "Nishimura", "Okada", "Sakamoto", "Tanaka", 
+    "Ueno", "Tauki", "Yamashi", "Satohi", "Suoto", "Watmoto", "Itobe", "Nauda", 
+    "Fujmoto", "Hasewa", "Isaka", "Kobito", "Matsra", "Niato", "Okakawa", "Sakano", 
+    "Taura", "Uenkada", "Takaki", "Yashi", "Satashi", "Suzuto", "Waoto", "Itonabe", 
+    "Nakada", "Fuoto", "Hasgawa", "Ishika", "Koito", "Matmura", "Nishto", "Okawa", 
+    "Sakueno", "Tanara", "Ueada", "Takzuki", "Yamahi", "Sashi", "Suzmoto", "Watato", 
+    "Itabe", "Naksuda", "Fujito", "Haawa", "Ishnaka", "Kobato", "Maura", "Nissato", 
+    "Okadwa", "Saeno", "Tanmura", "Uenoda"
+  ],
+  "settlementPrefixes": [
+    "Sakura", "Kyo", "Mizu", "Hana", "Kaze", "Yama", "High", "Old", 
+    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
+    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
+    "Gold", "Silver", "Saana", "Kyottle", "Mizuar", "Haold", "Kazyama", "Yamath", 
+    "Hight", "Oldkura", "Newld", "Grest", "Lithite", "Nortzu", "Soeat", "Easower", 
+    "Wested", "Upaze", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
+    "Blakyo", "Redew"
+  ],
+  "settlementSuffixes": [
+    "mura", "kawa", "yama", "shima", "hara", "sato", "ton", "ford", 
+    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
+    "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", 
+    "bay", "reach", "Muima", "Kawield", "Yamate", "Shbay", "Harsato", "Satook", 
+    "Toead", "Formura", "Wickrd", "Haoor", "Fiefell", "Woodma", "Brven", "Valport", 
+    "Moorff", "Riara", "Porwood", "Gatell", "Haach", "Steton", "Merele", "Feere", 
+    "Markawa", "Clifck"
+  ],
+  "rulerTitles": [
+    "Emperor", "Shogun", "Daimyo", "Lord", "Lady", "High", "Grand", "Chief", 
+    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
+    "Duchess", "Marshal", "Chancellor", "Speaker"
+  ],
+  "dynastyPrefixes": [
+    "Clan", "House", "Line of", "Blood of", "Order of", "Circle of", "Banner of", "Seat of", 
+    "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", "Flame of", 
+    "Star of", "Stone of", "Root of", "Tide of"
+  ],
+  "kingdomPatterns": [
+    "Empire of {prefix}{suffix}", "Shogunate of {family}", "{title}'s {prefix} Domain", "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", 
+    "League of {prefix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", "Confederation of {suffix}", 
+    "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}", "Khanate of {prefix}{suffix}"
+  ]
+}

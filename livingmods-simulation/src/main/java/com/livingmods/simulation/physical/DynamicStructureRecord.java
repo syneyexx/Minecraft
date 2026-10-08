@@ -23,6 +23,7 @@ public final class DynamicStructureRecord {
     private int physicalRevision;
     private String cultureKey;
     private int foundationY;
+    private String assetId;
 
     public DynamicStructureRecord(
             StructureId structureId,
@@ -38,6 +39,25 @@ public final class DynamicStructureRecord {
             String cultureKey,
             int foundationY
     ) {
+        this(structureId, settlementId, role, footprint, sourceIntentId, status, integrity,
+                residentialSlots, workSlots, physicalRevision, cultureKey, foundationY, "");
+    }
+
+    public DynamicStructureRecord(
+            StructureId structureId,
+            SettlementId settlementId,
+            BuildingRole role,
+            BoundingBox2 footprint,
+            PhysicalIntentId sourceIntentId,
+            StructureIntegrityStatus status,
+            double integrity,
+            int residentialSlots,
+            int workSlots,
+            int physicalRevision,
+            String cultureKey,
+            int foundationY,
+            String assetId
+    ) {
         this.structureId = structureId;
         this.settlementId = settlementId;
         this.role = role;
@@ -50,6 +70,7 @@ public final class DynamicStructureRecord {
         this.physicalRevision = physicalRevision;
         this.cultureKey = cultureKey == null ? "" : cultureKey;
         this.foundationY = foundationY;
+        this.assetId = assetId == null ? "" : assetId;
     }
 
     public StructureId structureId() { return structureId; }
@@ -75,6 +96,8 @@ public final class DynamicStructureRecord {
     public String cultureKey() { return cultureKey; }
     public int foundationY() { return foundationY; }
     public void setFoundationY(int foundationY) { this.foundationY = foundationY; }
+    public String assetId() { return assetId; }
+    public void setAssetId(String assetId) { this.assetId = assetId == null ? "" : assetId; }
 
     public boolean contributesHousing() {
         return status.contributesCapacity() && residentialSlots > 0;

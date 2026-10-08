@@ -1,0 +1,64 @@
+{
+  "culture": "nordheim",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "viking house",
+        "norse house",
+        "nordic house",
+        "longhouse"
+      ]
+    },
+    "TAVERN": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "viking tavern",
+        "norse inn",
+        "medieval nordic tavern"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "viking temple",
+        "norse temple",
+        "stave church"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "viking fort",
+        "nordic castle",
+        "wooden palisade"
+      ]
+    },
+    "BARN": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "nordic farm",
+        "nordic barn"
+      ]
+    },
+    "DOCK": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "viking dock"
+      ]
+    },
+    "TOWER": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "nordic watchtower"
+      ]
+    }
+  }
+}

@@ -100,7 +100,7 @@ public final class CanonicalSaveFormat {
      * Schema 5: full player reputation, emergent tasks, player crime offender, knowledge.
      * Schema 4: DynamicPhysicalState. Reads ≥3.
      */
-    public static final int SCHEMA_VERSION = 5;
+    public static final int SCHEMA_VERSION = 6;
     public static final int MIN_SUPPORTED_SCHEMA = 3;
     public static final int MAGIC = 0x4C4D4353; // LMCS
     public static final int MAX_ENTITIES = 500_000;
@@ -361,7 +361,7 @@ public final class CanonicalSaveFormat {
         readFactions(in, state);
         readIntelligence(in, state.intelligence());
         if (version >= 4) {
-            DynamicPhysicalCodec.read(in, state.dynamicPhysical());
+            DynamicPhysicalCodec.read(in, state.dynamicPhysical(), version);
         }
         if (version >= 5) {
             readSchema5PlayerGameplay(in, state);

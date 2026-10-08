@@ -27,6 +27,7 @@ public final class BuildingMaterializer {
     private static final int FLOOR_HEIGHT = 4;
 
     private final CultureRegistry cultures = new CultureRegistry();
+    private final StructureAssetMaterializer importedAssets = new StructureAssetMaterializer();
 
     public void materialize(
             ServerLevel level,
@@ -35,6 +36,12 @@ public final class BuildingMaterializer {
             PlannedSettlement settlement,
             ChunkMaterializationState state
     ) {
+        // Imported/authored asset path — procedural fallback when missing/invalid.
+        if (building.usesImportedAsset()
+                && importedAssets.tryMaterialize(level, writer, building, settlement, state)) {
+            return;
+        }
+
         CultureDefinition culture = cultures.get(building.cultureKey()).orElse(cultures.all().get(0));
         BoundingBox2 fp = building.footprint();
         int baseY = building.foundationY() > 0

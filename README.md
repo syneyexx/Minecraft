@@ -10,8 +10,8 @@ Status after release Blocks A–H (static inspection only — **this agent did n
 
 | Layer | What is implemented |
 |-------|---------------------|
-| Worldgen | Deterministic `WorldPlanner` pipeline (terrain → kingdoms → settlements → territory → roads → urban → resources/ruins), full `plan.bin` persistence, Minecraft terrain sampling at plan time |
-| Physical | Chunk materializers for roads, bridges, buildings, walls/gates, farms/mines/ports, ruins, bandit camps, Wizard Trees caverns; chunk attachment idempotency |
+| Worldgen | Deterministic `WorldPlanner` pipeline (terrain → kingdoms → settlements → territory → roads → urban → resources/ruins), full `plan.bin` persistence, Minecraft terrain sampling at plan time; M6 culture structure catalog selection |
+| Physical | Chunk materializers for roads, bridges, buildings (imported MLS + procedural fallback), walls/gates, farms/mines/ports, ruins, bandit camps, Wizard Trees caverns; chunk attachment idempotency |
 | Sidecar | Separate JVM, loopback IPC, handshake with world-id / seed / plan-hash, simulation loop, canonical save + WAL |
 | Simulation | Phased engine with demography, economy, trade, government, diplomacy, war, crime, disease, migration, ecology, tech, religion, history, dialogue, player systems |
 | Player UX | Citizen entity projection (interest-based), map (`M`), dashboard (`F12`), `/livingmods locate …` |
@@ -37,16 +37,17 @@ Worldgen and chunk materialization do **not** wait on the sidecar. The sidecar l
 | `livingmods-sidecar` | Executable simulation host |
 | `livingmods-neoforge` | Mod entry, materialization, sidecar lifecycle, entities, map/dashboard |
 | `livingmods-testkit` | Fixtures / benches |
-| `livingmods-tools` | CLI (`plan`, `bench`) |
+| `livingmods-tools` | CLI (`plan`, `bench`, `culture-library`) |
 
 ## Version axes (do not conflate)
 
 | Axis | Value | Constant |
 |------|-------|----------|
-| Protocol | 3 | `LivingModsVersions.PROTOCOL_VERSION` |
-| Worldgen | 2 | `WORLDGEN_VERSION` |
-| Canonical save schema | 4 | `CANONICAL_SAVE_SCHEMA` |
+| Protocol | 4 | `LivingModsVersions.PROTOCOL_VERSION` |
+| Worldgen | 3 | `WORLDGEN_VERSION` |
+| Canonical save schema | 6 | `CANONICAL_SAVE_SCHEMA` |
 | Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` |
+| Structure catalog revision | 1 | `STRUCTURE_CATALOG_REVISION` |
 | Mod / sidecar | 0.1.0 | `MOD_VERSION` / `SIDECAR_VERSION` |
 
 Documented also in `gradle.properties`. Runtime authority is the Java constants.
@@ -83,6 +84,9 @@ Config file (created with defaults if missing): `config/livingmods.properties`.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [WORLDGEN.md](WORLDGEN.md)
+- [CULTURE_CONTENT.md](CULTURE_CONTENT.md)
+- [STRUCTURE_LIBRARY.md](STRUCTURE_LIBRARY.md)
+- [BUILDPASTE_IMPORT.md](BUILDPASTE_IMPORT.md)
 - [SIMULATION.md](SIMULATION.md)
 - [SIDECAR.md](SIDECAR.md)
 - [PROTOCOL.md](PROTOCOL.md)

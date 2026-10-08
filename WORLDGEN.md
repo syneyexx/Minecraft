@@ -14,7 +14,9 @@
 
 Planning is **bounded** to the Core Realm Zone (`LivingModsConfig.civilizationRadiusBlocks`, default `12000`). This is not infinite full-world civilization planning.
 
-`WORLDGEN_VERSION = 2` (full plan persistence + territory map). Bumping it does **not** silently rewrite existing worlds — see persistence below.
+`WORLDGEN_VERSION = 3` (M6: `PlannedBuilding.assetId` + culture structure library selection).
+Old plans (v2) load without `assetId` and use procedural building fallback.
+Bumping does **not** silently rewrite existing worlds — see persistence below.
 
 ## TerrainProvider
 
@@ -31,6 +33,8 @@ Chunk **materialization** stays in `CivilizationMaterializer` and uses heightmap
 ## Cultures
 
 `CultureRegistry`: twelve surface cultures + underground **Wizard Trees** (architecture, naming, government leanings, biome preferences). Wizard Trees settlements are planned by `WizardTreesPlanner` and placed by `WizardTreesMaterializer`.
+
+M6 adds a data-driven **structure catalog** (`StructureCatalog` / MLS1 assets). `ArchitectureGrammar` selects a culture-appropriate `assetId` using real footprint dimensions before lot placement; `StructureAssetMaterializer` places chunk slices. Missing assets fall back to procedural `BuildingMaterializer`. See [STRUCTURE_LIBRARY.md](STRUCTURE_LIBRARY.md) and [CULTURE_CONTENT.md](CULTURE_CONTENT.md).
 
 ## Territories
 

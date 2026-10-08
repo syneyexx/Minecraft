@@ -1,0 +1,18 @@
+# LivingMods structure catalog index — paths relative to classpath root
+assets/livingmods/cultures/nordheim/structure_manifest.json
+assets/livingmods/cultures/avalon/structure_manifest.json
+assets/livingmods/cultures/sahari/structure_manifest.json
+assets/livingmods/cultures/yamato/structure_manifest.json
+assets/livingmods/cultures/helvetia/structure_manifest.json
+assets/livingmods/cultures/amaru/structure_manifest.json
+assets/livingmods/cultures/varangian/structure_manifest.json
+assets/livingmods/cultures/celtara/structure_manifest.json
+assets/livingmods/cultures/qin/structure_manifest.json
+assets/livingmods/cultures/atlantea/structure_manifest.json
+assets/livingmods/cultures/steppeborn/structure_manifest.json
+assets/livingmods/cultures/ironvale/structure_manifest.json
+assets/livingmods/cultures/wizard_trees/structure_manifest.json
+assets/livingmods/structures/shared/structure_manifest.json
+assets/livingmods/structures/ruins/structure_manifest.json
+assets/livingmods/structures/bandit/structure_manifest.json
+assets/livingmods/structures/infrastructure/structure_manifest.json

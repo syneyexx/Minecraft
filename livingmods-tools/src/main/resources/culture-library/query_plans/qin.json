@@ -1,0 +1,61 @@
+{
+  "culture": "qin",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "chinese house",
+        "chinese courtyard",
+        "siheyuan",
+        "chinese village"
+      ]
+    },
+    "MARKET_HALL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "chinese market"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "pagoda",
+        "chinese temple"
+      ]
+    },
+    "PALACE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "chinese palace",
+        "imperial hall"
+      ]
+    },
+    "GATEHOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "chinese gate",
+        "chinese wall"
+      ]
+    },
+    "WAREHOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "granary",
+        "magistrate building"
+      ]
+    },
+    "BRIDGE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "chinese bridge"
+      ]
+    }
+  }
+}

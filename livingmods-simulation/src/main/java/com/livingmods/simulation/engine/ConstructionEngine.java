@@ -222,6 +222,11 @@ public final class ConstructionEngine implements SimulationSubsystem {
             provenance.put("floors", String.valueOf(plot.blueprint().interior().floorCount()));
             provenance.put("template", plot.blueprint().building().paletteKey() == null
                     ? "default" : plot.blueprint().building().paletteKey());
+            if (plot.blueprint().building().usesImportedAsset()) {
+                provenance.put("assetId", plot.blueprint().building().assetId());
+                provenance.put("archetype", plot.blueprint().building().archetype() == null
+                        ? "" : plot.blueprint().building().archetype());
+            }
         }
 
         PhysicalIntent intent = new PhysicalIntent(

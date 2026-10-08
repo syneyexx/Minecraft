@@ -1,0 +1,46 @@
+{
+  "culture": "celtara",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "celtic roundhouse",
+        "celtic village",
+        "roundhouse",
+        "tribal house"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "hillfort",
+        "celtic fort"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "druid",
+        "stone circle",
+        "woodland shrine"
+      ]
+    },
+    "WALL_SEGMENT": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "wooden palisade"
+      ]
+    },
+    "MANOR": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "clan hall"
+      ]
+    }
+  }
+}

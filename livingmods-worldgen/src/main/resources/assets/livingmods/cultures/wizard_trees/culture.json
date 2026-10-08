@@ -1,0 +1,7 @@
+{
+  "key": "wizard_trees",
+  "displayName": "Wizard Trees",
+  "underground": true,
+  "roofStyle": "MAGICAL",
+  "layoutStyle": "CAVERN"
+}

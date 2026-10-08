@@ -1,0 +1,46 @@
+{
+  "culture": "amaru",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "aztec house",
+        "mayan house",
+        "jungle house",
+        "mesoamerican village"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "jungle temple",
+        "aztec temple",
+        "mayan temple",
+        "step pyramid"
+      ]
+    },
+    "PALACE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "jungle palace"
+      ]
+    },
+    "FARMHOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "terraced farm"
+      ]
+    },
+    "MARKET_HALL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "jungle market"
+      ]
+    }
+  }
+}

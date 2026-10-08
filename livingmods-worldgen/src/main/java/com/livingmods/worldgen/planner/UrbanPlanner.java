@@ -99,6 +99,7 @@ public final class UrbanPlanner {
         List<PlannedLot> lots = new ArrayList<>();
         List<PlannedBuilding> buildings = new ArrayList<>();
         java.util.Set<Long> occupiedLotCells = new java.util.HashSet<>();
+        List<String> recentAssetIds = new ArrayList<>();
         int lotOrdinal = 0;
         int buildingOrdinal = 0;
         int housingTarget = SettlementFootprint.housingBuildingTarget(s.plannedPopulation(), culture);
@@ -120,10 +121,14 @@ public final class UrbanPlanner {
                 int foundationY = (int) terrain.surfaceHeight(lot.bounds().center().x(), lot.bounds().center().z());
                 LotId lotId = lot.id();
                 ArchitectureGrammar.Blueprint bp = grammar.generate(
-                        seed, index * 10_000L + buildingOrdinal, culture, role, wealth,
-                        lotId, s.id(), district.id(), lot.bounds(), lot.entranceDirection(), foundationY
+                        seed, index * 10_000L + buildingOrdinal, culture, role, wealth, s.tier(),
+                        lotId, s.id(), district.id(), lot.bounds(), lot.entranceDirection(), foundationY,
+                        recentAssetIds
                 );
                 buildings.add(bp.building());
+                if (bp.building().usesImportedAsset()) {
+                    recentAssetIds.add(bp.building().assetId());
+                }
                 buildingOrdinal++;
                 if (isHousing(role)) housingBuilt++;
             }
@@ -176,9 +181,13 @@ public final class UrbanPlanner {
             lots.add(lot);
             WealthClass wealth = wealthFor(residential.type(), s.tier());
             int foundationY = (int) terrain.surfaceHeight(lotBox.center().x(), lotBox.center().z());
+            List<String> recent = new ArrayList<>();
+            for (PlannedBuilding existing : buildings) {
+                if (existing.usesImportedAsset()) recent.add(existing.assetId());
+            }
             ArchitectureGrammar.Blueprint bp = grammar.generate(
                     seed, index * 10_000L + buildings.size() + 50_000, culture, BuildingRole.HOUSE, wealth,
-                    lotId, s.id(), residential.id(), lotBox, 0, foundationY
+                    s.tier(), lotId, s.id(), residential.id(), lotBox, 0, foundationY, recent
             );
             buildings.add(bp.building());
             housingBuilt++;

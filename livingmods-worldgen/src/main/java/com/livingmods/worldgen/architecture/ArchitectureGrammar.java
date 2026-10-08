@@ -7,17 +7,24 @@ import com.livingmods.common.id.LotId;
 import com.livingmods.common.id.SettlementId;
 import com.livingmods.common.id.StructureId;
 import com.livingmods.common.model.BuildingRole;
+import com.livingmods.common.model.SettlementTier;
 import com.livingmods.common.model.WealthClass;
 import com.livingmods.common.util.DeterministicRandom;
 import com.livingmods.common.util.Hashing;
 import com.livingmods.worldgen.plan.PlannedBuilding;
+import com.livingmods.worldgen.structure.StructureAsset;
+import com.livingmods.worldgen.structure.StructureCatalog;
+import com.livingmods.worldgen.structure.StructureCatalogHolder;
+import com.livingmods.worldgen.structure.StructureSizeClass;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Procedural building grammar: foundation through roof and interior metadata.
- * Blueprint fields are copied onto {@link PlannedBuilding} so materializers can rebuild without re-running grammar.
+ * Building grammar: prefers data-driven {@link StructureAsset} selection with real dimensions,
+ * falling back to procedural {@link StructureRegistry} templates.
+ * Selected {@code assetId} is persisted on {@link PlannedBuilding} — never re-rolled at materialization.
  */
 public final class ArchitectureGrammar {
     public record InteriorMetadata(
@@ -37,13 +44,19 @@ public final class ArchitectureGrammar {
     ) {}
 
     private final StructureRegistry registry;
+    private final StructureCatalog catalog;
 
     public ArchitectureGrammar() {
-        this(StructureRegistry.defaultRegistry());
+        this(StructureRegistry.defaultRegistry(), StructureCatalogHolder.ensureLoaded());
     }
 
     public ArchitectureGrammar(StructureRegistry registry) {
+        this(registry, StructureCatalogHolder.ensureLoaded());
+    }
+
+    public ArchitectureGrammar(StructureRegistry registry, StructureCatalog catalog) {
         this.registry = registry;
+        this.catalog = catalog == null ? StructureCatalog.empty() : catalog;
     }
 
     public Blueprint generate(
@@ -59,23 +72,117 @@ public final class ArchitectureGrammar {
             int entranceDirection,
             int foundationY
     ) {
+        return generate(worldSeed, ordinal, culture, role, wealth, SettlementTier.TOWN,
+                lotId, settlementId, districtId, lotBounds, entranceDirection, foundationY, List.of());
+    }
+
+    public Blueprint generate(
+            long worldSeed,
+            long ordinal,
+            CultureDefinition culture,
+            BuildingRole role,
+            WealthClass wealth,
+            SettlementTier tier,
+            LotId lotId,
+            SettlementId settlementId,
+            DistrictId districtId,
+            BoundingBox2 lotBounds,
+            int entranceDirection,
+            int foundationY,
+            List<String> recentAssetIds
+    ) {
         long fork = Hashing.mix(worldSeed, Hashing.mix(0x4152434849L, ordinal));
         DeterministicRandom random = new DeterministicRandom(fork);
-        StructureRegistry.Template template = registry
-                .pickWeighted(culture.key(), role, com.livingmods.common.model.SettlementTier.TOWN, wealth, worldSeed, ordinal)
-                .orElse(registry.all().get(0));
+
+        StructureSizeClass sizeHint = sizeHintFor(role, wealth, tier, lotBounds);
+        Optional<StructureAsset> assetOpt = catalog.select(
+                culture.key(), role, tier, wealth, sizeHint, worldSeed, ordinal, recentAssetIds);
 
         int rot = entranceDirection % 4;
-        int w = Math.min(template.width(), lotBounds.width());
-        int d = Math.min(template.depth(), lotBounds.depth());
-        if (random.chance(0.3) && lotBounds.width() >= template.depth() && lotBounds.depth() >= template.width()) {
-            int tmp = w;
-            w = d;
-            d = tmp;
-            rot = (rot + 1) % 4;
+        int w;
+        int d;
+        int height;
+        String assetId = "";
+        String archetype = "";
+        int floors;
+        int capacity;
+        int workSlots;
+        int residentialSlots;
+
+        if (assetOpt.isPresent() && fitsLot(assetOpt.get(), lotBounds)) {
+            StructureAsset asset = chooseRotationFit(assetOpt.get(), lotBounds, rot);
+            assetId = asset.assetId();
+            archetype = asset.archetype();
+            // Align structure entrance toward street by choosing rotation.
+            int desiredFacing = entranceDirection % 4;
+            int assetFacing = facingIndex(asset.entranceFacing());
+            rot = (desiredFacing - assetFacing + 4) % 4;
+            int[] dims = rotatedDims(asset.width(), asset.depth(), rot);
+            w = dims[0];
+            d = dims[1];
+            if (w > lotBounds.width() || d > lotBounds.depth()) {
+                // try without rotation constraint
+                if (asset.width() <= lotBounds.width() && asset.depth() <= lotBounds.depth()) {
+                    w = asset.width();
+                    d = asset.depth();
+                    rot = 0;
+                } else if (asset.depth() <= lotBounds.width() && asset.width() <= lotBounds.depth()) {
+                    w = asset.depth();
+                    d = asset.width();
+                    rot = 1;
+                } else {
+                    assetId = "";
+                    archetype = "";
+                }
+            }
+            height = asset.height();
+            floors = Math.max(1, Math.min(4, (height + 2) / 4));
+            capacity = asset.occupationCapacityHint() > 0
+                    ? asset.occupationCapacityHint()
+                    : capacityFor(role, wealth, floors, 4)[0];
+            workSlots = asset.workSlotsHint() > 0 ? asset.workSlotsHint() : capacityFor(role, wealth, floors, 4)[1];
+            residentialSlots = asset.residentialSlotsHint() > 0
+                    ? asset.residentialSlotsHint()
+                    : capacityFor(role, wealth, floors, 4)[2];
+        } else {
+            assetId = "";
+            archetype = "";
+            height = 0;
+            capacity = 0;
+            workSlots = 0;
+            residentialSlots = 0;
+            floors = 0;
+            w = 0;
+            d = 0;
         }
-        w = Math.max(5, w - 2);
-        d = Math.max(5, d - 2);
+
+        if (assetId.isEmpty()) {
+            StructureRegistry.Template template = registry
+                    .pickWeighted(culture.key(), role, tier, wealth, worldSeed, ordinal)
+                    .orElse(registry.all().get(0));
+            w = Math.min(template.width(), lotBounds.width());
+            d = Math.min(template.depth(), lotBounds.depth());
+            if (random.chance(0.3) && lotBounds.width() >= template.depth() && lotBounds.depth() >= template.width()) {
+                int tmp = w;
+                w = d;
+                d = tmp;
+                rot = (rot + 1) % 4;
+            }
+            w = Math.max(5, w - 2);
+            d = Math.max(5, d - 2);
+            floors = 1 + (wealth.ordinal() >= WealthClass.COMFORTABLE.ordinal() ? 1 : 0);
+            if (role == BuildingRole.PALACE || role == BuildingRole.CASTLE_KEEP) {
+                floors = Math.max(floors, 2);
+            }
+            if (role == BuildingRole.TOWER) {
+                floors = Math.max(floors, 3);
+            }
+            int[] slots = capacityFor(role, wealth, floors, 4);
+            capacity = slots[0];
+            workSlots = slots[1];
+            residentialSlots = slots[2];
+            height = floors * 4 + 2;
+        }
 
         int cx = lotBounds.center().x();
         int cz = lotBounds.center().z();
@@ -87,16 +194,10 @@ public final class ArchitectureGrammar {
         int maxZ = Math.min(lotBounds.maxZ(), minZ + d - 1);
         BoundingBox2 footprint = BoundingBox2.of(minX, minZ, maxX, maxZ);
 
-        int floors = 1 + (wealth.ordinal() >= WealthClass.COMFORTABLE.ordinal() ? 1 : 0);
-        if (role == BuildingRole.PALACE || role == BuildingRole.CASTLE_KEEP) {
-            floors = Math.max(floors, 2);
-        }
-        if (role == BuildingRole.TOWER) {
-            floors = Math.max(floors, 3);
-        }
-
-        boolean basement = random.chance(0.15) && foundationY > 58;
-        boolean attic = culture.architecture().roofStyle() != CultureDefinition.RoofStyle.FLAT && random.chance(0.4);
+        boolean basement = assetId.isEmpty() && random.chance(0.15) && foundationY > 58;
+        boolean attic = assetId.isEmpty()
+                && culture.architecture().roofStyle() != CultureDefinition.RoofStyle.FLAT
+                && random.chance(0.4);
 
         List<String> rooms = layoutFloorPlan(random, role, w, d, floors);
         List<String> walls = traceWalls(w, d, floors, culture);
@@ -107,7 +208,6 @@ public final class ArchitectureGrammar {
         StructureId structureId = StructureId.deterministic(worldSeed, ordinal);
         String palette = culture.architecture().primaryBlock();
 
-        int[] slots = capacityFor(role, wealth, floors, rooms.size());
         PlannedBuilding building = new PlannedBuilding(
                 structureId,
                 lotId,
@@ -128,13 +228,50 @@ public final class ArchitectureGrammar {
                 walls,
                 windows,
                 entrance,
-                slots[0],
-                slots[1],
-                slots[2]
+                capacity,
+                workSlots,
+                residentialSlots,
+                assetId,
+                archetype
         );
 
         InteriorMetadata interior = new InteriorMetadata(floors, rooms.size(), basement, attic, rooms);
         return new Blueprint(building, interior, walls, windows, entrance);
+    }
+
+    private static boolean fitsLot(StructureAsset asset, BoundingBox2 lot) {
+        return (asset.width() <= lot.width() && asset.depth() <= lot.depth())
+                || (asset.depth() <= lot.width() && asset.width() <= lot.depth());
+    }
+
+    private static StructureAsset chooseRotationFit(StructureAsset asset, BoundingBox2 lot, int preferredRot) {
+        return asset;
+    }
+
+    private static int[] rotatedDims(int width, int depth, int rot90Steps) {
+        return (rot90Steps & 1) == 1 ? new int[]{depth, width} : new int[]{width, depth};
+    }
+
+    private static StructureSizeClass sizeHintFor(
+            BuildingRole role, WealthClass wealth, SettlementTier tier, BoundingBox2 lot
+    ) {
+        int maxLot = Math.max(lot.width(), lot.depth());
+        if (role == BuildingRole.WELL || role == BuildingRole.MARKET_STALL || role == BuildingRole.WAYSTONE) {
+            return StructureSizeClass.TINY;
+        }
+        if (role == BuildingRole.PALACE || role == BuildingRole.CASTLE_KEEP) {
+            return maxLot >= 28 ? StructureSizeClass.LARGE : StructureSizeClass.MEDIUM;
+        }
+        if (role == BuildingRole.MANOR || role == BuildingRole.TEMPLE || role == BuildingRole.MARKET_HALL) {
+            return StructureSizeClass.MEDIUM;
+        }
+        if (tier == SettlementTier.HAMLET || wealth == WealthClass.POOR) {
+            return maxLot <= 10 ? StructureSizeClass.TINY : StructureSizeClass.SMALL;
+        }
+        if (maxLot <= 10) return StructureSizeClass.TINY;
+        if (maxLot <= 14) return StructureSizeClass.SMALL;
+        if (maxLot <= 22) return StructureSizeClass.MEDIUM;
+        return StructureSizeClass.LARGE;
     }
 
     /** Returns [capacity, workSlots, residentialSlots]. */
@@ -237,7 +374,7 @@ public final class ArchitectureGrammar {
         for (int i = 0; i < count; i++) {
             int side = random.nextInt(4);
             int along = random.nextInt(Math.max(1, side % 2 == 0 ? w : d));
-            int floor = random.nextInt(floors);
+            int floor = random.nextInt(Math.max(1, floors));
             windows.add("win:" + side + ":" + along + "@" + floor);
         }
         return windows;
@@ -249,6 +386,16 @@ public final class ArchitectureGrammar {
             case 1 -> "east";
             case 2 -> "south";
             default -> "west";
+        };
+    }
+
+    private static int facingIndex(String name) {
+        if (name == null) return 2;
+        return switch (name.toLowerCase()) {
+            case "north" -> 0;
+            case "east" -> 1;
+            case "south" -> 2;
+            default -> 3;
         };
     }
 }

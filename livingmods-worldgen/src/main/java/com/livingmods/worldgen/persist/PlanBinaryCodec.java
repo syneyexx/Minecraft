@@ -62,7 +62,7 @@ final class PlanBinaryCodec {
         long seed = in.readLong();
         long hash = in.readLong();
         List<PlannedKingdom> kingdoms = readKingdoms(in);
-        List<PlannedSettlement> settlements = readSettlements(in);
+        List<PlannedSettlement> settlements = readSettlements(in, worldgenVersion);
         List<PlannedRoad> roads = readRoads(in);
         List<PlannedRuin> ruins = readRuins(in);
         List<PlannedResourceSite> resources = readResources(in);
@@ -145,7 +145,7 @@ final class PlanBinaryCodec {
         }
     }
 
-    private static List<PlannedSettlement> readSettlements(DataInput in) throws IOException {
+    private static List<PlannedSettlement> readSettlements(DataInput in, int worldgenVersion) throws IOException {
         int n = in.readInt();
         List<PlannedSettlement> list = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
@@ -165,7 +165,7 @@ final class PlanBinaryCodec {
             int pop = in.readInt();
             List<PlannedDistrict> districts = readDistricts(in);
             List<PlannedLot> lots = readLots(in);
-            List<PlannedBuilding> buildings = readBuildings(in);
+            List<PlannedBuilding> buildings = readBuildings(in, worldgenVersion);
             List<BlockPos2> streets = readPosList(in);
             List<BlockPos2> wall = readPosList(in);
             List<BlockPos2> gates = readPosList(in);
@@ -262,36 +262,51 @@ final class PlanBinaryCodec {
             out.writeInt(b.capacity());
             out.writeInt(b.workSlots());
             out.writeInt(b.residentialSlots());
+            writeString(out, b.assetId() == null ? "" : b.assetId());
+            writeString(out, b.archetype() == null ? "" : b.archetype());
         }
     }
 
     private static List<PlannedBuilding> readBuildings(DataInput in) throws IOException {
+        return readBuildings(in, Integer.MAX_VALUE);
+    }
+
+    private static List<PlannedBuilding> readBuildings(DataInput in, int worldgenVersion) throws IOException {
         int n = in.readInt();
         List<PlannedBuilding> list = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
+            StructureId id = StructureId.of(readUuid(in));
+            LotId lotId = LotId.of(readUuid(in));
+            SettlementId settlementId = SettlementId.of(readUuid(in));
+            DistrictId districtId = DistrictId.of(readUuid(in));
+            BuildingRole role = readEnum(in, BuildingRole.class);
+            WealthClass wealth = readEnum(in, WealthClass.class);
+            BoundingBox2 box = readBox(in);
+            int rotationY = in.readInt();
+            int foundationY = in.readInt();
+            String cultureKey = readString(in);
+            String paletteKey = readString(in);
+            int seed = in.readInt();
+            int floors = in.readInt();
+            boolean basement = in.readBoolean();
+            boolean attic = in.readBoolean();
+            List<String> rooms = readStringList(in);
+            List<String> walls = readStringList(in);
+            List<String> windows = readStringList(in);
+            String entrance = readString(in);
+            int capacity = in.readInt();
+            int workSlots = in.readInt();
+            int residentialSlots = in.readInt();
+            String assetId = "";
+            String archetype = "";
+            if (worldgenVersion >= 3) {
+                assetId = readString(in);
+                archetype = readString(in);
+            }
             list.add(new PlannedBuilding(
-                    StructureId.of(readUuid(in)),
-                    LotId.of(readUuid(in)),
-                    SettlementId.of(readUuid(in)),
-                    DistrictId.of(readUuid(in)),
-                    readEnum(in, BuildingRole.class),
-                    readEnum(in, WealthClass.class),
-                    readBox(in),
-                    in.readInt(),
-                    in.readInt(),
-                    readString(in),
-                    readString(in),
-                    in.readInt(),
-                    in.readInt(),
-                    in.readBoolean(),
-                    in.readBoolean(),
-                    readStringList(in),
-                    readStringList(in),
-                    readStringList(in),
-                    readString(in),
-                    in.readInt(),
-                    in.readInt(),
-                    in.readInt()
+                    id, lotId, settlementId, districtId, role, wealth, box, rotationY, foundationY,
+                    cultureKey, paletteKey, seed, floors, basement, attic, rooms, walls, windows,
+                    entrance, capacity, workSlots, residentialSlots, assetId, archetype
             ));
         }
         return list;

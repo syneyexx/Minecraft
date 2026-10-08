@@ -1,0 +1,42 @@
+{
+  "culture": "helvetia",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "german medieval house",
+        "alpine village"
+      ]
+    },
+    "BARN": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "alpine barn"
+      ]
+    },
+    "TAVERN": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "mountain inn"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "alpine castle",
+        "mountain fortress"
+      ]
+    },
+    "BRIDGE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "stone bridge"
+      ]
+    }
+  }
+}

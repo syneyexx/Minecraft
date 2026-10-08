@@ -286,6 +286,7 @@ public final class PhysicalOutcomeApplier {
             default -> 0;
         };
 
+        String assetId = intent.provenance().getOrDefault("assetId", "");
         DynamicStructureRecord record = new DynamicStructureRecord(
                 structureId,
                 sid != null ? sid : SettlementId.of(new UUID(0, 0)),
@@ -298,7 +299,8 @@ public final class PhysicalOutcomeApplier {
                 work,
                 intent.revision(),
                 intent.cultureKey(),
-                foundationY
+                foundationY,
+                assetId
         );
         state.dynamicPhysical().putStructure(record);
 

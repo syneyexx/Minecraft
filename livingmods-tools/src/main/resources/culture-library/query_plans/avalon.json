@@ -1,0 +1,70 @@
+{
+  "culture": "avalon",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "medieval house",
+        "medieval townhouse",
+        "half timber house"
+      ]
+    },
+    "SHOP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "medieval shop",
+        "blacksmith"
+      ]
+    },
+    "TAVERN": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "medieval tavern",
+        "medieval inn"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "medieval church",
+        "cathedral"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "medieval castle",
+        "keep",
+        "gatehouse"
+      ]
+    },
+    "MARKET_HALL": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "medieval market",
+        "medieval town hall"
+      ]
+    },
+    "BRIDGE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "medieval bridge"
+      ]
+    },
+    "MANOR": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "manor",
+        "courthouse"
+      ]
+    }
+  }
+}

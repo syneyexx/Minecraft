@@ -1,0 +1,37 @@
+{
+  "culture": "varangian",
+  "archetypes": {
+    "HOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "longhouse",
+        "wooden palace"
+      ]
+    },
+    "CASTLE_KEEP": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "wooden fortress",
+        "fortified village",
+        "northern fort"
+      ]
+    },
+    "TEMPLE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "wooden church"
+      ]
+    },
+    "WAREHOUSE": {
+      "desiredCount": 8,
+      "minimumCount": 3,
+      "queries": [
+        "river port",
+        "trading hall"
+      ]
+    }
+  }
+}

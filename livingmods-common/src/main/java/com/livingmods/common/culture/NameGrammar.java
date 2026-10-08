@@ -9,7 +9,7 @@ public final class NameGrammar {
     private NameGrammar() {}
 
     public static String citizenGiven(CultureDefinition culture, boolean female, DeterministicRandom rng) {
-        CultureDefinition.NamingStyle n = culture.naming();
+        CultureDefinition.NamingStyle n = NamingLibrary.namingFor(culture);
         if (female) {
             return rng.pick(n.femaleNames());
         }
@@ -17,16 +17,16 @@ public final class NameGrammar {
     }
 
     public static String citizenFamily(CultureDefinition culture, DeterministicRandom rng) {
-        return rng.pick(culture.naming().familyNames());
+        return rng.pick(NamingLibrary.namingFor(culture).familyNames());
     }
 
     public static String settlement(CultureDefinition culture, DeterministicRandom rng) {
-        CultureDefinition.NamingStyle n = culture.naming();
+        CultureDefinition.NamingStyle n = NamingLibrary.namingFor(culture);
         return rng.pick(n.settlementPrefixes()) + rng.pick(n.settlementSuffixes());
     }
 
     public static String kingdom(CultureDefinition culture, DeterministicRandom rng) {
-        CultureDefinition.NamingStyle n = culture.naming();
+        CultureDefinition.NamingStyle n = NamingLibrary.namingFor(culture);
         if (!n.kingdomPatterns().isEmpty()) {
             String pattern = rng.pick(n.kingdomPatterns());
             return pattern
@@ -39,7 +39,7 @@ public final class NameGrammar {
     }
 
     public static String dynasty(CultureDefinition culture, DeterministicRandom rng) {
-        CultureDefinition.NamingStyle n = culture.naming();
+        CultureDefinition.NamingStyle n = NamingLibrary.namingFor(culture);
         if (!n.dynastyPrefixes().isEmpty()) {
             return rng.pick(n.dynastyPrefixes()) + " " + rng.pick(n.familyNames());
         }
