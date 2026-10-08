@@ -12,6 +12,7 @@ import com.livingmods.common.model.WealthClass;
 import com.livingmods.common.util.DeterministicRandom;
 import com.livingmods.common.util.Hashing;
 import com.livingmods.worldgen.plan.PlannedBuilding;
+import com.livingmods.worldgen.structure.MlsStructureFormat;
 import com.livingmods.worldgen.structure.StructureAsset;
 import com.livingmods.worldgen.structure.StructureCatalog;
 import com.livingmods.worldgen.structure.StructureCatalogHolder;
@@ -25,6 +26,8 @@ import java.util.Optional;
  * Building grammar: prefers data-driven {@link StructureAsset} selection with real dimensions,
  * falling back to procedural {@link StructureRegistry} templates.
  * Selected {@code assetId} is persisted on {@link PlannedBuilding} — never re-rolled at materialization.
+ *
+ * <p>M6.1: asset-first planning — select asset before committing lot bounds when possible.
  */
 public final class ArchitectureGrammar {
     public record InteriorMetadata(
@@ -43,6 +46,24 @@ public final class ArchitectureGrammar {
             String entranceFacing
     ) {}
 
+    /** Selected asset + rotation + clearance-padded footprint size for lot reservation. */
+    public record AssetPlacement(
+            StructureAsset asset,
+            int rotationSteps,
+            int width,
+            int depth,
+            int clearance,
+            String entranceFacing
+    ) {
+        public int lotWidth() {
+            return width + clearance * 2;
+        }
+
+        public int lotDepth() {
+            return depth + clearance * 2;
+        }
+    }
+
     private final StructureRegistry registry;
     private final StructureCatalog catalog;
 
@@ -57,6 +78,45 @@ public final class ArchitectureGrammar {
     public ArchitectureGrammar(StructureRegistry registry, StructureCatalog catalog) {
         this.registry = registry;
         this.catalog = catalog == null ? StructureCatalog.empty() : catalog;
+    }
+
+    public StructureCatalog catalog() {
+        return catalog;
+    }
+
+    /**
+     * Asset-first selection: choose a production asset for the role before lot commitment.
+     */
+    public Optional<AssetPlacement> selectAssetPlacement(
+            long worldSeed,
+            long ordinal,
+            CultureDefinition culture,
+            BuildingRole role,
+            WealthClass wealth,
+            SettlementTier tier,
+            int preferredEntranceDirection,
+            List<String> recentAssetIds,
+            boolean coastalContext,
+            boolean undergroundContext
+    ) {
+        StructureSizeClass sizeHint = sizeHintForRole(role, wealth, tier);
+        List<StructureAsset> candidates = catalog.selectCandidates(
+                culture.key(), role, tier, wealth, sizeHint, coastalContext, undergroundContext);
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<StructureAsset> picked = catalog.select(
+                culture.key(), role, tier, wealth, sizeHint, worldSeed, ordinal, recentAssetIds);
+        if (picked.isEmpty()) {
+            picked = Optional.of(candidates.get(Math.floorMod(
+                    Hashing.mix(worldSeed, ordinal), candidates.size())));
+        }
+        StructureAsset asset = picked.get();
+        int rot = chooseRotationFit(asset, preferredEntranceDirection % 4);
+        int[] dims = MlsStructureFormat.rotatedDimensions(asset.width(), asset.depth(), rot);
+        String facing = MlsStructureFormat.rotateFacing(asset.entranceFacing(), rot);
+        return Optional.of(new AssetPlacement(
+                asset, rot, dims[0], dims[1], Math.max(0, asset.requiredClearance()), facing));
     }
 
     public Blueprint generate(
@@ -108,42 +168,38 @@ public final class ArchitectureGrammar {
         int capacity;
         int workSlots;
         int residentialSlots;
+        String entrance = facingName(rot);
 
         if (assetOpt.isPresent() && fitsLot(assetOpt.get(), lotBounds)) {
-            StructureAsset asset = chooseRotationFit(assetOpt.get(), lotBounds, rot);
-            assetId = asset.assetId();
-            archetype = asset.archetype();
-            // Align structure entrance toward street by choosing rotation.
-            int desiredFacing = entranceDirection % 4;
-            int assetFacing = facingIndex(asset.entranceFacing());
-            rot = (desiredFacing - assetFacing + 4) % 4;
-            int[] dims = rotatedDims(asset.width(), asset.depth(), rot);
+            StructureAsset asset = assetOpt.get();
+            rot = chooseRotationFit(asset, entranceDirection % 4, lotBounds);
+            int[] dims = MlsStructureFormat.rotatedDimensions(asset.width(), asset.depth(), rot);
             w = dims[0];
             d = dims[1];
-            if (w > lotBounds.width() || d > lotBounds.depth()) {
-                // try without rotation constraint
-                if (asset.width() <= lotBounds.width() && asset.depth() <= lotBounds.depth()) {
-                    w = asset.width();
-                    d = asset.depth();
-                    rot = 0;
-                } else if (asset.depth() <= lotBounds.width() && asset.width() <= lotBounds.depth()) {
-                    w = asset.depth();
-                    d = asset.width();
-                    rot = 1;
-                } else {
-                    assetId = "";
-                    archetype = "";
-                }
+            if (w <= lotBounds.width() && d <= lotBounds.depth()) {
+                assetId = asset.assetId();
+                archetype = asset.archetype();
+                height = asset.height();
+                entrance = MlsStructureFormat.rotateFacing(asset.entranceFacing(), rot);
+                floors = Math.max(1, Math.min(4, (height + 2) / 4));
+                capacity = asset.occupationCapacityHint() > 0
+                        ? asset.occupationCapacityHint()
+                        : capacityFor(role, wealth, floors, 4)[0];
+                workSlots = asset.workSlotsHint() > 0 ? asset.workSlotsHint() : capacityFor(role, wealth, floors, 4)[1];
+                residentialSlots = asset.residentialSlotsHint() > 0
+                        ? asset.residentialSlotsHint()
+                        : capacityFor(role, wealth, floors, 4)[2];
+            } else {
+                assetId = "";
+                archetype = "";
+                height = 0;
+                capacity = 0;
+                workSlots = 0;
+                residentialSlots = 0;
+                floors = 0;
+                w = 0;
+                d = 0;
             }
-            height = asset.height();
-            floors = Math.max(1, Math.min(4, (height + 2) / 4));
-            capacity = asset.occupationCapacityHint() > 0
-                    ? asset.occupationCapacityHint()
-                    : capacityFor(role, wealth, floors, 4)[0];
-            workSlots = asset.workSlotsHint() > 0 ? asset.workSlotsHint() : capacityFor(role, wealth, floors, 4)[1];
-            residentialSlots = asset.residentialSlotsHint() > 0
-                    ? asset.residentialSlotsHint()
-                    : capacityFor(role, wealth, floors, 4)[2];
         } else {
             assetId = "";
             archetype = "";
@@ -182,17 +238,11 @@ public final class ArchitectureGrammar {
             workSlots = slots[1];
             residentialSlots = slots[2];
             height = floors * 4 + 2;
+            entrance = facingName(rot);
         }
 
-        int cx = lotBounds.center().x();
-        int cz = lotBounds.center().z();
-        int halfW = w / 2;
-        int halfD = d / 2;
-        int minX = Math.max(lotBounds.minX(), cx - halfW);
-        int minZ = Math.max(lotBounds.minZ(), cz - halfD);
-        int maxX = Math.min(lotBounds.maxX(), minX + w - 1);
-        int maxZ = Math.min(lotBounds.maxZ(), minZ + d - 1);
-        BoundingBox2 footprint = BoundingBox2.of(minX, minZ, maxX, maxZ);
+        // Align footprint so entrance faces street: offset toward entrance edge of lot.
+        BoundingBox2 footprint = alignFootprint(lotBounds, w, d, rot);
 
         boolean basement = assetId.isEmpty() && random.chance(0.15) && foundationY > 58;
         boolean attic = assetId.isEmpty()
@@ -202,7 +252,6 @@ public final class ArchitectureGrammar {
         List<String> rooms = layoutFloorPlan(random, role, w, d, floors);
         List<String> walls = traceWalls(w, d, floors, culture);
         List<String> windows = placeWindows(random, w, d, floors, culture.architecture().windowDensity());
-        String entrance = facingName(rot);
 
         int buildingSeed = (int) (fork & 0x7fffffff);
         StructureId structureId = StructureId.deterministic(worldSeed, ordinal);
@@ -239,39 +288,142 @@ public final class ArchitectureGrammar {
         return new Blueprint(building, interior, walls, windows, entrance);
     }
 
+    /** Build from a pre-selected asset placement into an already-reserved lot. */
+    public Blueprint generateFromPlacement(
+            long worldSeed,
+            long ordinal,
+            CultureDefinition culture,
+            BuildingRole role,
+            WealthClass wealth,
+            SettlementTier tier,
+            LotId lotId,
+            SettlementId settlementId,
+            DistrictId districtId,
+            BoundingBox2 lotBounds,
+            int foundationY,
+            AssetPlacement placement
+    ) {
+        StructureAsset asset = placement.asset();
+        int rot = placement.rotationSteps();
+        int w = placement.width();
+        int d = placement.depth();
+        BoundingBox2 footprint = alignFootprint(lotBounds, w, d, rot);
+        int floors = Math.max(1, Math.min(4, (asset.height() + 2) / 4));
+        int[] slots = capacityFor(role, wealth, floors, 4);
+        int capacity = asset.occupationCapacityHint() > 0 ? asset.occupationCapacityHint() : slots[0];
+        int workSlots = asset.workSlotsHint() > 0 ? asset.workSlotsHint() : slots[1];
+        int residentialSlots = asset.residentialSlotsHint() > 0 ? asset.residentialSlotsHint() : slots[2];
+        long fork = Hashing.mix(worldSeed, Hashing.mix(0x4152434849L, ordinal));
+        DeterministicRandom random = new DeterministicRandom(fork);
+        List<String> rooms = layoutFloorPlan(random, role, w, d, floors);
+        List<String> walls = traceWalls(w, d, floors, culture);
+        List<String> windows = placeWindows(random, w, d, floors, culture.architecture().windowDensity());
+        PlannedBuilding building = new PlannedBuilding(
+                StructureId.deterministic(worldSeed, ordinal),
+                lotId, settlementId, districtId, role, wealth, footprint,
+                rot * 90, foundationY, culture.key(), culture.architecture().primaryBlock(),
+                (int) (fork & 0x7fffffff), floors, false, false, rooms, walls, windows,
+                placement.entranceFacing(), capacity, workSlots, residentialSlots,
+                asset.assetId(), asset.archetype()
+        );
+        return new Blueprint(building, new InteriorMetadata(floors, rooms.size(), false, false, rooms),
+                walls, windows, placement.entranceFacing());
+    }
+
+    private static BoundingBox2 alignFootprint(BoundingBox2 lot, int w, int d, int rot) {
+        int minX;
+        int minZ;
+        // Push building toward the entrance edge so door meets street.
+        switch (rot & 3) {
+            case 0 -> { // north-facing entrance → place near minZ
+                minX = lot.minX() + Math.max(0, (lot.width() - w) / 2);
+                minZ = lot.minZ();
+            }
+            case 1 -> { // east
+                minX = lot.maxX() - w + 1;
+                minZ = lot.minZ() + Math.max(0, (lot.depth() - d) / 2);
+            }
+            case 2 -> { // south
+                minX = lot.minX() + Math.max(0, (lot.width() - w) / 2);
+                minZ = lot.maxZ() - d + 1;
+            }
+            default -> { // west
+                minX = lot.minX();
+                minZ = lot.minZ() + Math.max(0, (lot.depth() - d) / 2);
+            }
+        }
+        minX = Math.max(lot.minX(), Math.min(lot.maxX() - w + 1, minX));
+        minZ = Math.max(lot.minZ(), Math.min(lot.maxZ() - d + 1, minZ));
+        return BoundingBox2.of(minX, minZ, minX + w - 1, minZ + d - 1);
+    }
+
     private static boolean fitsLot(StructureAsset asset, BoundingBox2 lot) {
         return (asset.width() <= lot.width() && asset.depth() <= lot.depth())
                 || (asset.depth() <= lot.width() && asset.width() <= lot.depth());
     }
 
-    private static StructureAsset chooseRotationFit(StructureAsset asset, BoundingBox2 lot, int preferredRot) {
-        return asset;
+    /**
+     * Choose an allowed rotation that aligns entrance toward preferred street direction
+     * and whose rotated dims fit the lot when provided.
+     */
+    public static int chooseRotationFit(StructureAsset asset, int preferredEntranceDir) {
+        return chooseRotationFit(asset, preferredEntranceDir, null);
     }
 
-    private static int[] rotatedDims(int width, int depth, int rot90Steps) {
-        return (rot90Steps & 1) == 1 ? new int[]{depth, width} : new int[]{width, depth};
+    public static int chooseRotationFit(StructureAsset asset, int preferredEntranceDir, BoundingBox2 lot) {
+        int assetFacing = facingIndex(asset.entranceFacing());
+        int desired = ((preferredEntranceDir % 4) + 4) % 4;
+        int ideal = (desired - assetFacing + 4) % 4;
+        List<Integer> allowedSteps = new ArrayList<>();
+        for (int deg : asset.allowedRotations()) {
+            allowedSteps.add(((deg / 90) % 4 + 4) % 4);
+        }
+        if (allowedSteps.isEmpty()) {
+            allowedSteps.addAll(List.of(0, 1, 2, 3));
+        }
+        // Prefer ideal, then other allowed that fit.
+        List<Integer> order = new ArrayList<>();
+        order.add(ideal);
+        for (int s : allowedSteps) {
+            if (!order.contains(s)) order.add(s);
+        }
+        for (int s : order) {
+            if (!allowedSteps.contains(s)) continue;
+            int[] dims = MlsStructureFormat.rotatedDimensions(asset.width(), asset.depth(), s);
+            if (lot == null || (dims[0] <= lot.width() && dims[1] <= lot.depth())) {
+                return s;
+            }
+        }
+        // Last resort: any allowed rotation (caller may fall back).
+        return allowedSteps.get(0);
+    }
+
+    private static StructureSizeClass sizeHintForRole(BuildingRole role, WealthClass wealth, SettlementTier tier) {
+        return switch (role) {
+            case WELL, WAYSTONE, MARKET_STALL -> StructureSizeClass.TINY;
+            case HOUSE, FARMHOUSE, SHOP, GUARDHOUSE, CLINIC ->
+                    wealth == WealthClass.POOR || tier == SettlementTier.HAMLET
+                            ? StructureSizeClass.SMALL : StructureSizeClass.SMALL;
+            case TOWNHOUSE, TAVERN, SMITHY, WORKSHOP, SCHOOL, TOWER, GATEHOUSE, MILL, BARN, SAWMILL ->
+                    StructureSizeClass.MEDIUM;
+            case MANOR, TEMPLE, MARKET_HALL, WAREHOUSE, BARRACKS, PRISON, DOCK, BRIDGE ->
+                    StructureSizeClass.MEDIUM;
+            case PALACE, CASTLE_KEEP, MONUMENT -> StructureSizeClass.LARGE;
+            default -> StructureSizeClass.SMALL;
+        };
     }
 
     private static StructureSizeClass sizeHintFor(
             BuildingRole role, WealthClass wealth, SettlementTier tier, BoundingBox2 lot
     ) {
+        // Prefer role-based hint; only shrink when lot is tiny.
+        StructureSizeClass roleHint = sizeHintForRole(role, wealth, tier);
         int maxLot = Math.max(lot.width(), lot.depth());
-        if (role == BuildingRole.WELL || role == BuildingRole.MARKET_STALL || role == BuildingRole.WAYSTONE) {
-            return StructureSizeClass.TINY;
+        if (maxLot <= 8) return StructureSizeClass.TINY;
+        if (maxLot <= 12 && roleHint.ordinal() > StructureSizeClass.SMALL.ordinal()) {
+            return StructureSizeClass.SMALL;
         }
-        if (role == BuildingRole.PALACE || role == BuildingRole.CASTLE_KEEP) {
-            return maxLot >= 28 ? StructureSizeClass.LARGE : StructureSizeClass.MEDIUM;
-        }
-        if (role == BuildingRole.MANOR || role == BuildingRole.TEMPLE || role == BuildingRole.MARKET_HALL) {
-            return StructureSizeClass.MEDIUM;
-        }
-        if (tier == SettlementTier.HAMLET || wealth == WealthClass.POOR) {
-            return maxLot <= 10 ? StructureSizeClass.TINY : StructureSizeClass.SMALL;
-        }
-        if (maxLot <= 10) return StructureSizeClass.TINY;
-        if (maxLot <= 14) return StructureSizeClass.SMALL;
-        if (maxLot <= 22) return StructureSizeClass.MEDIUM;
-        return StructureSizeClass.LARGE;
+        return roleHint;
     }
 
     /** Returns [capacity, workSlots, residentialSlots]. */

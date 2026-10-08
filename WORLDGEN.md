@@ -14,8 +14,8 @@
 
 Planning is **bounded** to the Core Realm Zone (`LivingModsConfig.civilizationRadiusBlocks`, default `12000`). This is not infinite full-world civilization planning.
 
-`WORLDGEN_VERSION = 3` (M6: `PlannedBuilding.assetId` + culture structure library selection).
-Old plans (v2) load without `assetId` and use procedural building fallback.
+`WORLDGEN_VERSION = 4` (M6.1: asset-first lot planning + landmark reservation + culture catalog).
+Old plans (v2/v3) load; missing/`assetId`-less buildings use procedural fallback.
 Bumping does **not** silently rewrite existing worlds — see persistence below.
 
 ## TerrainProvider
@@ -34,7 +34,11 @@ Chunk **materialization** stays in `CivilizationMaterializer` and uses heightmap
 
 `CultureRegistry`: twelve surface cultures + underground **Wizard Trees** (architecture, naming, government leanings, biome preferences). Wizard Trees settlements are planned by `WizardTreesPlanner` and placed by `WizardTreesMaterializer`.
 
-M6 adds a data-driven **structure catalog** (`StructureCatalog` / MLS1 assets). `ArchitectureGrammar` selects a culture-appropriate `assetId` using real footprint dimensions before lot placement; `StructureAssetMaterializer` places chunk slices. Missing assets fall back to procedural `BuildingMaterializer`. See [STRUCTURE_LIBRARY.md](STRUCTURE_LIBRARY.md) and [CULTURE_CONTENT.md](CULTURE_CONTENT.md).
+M6.1 structure catalog (`StructureCatalog` / MLS1): `UrbanPlanner` reserves landmarks, then
+`ArchitectureGrammar` selects assets **before** committing lot size (role → asset → rotation →
+dimensions + clearance → lot). Entrances align to streets. `StructureAssetMaterializer` uses
+rotated chunk indexes and real foundation modes. Procedural `BuildingMaterializer` is emergency
+fallback only. See [STRUCTURE_LIBRARY.md](STRUCTURE_LIBRARY.md) and [CULTURE_CONTENT.md](CULTURE_CONTENT.md).
 
 ## Territories
 

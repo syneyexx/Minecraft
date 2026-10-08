@@ -154,6 +154,66 @@ public final class MlsStructureFormat {
         return Long.toHexString(h);
     }
 
+    /**
+     * Palette-independent geometry identity: occupied coordinates + dimensions + entrance.
+     * Two palette swaps of the same layout share a geometryHash.
+     */
+    public static String geometryHash(StructureContent content) {
+        long h = 0xcbf29ce484222325L;
+        h = mix(h, content.width());
+        h = mix(h, content.height());
+        h = mix(h, content.depth());
+        h = mix(h, content.entranceX());
+        h = mix(h, content.entranceY());
+        h = mix(h, content.entranceZ());
+        h = mix(h, content.entranceFacing());
+        h = mix(h, content.foundationMode().ordinal());
+        // Solid occupancy only — ignore palette identity.
+        int[] coords = new int[content.blocks().size()];
+        for (int i = 0; i < content.blocks().size(); i++) {
+            BlockPlacement b = content.blocks().get(i);
+            coords[i] = (b.x() & 0x3ff) | ((b.y() & 0x3ff) << 10) | ((b.z() & 0x3ff) << 20);
+        }
+        java.util.Arrays.sort(coords);
+        for (int c : coords) {
+            h = mix(h, c);
+        }
+        // Floor topology: per-Y solid count (cheap silhouette/room signal).
+        int[] perY = new int[Math.min(content.height(), 64)];
+        for (BlockPlacement b : content.blocks()) {
+            if (b.y() >= 0 && b.y() < perY.length) perY[b.y()]++;
+        }
+        for (int c : perY) {
+            h = mix(h, c);
+        }
+        return Long.toHexString(h);
+    }
+
+    private static long mix(long h, int v) {
+        h ^= (v & 0xffffffffL);
+        h *= 0x100000001b3L;
+        return h;
+    }
+
+    /**
+     * Structure-local chunk index after rotation. Keys are (localChunkX << 32) ^ localChunkZ.
+     */
+    public static Map<Long, List<BlockPlacement>> rotatedChunkIndex(
+            StructureContent content, int rotations
+    ) {
+        int[] dims = rotatedDimensions(content.width(), content.depth(), rotations);
+        Map<Long, List<BlockPlacement>> map = new LinkedHashMap<>();
+        for (BlockPlacement b : content.blocks()) {
+            BlockPlacement rb = rotate(b, content.width(), content.depth(), rotations);
+            if (rb.x() < 0 || rb.z() < 0 || rb.x() >= dims[0] || rb.z() >= dims[1]) continue;
+            int cx = rb.x() >> 4;
+            int cz = rb.z() >> 4;
+            long key = ((long) cx << 32) ^ (cz & 0xffffffffL);
+            map.computeIfAbsent(key, k -> new ArrayList<>()).add(rb);
+        }
+        return map;
+    }
+
     public static String facingName(int facing) {
         return switch (facing & 3) {
             case 0 -> "north";

@@ -4,63 +4,35 @@
     "Thalorin", "Vex", "Mycor", "Sporel", "Lumin", "Rootan", "Arcady", "Nyth", 
     "Gloam", "Verd", "Aether", "Bole", "Cairn", "Dew", "Elder", "Fathom", 
     "Gloamroot", "Hypha", "Ichor", "Jasper", "Knot", "Lichen", "Moss", "Nexus", 
-    "Orb", "Pith", "Quark", "Rill", "Sap", "Thorn", "Threl", "Vexther", 
-    "Mycoha", "Sporb", "Lumvex", "Rootam", "Arhom", "Nytmoss", "Gloarn", "Veady", 
-    "Aetdew", "Boleot", "Caill", "Dewumin", "Eldele", "Fahor", "Glopith", "Hyphor", 
-    "Icerd", "Jasroot", "Knotus", "Lirin", "Mosnyth", "Nexuer", "Orhen", "Pitsap", 
-    "Quaran", "Riirn", "Sapsper", "Thorrk"
+    "Orb", "Pith", "Quark", "Rill", "Sap", "Thorn"
   ],
   "femaleNames": [
     "Sylvara", "Nyx", "Lumina", "Mycelia", "Spira", "Aureole", "Thalira", "Vespera", 
     "Roota", "Glim", "Amanita", "Bloom", "Cystia", "Dewdrop", "Elaia", "Fern", 
     "Glimmer", "Hyphaea", "Ivy", "Jade", "Kelp", "Myra", "Nymph", "Opal", 
-    "Petal", "Thalia", "Vinea", "Sylia", "Nyxnita", "Lumiea", "Mytal", "Spipira", 
-    "Aureom", "Thivy", "Vesalia", "Rootle", "Gltia", "Amajade", "Blooea", "Cyira", 
-    "Elailp", "Feara", "Glipera", "Hyphia", "Ivyra", "Jadnyx", "Kelpta", "Myern", 
-    "Nymymph", "Opalna", "Pelim", "Thammer", "Vineal"
+    "Petal", "Thalia", "Vinea"
   ],
   "familyNames": [
     "Rootwhisper", "Sporemind", "Deepbloom", "Glowcap", "Arcveil", "Hollowsong", "Mycelheart", "Capwhisper", 
     "Glowspore", "Hollowroot", "Mycelink", "Nightbloom", "Rootveil", "Spirecap", "Thalspore", "Umbralash", 
-    "Verdantomb", "Rocap", "Spolink", "Deeper", "Glper", "Arcpore", "Hollil", "Myoom", 
-    "Capmind", "Glowre", "Hoash", "Mycsong", "Nighil", "Rooom", "Spiroot", "Thalmb", 
-    "Umart", "Verecap", "Rootap", "Spink", "Deesper", "Glower", "Arore", "Holveil", 
-    "Myceom", "Caind", "Glopore", "Hollsh", "Myong", "Nigveil", "Rootom", "Spoot", 
-    "Thatomb", "Umbrrt", "Vecap", "Roowcap", "Spornk", "Deper", "Glosper", "Arcvre", 
-    "Hoeil", "Mycloom", "Capwnd", "Glore", "Hollash", "Myceng", "Nieil", "Rooloom", 
-    "Spirot", "Thomb", "Umbeart", "Verdap"
+    "Verdantomb"
   ],
   "settlementPrefixes": [
-    "Root", "Mycel", "Arcane", "Deep", "Spore", "Glow", "High", "Old", 
-    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
-    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
-    "Gold", "Silver", "Roeep", "Mycttle", "Arcaar", "Deold", "Spoglow", "Glowth", 
-    "Hight", "Oldroot", "Newld", "Grest", "Lithite", "Nortne", "Soeat", "Easower", 
-    "Wested", "Upore", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
-    "Blaycel", "Redew"
+    "Root", "Mycel", "Arcane", "Deep", "Spore", "Glow", "Crystal", "Hollow", 
+    "Night", "Verdant"
   ],
   "settlementSuffixes": [
-    "grove", "hollow", "spire", "vault", "cavern", "bloom", "ton", "ford", 
-    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
-    "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", 
-    "bay", "reach", "Grult", "Holield", "Spirte", "Vabay", "Cavloom", "Bloook", 
-    "Toead", "Forrove", "Wickrd", "Haoor", "Fiefell", "Woodre", "Brven", "Valport", 
-    "Moorff", "Riern", "Porwood", "Gatell", "Haach", "Steton", "Merele", "Feere", 
-    "Marllow", "Clifck"
+    "grove", "hollow", "spire", "vault", "cavern", "bloom", "cap", "root", 
+    "veil", "deep", "glow"
   ],
   "rulerTitles": [
-    "Archmycelium", "High Sporarch", "Root-Seer", "Lord", "Lady", "High", "Grand", "Chief", 
-    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
-    "Duchess", "Marshal", "Chancellor", "Speaker"
+    "Archmycelium", "High Sporarch", "Root-Seer", "Archmage", "Spore-Elder", "Root-Lord", "High Mycel", "Keeper", 
+    "Speaker"
   ],
   "dynastyPrefixes": [
-    "Mycelium of", "Circle of", "Rootline", "House", "Clan", "Line of", "Blood of", "Order of", 
-    "Banner of", "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", 
-    "Shield of", "Flame of", "Star of", "Stone of"
+    "Mycelium of", "Circle of", "Rootline", "Root of", "Spore of", "Line of", "Grove of"
   ],
   "kingdomPatterns": [
-    "Theocracy of {prefix}{suffix}", "Mycelium {family}", "{title}'s {prefix} Hollow", "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", 
-    "League of {prefix}", "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", 
-    "Confederation of {suffix}", "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}"
+    "Theocracy of {prefix}{suffix}", "Mycelium {family}", "{title}'s {prefix} Hollow", "Mycelium Realm of {prefix}", "Root-Court of {family}", "Spore Dominion of {prefix}", "Arcane Hollow of {family}", "Circle of {prefix}{suffix}"
   ]
 }

@@ -4,71 +4,35 @@
     "Itzcoatl", "Cuahtli", "Nahuatl", "Tenoch", "Cipactli", "Atl", "Yolotl", "Mazatl", 
     "Tochtli", "Ocelotl", "Amoxtli", "Cualli", "Eztli", "Huitzil", "Ilhicamina", "Necalli", 
     "Tepiltzin", "Xipil", "Yaotl", "Zyanya", "Coatl", "Meztli", "Nochtli", "Quauhtli", 
-    "Tizoc", "Xolotl", "Yolotli", "Zolin", "Chimalli", "Icnoyotl", "Itoch", "Cuaxtli", 
-    "Nahuil", "Tezoc", "Ciphtli", "Atlli", "Yolli", "Mazhtli", "Tochtl", "Ocotl", 
-    "Amotzil", "Cualtl", "Ezlin", "Huictli", "Ilhili", "Neotl", "Teplotl", "Xipitl", 
-    "Zyatzin", "Coatli", "Meatl", "Noczatl", "Quauna", "Titli", "Xolalli", "Zotli", 
-    "Chianya", "Icnoli"
+    "Tizoc", "Xolotl", "Yolotli", "Zolin", "Chimalli", "Icnoyotl"
   ],
   "femaleNames": [
     "Xochitl", "Citlali", "Malinalli", "Izel", "Nayeli", "Tlalli", "Yaretzi", "Metztli", 
     "Palli", "Zeltzin", "Atl", "Centehua", "Citlalmina", "Iuitl", "Miliani", "Nenetl", 
     "Papantzin", "Quetzalxochitl", "Tlacoehua", "Xoco", "Yoltzin", "Amoxtli", "Cihuaton", "Ixchel", 
-    "Nelli", "Patli", "Tonalnan", "Xilonen", "Zyanya", "Xozel", "Citatl", "Malitl", 
-    "Izlli", "Nayalli", "Tlalin", "Yazin", "Metchel", "Pallli", "Zelli", "Atlnetl", 
-    "Centon", "Ciitl", "Iuiztli", "Milini", "Netli", "Papanya", "Quetzi", "Tlitl", 
-    "Xoctzin", "Yolten", "Amlli", "Cihmina", "Ixchco", "Nenan", "Patyeli", "Tonaua", 
-    "Xihua", "Zyaatli", "Xochel", "Ciatl", "Malhitl", "Izelli", "Nalli", "Tlatzin", 
-    "Yarein", "Mehel", "Pallali", "Zeltli", "Atetl", "Cenaton", "Citltl", "Iutli", 
-    "Neneli", "Panya", "Queetzi", "Tlactl", "Xozin", "Yolonen", "Amoxli", "Ciina", 
-    "Ixcxoco", "Nellan", "Paeli", "Tonehua", "Xiloua", "Zytli", "Xocizel", "Maitl", 
-    "Izeelli", "Tlzin", "Yartzin", "Metzel", "Paali", "Zelalli", "Atltl", "Ceton", 
-    "Cithitl", "Iuitli", "Miani", "Nenxtli", "Papaya", "Qutzi", "Tlauitl", "Xocoin", 
-    "Yonen", "Amoalli", "Cihuna", "Ixoco", "Nellnan", "Patlli", "Tohua", "Xilehua", 
-    "Zyanli"
+    "Nelli", "Patli", "Tonalnan", "Xilonen", "Zyanya"
   ],
   "familyNames": [
     "Jaguarheart", "Riverborn", "Greenleaf", "Sunfeather", "Mistcoil", "Goldvine", "Canopyeye", "Jadeclaw", 
     "Riverstone", "Suncoil", "Mossfang", "Canopyborn", "Goldpetal", "Mistscale", "Templewind", "Quetzal", 
-    "Obsidian", "Jaher", "Rivfang", "Greert", "Sulaw", "Miswind", "Goldil", "Caorn", 
-    "Jadborn", "Rivene", "Suzal", "Mosvine", "Canoal", "Goeaf", "Miscoil", "Tempan", 
-    "Queye", "Obscale", "Jaguer", "Riang", "Greeart", "Sunfaw", "Miind", "Golcoil", 
-    "Canorn", "Jaorn", "Rivtone", "Suncal", "Moine", "Canetal", "Goldaf", "Mioil", 
-    "Temdian", "Quetye", "Obale", "Jagther", "Riveng", "Grart", "Sunclaw", "Mistnd", 
-    "Gooil", "Canborn", "Jadern", "Rione", "Suntzal", "Mossne", "Catal", "Golleaf", 
-    "Mistil", "Teian", "Queyeye", "Obsile"
+    "Obsidian"
   ],
   "settlementPrefixes": [
-    "Green", "River", "Sun", "Jade", "Canopy", "Mist", "High", "Old", 
-    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
-    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
-    "Gold", "Silver", "Grade", "Rivttle", "Sunar", "Jaold", "Canmist", "Mistth", 
-    "Hight", "Oldreen", "Newld", "Grest", "Lithite", "Nortun", "Soeat", "Easower", 
-    "Wested", "Upopy", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
-    "Blaiver", "Redew"
+    "Green", "River", "Sun", "Jade", "Canopy", "Mist", "Jungle", "Cloud", 
+    "Terrace", "Stone", "Rain", "Serpent", "Flame"
   ],
   "settlementSuffixes": [
-    "tlan", "co", "pan", "ya", "can", "tec", "ton", "ford", 
-    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
-    "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", 
-    "bay", "reach", "Tlya", "Coield", "Pante", "Yabay", "Cantec", "Tecok", 
-    "Toead", "Fortlan", "Wickrd", "Haoor", "Fiefell", "Woodan", "Brven", "Valport", 
-    "Moorff", "Rican", "Porwood", "Gatell", "Haach", "Steton", "Merele", "Feere", 
-    "Marco", "Clifck"
+    "tlan", "co", "pan", "ya", "can", "tec", "coatl", "tepec", 
+    "yan", "calli", "mil", "ixco", "hua"
   ],
   "rulerTitles": [
-    "High Speaker", "Elder", "War Chief", "Lord", "Lady", "High", "Grand", "Chief", 
-    "Master", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", "Duchess", 
-    "Marshal", "Chancellor", "Speaker", "Keeper"
+    "High Speaker", "Elder", "War Chief", "Tlatoani", "High Priest", "Lord", "Lady", "Speaker", 
+    "Sun-Warden"
   ],
   "dynastyPrefixes": [
-    "Clan", "Bloodline of", "Circle of", "House", "Line of", "Blood of", "Order of", "Banner of", 
-    "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", 
-    "Flame of", "Star of", "Stone of", "Root of"
+    "Clan", "Bloodline of", "Circle of", "Line of", "Blood of", "Sun of", "Temple of", "House"
   ],
   "kingdomPatterns": [
-    "Council of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Peoples", "Kingdom of {prefix}{suffix}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", "League of {prefix}", 
-    "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", "Confederation of {suffix}", 
-    "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}", "Khanate of {prefix}{suffix}"
+    "Council of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Peoples", "Empire of {prefix}", "Sun-Realm of {family}", "Temple-State of {prefix}", "Dominion of {prefix}{suffix}", "High Seat of {family}"
   ]
 }

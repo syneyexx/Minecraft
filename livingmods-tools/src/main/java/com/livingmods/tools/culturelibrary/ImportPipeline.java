@@ -94,6 +94,84 @@ public final class ImportPipeline {
         return new Result(discovered, 0, 0, duplicates, 0, 0, unavailable, 0);
     }
 
+    /**
+     * Local/manual import: copy developer-supplied {@code .mls} files into the culture
+     * structure library and append manifest entries. No network. Resumable via state file.
+     */
+    public Result importLocalDirectory(String culture, Path inbox) throws Exception {
+        if (!Files.isDirectory(inbox)) {
+            Files.createDirectories(inbox);
+            return new Result(0, 0, 0, 0, 0, 0, 0, 0);
+        }
+        Path cultureDir = resourcesRoot.resolve("cultures/" + culture + "/structures");
+        Files.createDirectories(cultureDir);
+        Path manifestPath = resourcesRoot.resolve("cultures/" + culture + "/structure_manifest.json");
+        List<String> entries = new ArrayList<>();
+        if (Files.isRegularFile(manifestPath)) {
+            String existing = Files.readString(manifestPath, StandardCharsets.UTF_8);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\{[^{}]*\"assetId\"[^{}]*\\}").matcher(existing);
+            while (m.find()) entries.add(m.group());
+        }
+        int imported = 0, duplicates = 0, invalid = 0;
+        try (var stream = Files.list(inbox)) {
+            List<Path> files = stream.filter(p -> p.getFileName().toString().endsWith(".mls"))
+                    .sorted().toList();
+            for (Path file : files) {
+                String name = file.getFileName().toString().replace(".mls", "");
+                String assetId = culture + "/local_" + name + "/v0";
+                if (state.containsKey("local:" + assetId) || entries.stream().anyMatch(e -> e.contains(assetId))) {
+                    duplicates++;
+                    continue;
+                }
+                try {
+                    byte[] bytes = Files.readAllBytes(file);
+                    var content = com.livingmods.worldgen.structure.MlsStructureFormat.read(bytes);
+                    String contentHash = com.livingmods.worldgen.structure.MlsStructureFormat.contentHash(bytes);
+                    String geometryHash = com.livingmods.worldgen.structure.MlsStructureFormat.geometryHash(content);
+                    String fileName = "local_" + name + "_v0.mls";
+                    Files.write(cultureDir.resolve(fileName), bytes);
+                    String contentPath = "assets/livingmods/cultures/" + culture + "/structures/" + fileName;
+                    entries.add("{\n"
+                            + "      \"assetId\": \"" + assetId + "\",\n"
+                            + "      \"source\": \"local_import\",\n"
+                            + "      \"sourceId\": \"" + name + "\",\n"
+                            + "      \"cultureKey\": \"" + culture + "\",\n"
+                            + "      \"canonicalRole\": \"HOUSE\",\n"
+                            + "      \"archetype\": \"local_" + name + "\",\n"
+                            + "      \"variant\": \"v0\",\n"
+                            + "      \"width\": " + content.width() + ",\n"
+                            + "      \"depth\": " + content.depth() + ",\n"
+                            + "      \"height\": " + content.height() + ",\n"
+                            + "      \"blockCount\": " + content.blocks().size() + ",\n"
+                            + "      \"entranceFacing\": \""
+                            + com.livingmods.worldgen.structure.MlsStructureFormat.facingName(content.entranceFacing())
+                            + "\",\n"
+                            + "      \"entranceX\": " + content.entranceX() + ",\n"
+                            + "      \"entranceY\": " + content.entranceY() + ",\n"
+                            + "      \"entranceZ\": " + content.entranceZ() + ",\n"
+                            + "      \"allowedRotations\": [0, 90, 180, 270],\n"
+                            + "      \"mirrorAllowed\": false,\n"
+                            + "      \"contentPath\": \"" + contentPath + "\",\n"
+                            + "      \"contentHash\": \"" + contentHash + "\",\n"
+                            + "      \"geometryHash\": \"" + geometryHash + "\",\n"
+                            + "      \"uniquenessGroup\": \"house:local_" + name + "\",\n"
+                            + "      \"status\": \"IMPORTED_SANITIZED\",\n"
+                            + "      \"sanitized\": true\n"
+                            + "    }");
+                    state.put("local:" + assetId, "IMPORTED_SANITIZED");
+                    imported++;
+                } catch (Exception e) {
+                    invalid++;
+                    state.put("local:" + assetId, "INVALID");
+                }
+            }
+        }
+        Files.writeString(manifestPath, "{\n  \"assets\": [\n    "
+                + String.join(",\n    ", entries) + "\n  ]\n}\n", StandardCharsets.UTF_8);
+        persistState();
+        return new Result(imported + duplicates + invalid, imported, imported, duplicates, invalid, 0, 0, 0);
+    }
+
     public Result resume() throws Exception {
         // Resume incomplete cultures from query plans.
         String[] cultures = {

@@ -46,13 +46,20 @@ public final class StructureCatalog {
         Map<String, List<StructureAsset>> index = new LinkedHashMap<>();
         List<StructureAsset> sorted = new ArrayList<>(assets == null ? List.of() : assets);
         sorted.sort(Comparator.comparing(StructureAsset::assetId));
+        List<String> loadErrors = new ArrayList<>();
         for (StructureAsset a : sorted) {
             if (!a.isProductionReady()) continue;
+            if (ids.containsKey(a.assetId())) {
+                loadErrors.add("duplicate assetId rejected: " + a.assetId());
+                continue; // keep first; never silent last-write-wins
+            }
             ids.put(a.assetId(), a);
             String key = indexKey(a.cultureKey(), a.canonicalRole());
             index.computeIfAbsent(key, k -> new ArrayList<>()).add(a);
-            if (!a.cultureKey().equals("*")) {
-                // also index under shared fallback for role-only queries elsewhere if needed
+        }
+        if (!loadErrors.isEmpty()) {
+            for (String err : loadErrors) {
+                System.err.println("[StructureCatalog] " + err);
             }
         }
         for (List<StructureAsset> list : index.values()) {
@@ -171,6 +178,20 @@ public final class StructureCatalog {
             }
         }
 
+        // Geometry / uniqueness-group anti-repetition (not just assetId).
+        Map<String, Integer> recentGeom = new LinkedHashMap<>();
+        Map<String, Integer> recentGroups = new LinkedHashMap<>();
+        if (recentAssetIds != null) {
+            for (String id : recentAssetIds) {
+                StructureAsset prev = byId.get(id);
+                if (prev == null) continue;
+                if (!prev.geometryHash().isBlank()) {
+                    recentGeom.merge(prev.geometryHash(), 1, Integer::sum);
+                }
+                recentGroups.merge(prev.uniquenessGroup(), 1, Integer::sum);
+            }
+        }
+
         double total = 0;
         double[] weights = new double[c.size()];
         for (int i = 0; i < c.size(); i++) {
@@ -180,15 +201,22 @@ public final class StructureCatalog {
             if (used > 0) {
                 w *= Math.pow(0.45, used);
             }
+            int geomUsed = recentGeom.getOrDefault(a.geometryHash(), 0);
+            if (geomUsed > 0) {
+                w *= Math.pow(0.35, geomUsed);
+            }
+            int groupUsed = recentGroups.getOrDefault(a.uniquenessGroup(), 0);
+            if (a.uniquePerSettlement() && (used > 0 || groupUsed > 0)) {
+                w = 0;
+            } else if (groupUsed > 0 && isLandmarkRole(role)) {
+                w = 0;
+            }
             // Cap identical asset dominance for common residential roles.
             if (isResidential(role) && recentAssetIds != null && !recentAssetIds.isEmpty()) {
                 double ratio = used / (double) recentAssetIds.size();
                 if (ratio > 0.12) {
                     w *= 0.05;
                 }
-            }
-            if (a.uniquePerSettlement() && used > 0) {
-                w = 0;
             }
             weights[i] = Math.max(0, w);
             total += weights[i];
@@ -346,6 +374,43 @@ public final class StructureCatalog {
     private static boolean isResidential(BuildingRole role) {
         return role == BuildingRole.HOUSE || role == BuildingRole.TOWNHOUSE
                 || role == BuildingRole.FARMHOUSE || role == BuildingRole.MANOR;
+    }
+
+    private static boolean isLandmarkRole(BuildingRole role) {
+        return role == BuildingRole.PALACE || role == BuildingRole.CASTLE_KEEP
+                || role == BuildingRole.TEMPLE || role == BuildingRole.MONUMENT
+                || role == BuildingRole.MARKET_HALL;
+    }
+
+    /** Soft filters used by asset-first planners. */
+    public List<StructureAsset> selectCandidates(
+            String cultureKey,
+            BuildingRole role,
+            SettlementTier tier,
+            WealthClass wealth,
+            StructureSizeClass sizeHint,
+            boolean requireCoastal,
+            boolean requireUnderground
+    ) {
+        List<StructureAsset> c = candidates(cultureKey, role, tier, wealth, sizeHint);
+        if (c.isEmpty()) {
+            c = candidates(cultureKey, role, tier, wealth, null);
+        }
+        List<StructureAsset> filtered = new ArrayList<>();
+        for (StructureAsset a : c) {
+            if (requireCoastal && !a.coastalRequired() && !a.tags().contains("coastal")) {
+                // Prefer coastal-tagged when required, but allow non-coastal as soft fallback later.
+                continue;
+            }
+            if (requireUnderground && !a.underground()) continue;
+            if (!requireUnderground && a.underground() && !"wizard_trees".equals(cultureKey)) continue;
+            filtered.add(a);
+        }
+        if (filtered.isEmpty()) {
+            return c;
+        }
+        filtered.sort(Comparator.comparing(StructureAsset::assetId));
+        return filtered;
     }
 
     private static String indexKey(String culture, BuildingRole role) {

@@ -1,17 +1,22 @@
-# Structure Library
+# Structure Library (M6.1)
 
-MineLife M6 replaces palette-only procedural buildings with a **data-driven structure catalog**.
+MineLife uses a **data-driven structure catalog** of culture-distinct MLS1 assets.
+M6.1 completes the library for production-usable worldgen: distinct geometry, asset-first
+lot planning, landmark reservation, and strict validation.
 
 ## Authority
 
 | Concern | Location |
 |---|---|
-| Asset metadata + selection | `livingmods-worldgen` `StructureCatalog` |
+| Asset metadata + selection | `StructureCatalog` |
+| Identity | `contentHash` + palette-independent `geometryHash` |
+| Validation | `CatalogValidation` (duplicate IDs/paths/geometry fail) |
 | Local block payload (MLS1) | `MlsStructureFormat` |
-| Planning selection | `ArchitectureGrammar` → persists `PlannedBuilding.assetId` |
-| Chunk placement | `StructureAssetMaterializer` via `SafeChunkWriter` |
-| Dynamic growth | `DynamicUrbanPlanner` + intent `provenance.assetId` |
-| Procedural fallback | `BuildingMaterializer` (unchanged shells) |
+| Planning selection | `ArchitectureGrammar` (asset-first) → `PlannedBuilding.assetId` |
+| Settlement lots | `UrbanPlanner` landmark-first then asset-sized lots |
+| Chunk placement | `StructureAssetMaterializer` (rotated chunk index) |
+| Dynamic growth | `DynamicUrbanPlanner` asset-first + intent `provenance.assetId` |
+| Procedural fallback | `BuildingMaterializer` — emergency/old-plan only |
 
 **Never** re-roll `assetId` at chunk materialization time.
 
@@ -21,10 +26,7 @@ MineLife M6 replaces palette-only procedural buildings with a **data-driven stru
 livingmods-worldgen/src/main/resources/assets/livingmods/
   structures/
     catalog_index.txt
-    shared/structure_manifest.json + *.mls
-    ruins/
-    bandit/
-    infrastructure/
+    shared/ | ruins/ | bandit/ | infrastructure/
   cultures/<cultureKey>/
     culture.json
     naming.json
@@ -32,32 +34,38 @@ livingmods-worldgen/src/main/resources/assets/livingmods/
     structures/*.mls
 ```
 
-Packaged into the mod via worldgen Jar-in-Jar. Runtime does **not** contact BuildPaste.
+Packaged via worldgen Jar-in-Jar. Runtime does **not** contact BuildPaste.
 
-## Asset metadata
+## Identity layers
 
-See `StructureAsset` — includes culture, role, archetype, size class, entrance,
-foundation mode, provenance, content hash, import status.
+| Field | Meaning |
+|---|---|
+| `contentHash` | Exact MLS bytes (palette + blocks) |
+| `geometryHash` | Occupied coords + dims + entrance + floor topology (palette ignored) |
+| `uniquenessGroup` | Landmark uniqueness scope (e.g. `palace`, `keep`) |
 
-Visual subtypes are **archetypes** (e.g. `STAVE_TEMPLE`, `YURT`), not new `BuildingRole` values.
+Duplicate production `assetId` / `contentPath` / within-culture exact geometry are validation failures.
 
-## Selection
+## Planning (asset-first)
 
-Deterministic weighted pick from catalog using:
+1. Demand / district role
+2. Select candidate assets
+3. Choose allowed rotation (entrance toward street)
+4. Compute rotated dimensions + clearance
+5. Reserve lot
+6. Persist `PlannedBuilding.assetId`
 
-- world seed + structure ordinal
-- culture, role, tier, wealth, size hint
-- recent-use penalty / residential dominance cap
-- unique-per-settlement for palaces/keeps
+Landmarks (palace, keep, temple, market hall, …) are reserved **before** generic fill.
 
-If no fit: procedural `StructureRegistry` template fallback.
+## Materialization
 
-## MLS1 format
-
-Deterministic palette + non-air placements. No entities, command blocks, or loot inventories.
+- Rotated per-chunk index — large castles are not fully scanned every chunk
+- Foundation modes: `FLAT`, `CUT_AND_FILL`, `TERRACED`, `HILLSIDE`, `STILTS`, `UNDERGROUND`, `WATERFRONT`
+- Entrance clearing uses authored entrance coordinates after rotation
 
 ## Content revision
 
-`StructureCatalogVersions.CONTENT_REVISION` / `LivingModsVersions.STRUCTURE_CATALOG_REVISION`
+`STRUCTURE_CATALOG_REVISION = 2` (M6.1 distinct library)
+`WORLDGEN_VERSION = 4` (asset-first planning)
 
-Distinct from protocol, worldgen, and canonical save schema.
+Protocol and canonical save schema unchanged unless their formats change.

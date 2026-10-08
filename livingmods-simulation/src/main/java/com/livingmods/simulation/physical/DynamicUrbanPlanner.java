@@ -109,17 +109,31 @@ public final class DynamicUrbanPlanner {
         CultureDefinition def = cultures.get(culture).orElse(cultures.get(CultureKeys.DEFAULT).orElseThrow());
         DynamicSettlementGeometry geo = state.dynamicPhysical().settlementGeometry().get(settlement.id());
         BoundingBox2 search = geo != null ? geo.boundary() : BoundingBox2.around(settlement.center(), 48);
-        int half = footprintHalf(role);
         DeterministicRandom random = new DeterministicRandom(Hashing.mix(state.seed(), ordinal ^ role.ordinal()));
+        List<String> recent = recentAssetIds(state, settlement.id());
+        boolean coastal = false;
+        boolean underground = def.underground();
+
+        // Asset-first: select structure before committing plot size.
+        Optional<ArchitectureGrammar.AssetPlacement> assetPlacement = grammar.selectAssetPlacement(
+                state.seed(), ordinal, def, role, WealthClass.COMMON, settlement.tier(),
+                2, recent, coastal, underground
+        );
+        int half = assetPlacement.map(ap -> Math.max(ap.lotWidth(), ap.lotDepth()) / 2)
+                .orElseGet(() -> footprintHalf(role));
 
         List<PlotCandidate> candidates = new ArrayList<>();
         for (int i = 0; i < MAX_PLOT_CANDIDATES; i++) {
-            int x = search.minX() + 4 + random.nextInt(Math.max(1, search.width() - 8));
-            int z = search.minZ() + 4 + random.nextInt(Math.max(1, search.depth() - 8));
+            int x = search.minX() + half + random.nextInt(Math.max(1, search.width() - half * 2));
+            int z = search.minZ() + half + random.nextInt(Math.max(1, search.depth() - half * 2));
             BlockPos2 center = BlockPos2.of(x, z);
-            BoundingBox2 footprint = BoundingBox2.around(center, half);
+            int lotW = assetPlacement.map(ArchitectureGrammar.AssetPlacement::lotWidth).orElse(half * 2);
+            int lotD = assetPlacement.map(ArchitectureGrammar.AssetPlacement::lotDepth).orElse(half * 2);
+            BoundingBox2 footprint = BoundingBox2.of(
+                    center.x() - lotW / 2, center.z() - lotD / 2,
+                    center.x() - lotW / 2 + lotW - 1, center.z() - lotD / 2 + lotD - 1);
             TerrainMetrics metrics = sampleTerrain(footprint);
-            if (!metrics.suitable(half)) {
+            if (!metrics.suitable(Math.max(3, half / 2))) {
                 continue;
             }
             if (collides(state, settlement.id(), footprint)) {
@@ -130,22 +144,42 @@ public final class DynamicUrbanPlanner {
                 continue;
             }
             String facing = entranceToward(center, road);
-            List<String> recent = recentAssetIds(state, settlement.id());
-            ArchitectureGrammar.Blueprint blueprint = grammar.generate(
-                    state.seed(),
-                    ordinal + i,
-                    def,
-                    role,
-                    WealthClass.COMMON,
-                    settlement.tier(),
-                    LotId.deterministic(state.seed(), ordinal + i),
-                    settlement.id(),
-                    DistrictId.deterministic(state.seed(), ordinal + i),
-                    footprint,
-                    facingToDir(facing),
-                    (int) metrics.medianY,
-                    recent
-            );
+            ArchitectureGrammar.Blueprint blueprint;
+            if (assetPlacement.isPresent()) {
+                ArchitectureGrammar.AssetPlacement ap = assetPlacement.get();
+                int rot = ArchitectureGrammar.chooseRotationFit(ap.asset(), facingToDir(facing), footprint);
+                int[] dims = com.livingmods.worldgen.structure.MlsStructureFormat.rotatedDimensions(
+                        ap.asset().width(), ap.asset().depth(), rot);
+                ArchitectureGrammar.AssetPlacement aligned = new ArchitectureGrammar.AssetPlacement(
+                        ap.asset(), rot, dims[0], dims[1], ap.clearance(),
+                        com.livingmods.worldgen.structure.MlsStructureFormat.rotateFacing(
+                                ap.asset().entranceFacing(), rot));
+                blueprint = grammar.generateFromPlacement(
+                        state.seed(), ordinal + i, def, role, WealthClass.COMMON, settlement.tier(),
+                        LotId.deterministic(state.seed(), ordinal + i),
+                        settlement.id(),
+                        DistrictId.deterministic(state.seed(), ordinal + i),
+                        footprint,
+                        (int) metrics.medianY,
+                        aligned
+                );
+            } else {
+                blueprint = grammar.generate(
+                        state.seed(),
+                        ordinal + i,
+                        def,
+                        role,
+                        WealthClass.COMMON,
+                        settlement.tier(),
+                        LotId.deterministic(state.seed(), ordinal + i),
+                        settlement.id(),
+                        DistrictId.deterministic(state.seed(), ordinal + i),
+                        footprint,
+                        facingToDir(facing),
+                        (int) metrics.medianY,
+                        recent
+                );
+            }
             double score = scorePlot(metrics, center, road, settlement.center(), role);
             candidates.add(new PlotCandidate(
                     center, blueprint.building().footprint(), facing, road, score, culture, blueprint));

@@ -4,71 +4,34 @@
     "Connor", "Bran", "Finn", "Cian", "Liam", "Eoin", "Niall", "Ronán", 
     "Tadhg", "Oisín", "Aidan", "Brennan", "Cathal", "Declan", "Eamon", "Fergus", 
     "Gareth", "Killian", "Lorcan", "Padraig", "Quinn", "Rory", "Seamus", "Tiernan", 
-    "Ultan", "Cormac", "Darragh", "Eoghan", "Fionn", "Odhran", "Coian", "Braidan", 
-    "Finnan", "Citan", "Liabran", "Eoinhg", "Nigus", "Ronamus", "Tadhan", "Oiall", 
-    "Aidclan", "Brennn", "Cahan", "Decliam", "Eamoan", "Fecan", "Garrmac", "Killnn", 
-    "Loisn", "Padreth", "Quinan", "Ronor", "Searonn", "Tieron", "Ulory", "Corionn", 
-    "Darrin", "Eohal", "Fioraig", "Odhrgh"
+    "Ultan", "Cormac", "Darragh", "Eoghan", "Fionn", "Odhran"
   ],
   "femaleNames": [
     "Maeve", "Aoife", "Niamh", "Saoirse", "Siobhan", "Orla", "Fiona", "Brigid", 
     "Aine", "Clodagh", "Aisling", "Blaithin", "Cara", "Deirdre", "Eilis", "Fionnuala", 
     "Grainne", "Iona", "Keira", "Mairead", "Neasa", "Oonagh", "Roisin", "Shannon", 
-    "Tara", "Una", "Bronagh", "Cliona", "Eithne", "Marse", "Aoiling", "Niamna", 
-    "Saara", "Sioiamh", "Orlagh", "Finne", "Brinnon", "Ainefe", "Cline", "Aisuala", 
-    "Blaiin", "Caeve", "Deiigid", "Eiliis", "Fiagh", "Grathne", "Ionana", "Kedre", 
-    "Maieasa", "Neasna", "Oorla", "Roicara", "Shanad", "Taagh", "Unabhan", "Bronin", 
-    "Clira", "Eituna", "Maevse", "Aoing", "Niaiona", "Saoira", "Siamh", "Orldagh", 
-    "Fionne", "Brnon", "Ainoife", "Clodne", "Aiala", "Blaisin", "Carave", "Degid", 
-    "Eililis", "Fiongh", "Grhne", "Ioniona", "Keirre", "Maasa", "Neaiona", "Oonala", 
-    "Roara", "Sharead", "Taragh", "Unhan", "Brothin", "Cliora", "Eiuna", "Maeirse", 
-    "Aoifng", "Niona", "Saotara", "Siobmh", "Oragh", "Fioinne", "Brigon", "Aiife", 
-    "Cloaine", "Aislla", "Blsin", "Caraeve", "Deirid", "Fionagh", "Graine", "Ioona", 
-    "Keirdre", "Mairsa", "Neona", "Oonorla", "Roisra", "Shead", "Tarnagh", "Unaan", 
-    "Brhin", "Clieira", "Eithna"
+    "Tara", "Una", "Bronagh", "Cliona", "Eithne"
   ],
   "familyNames": [
     "Oakheart", "Mistwalker", "Ravensong", "Briarthorn", "Glenborn", "Fernvale", "Hollowreed", "MacCarthy", 
     "OBrien", "OConnor", "ONeill", "Fitzpatrick", "Gallagher", "Kelly", "Murphy", "Ryan", 
-    "Walsh", "Oaorn", "Miseill", "Ravert", "Brthy", "Glerphy", "Fernrn", "Hoick", 
-    "Maclker", "OCyan", "ONevale", "Fitzer", "Gaong", "Kelnnor", "Murpsh", "Ryeed", 
-    "Walelly", "Oakhrn", "Miill", "Raveart", "Briahy", "Glphy", "Ferborn", "Hollck", 
-    "Maker", "OBrrien", "OConan", "ONale", "Fitgher", "Gallng", "Kenor", "Muralsh", 
-    "Ryaned", "Wally", "Oakhorn", "Mistll", "Raart", "Brirthy", "Glenhy", "Feorn", 
-    "Holrick", "MacCer", "OBien", "OCoryan", "ONeile", "Fiher", "Galsong", "Kellor", 
-    "Mulsh", "Ryareed", "Walsly"
+    "Walsh"
   ],
   "settlementPrefixes": [
-    "Glen", "Oak", "Mist", "Fern", "Hollow", "Briar", "High", "Old", 
-    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
-    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
-    "Gold", "Silver", "Glern", "Oakttle", "Mistar", "Feold", "Holriar", "Briath", 
-    "Hight", "Oldglen", "Newld", "Grest", "Lithite", "Nortst", "Soeat", "Easower", 
-    "Wested", "Uplow", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
-    "Blaoak", "Redew"
+    "Glen", "Oak", "Mist", "Fern", "Hollow", "Briar", "Green", "Hill", 
+    "Stone", "Wild", "Grove", "River", "Tor"
   ],
   "settlementSuffixes": [
-    "dun", "loch", "glen", "ford", "cairn", "mór", "ton", "wick", 
-    "haven", "field", "wood", "brook", "vale", "moor", "ridge", "port", 
-    "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", "bay", 
-    "reach", "Duord", "Locwood", "Glenll", "Foach", "Caiton", "Mror", "Toell", 
-    "Wicglen", "Haveld", "Fiate", "Woobay", "Broomr", "Vaale", "Moomere", "Ridgch", 
-    "Poven", "Gatport", "Hallff", "Stirn", "Merrook", "Fellad", "Madun", "Cliwick", 
-    "Bayge", "Rersh"
+    "dun", "loch", "glen", "ford", "cairn", "mór", "kil", "tor", 
+    "llyn", "bally", "rath", "avon", "ness"
   ],
   "rulerTitles": [
-    "High King", "Chieftain", "Druid-King", "Lord", "Lady", "High", "Grand", "Chief", 
-    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
-    "Duchess", "Marshal", "Chancellor", "Speaker"
+    "High King", "Chieftain", "Druid-King", "Queen", "Druid-Lord", "Ri", "Banrion", "Elder"
   ],
   "dynastyPrefixes": [
-    "Clan", "Tuath of", "Blood of", "House", "Line of", "Order of", "Circle of", "Banner of", 
-    "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", 
-    "Flame of", "Star of", "Stone of", "Root of"
+    "Clan", "Tuath of", "Blood of", "Grove of", "House"
   ],
   "kingdomPatterns": [
-    "Kingdom of {prefix}{suffix}", "Tuath {family}", "{title}'s {prefix} Glens", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", "League of {prefix}", 
-    "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", "Confederation of {suffix}", 
-    "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}", "Khanate of {prefix}{suffix}"
+    "Kingdom of {prefix}{suffix}", "Tuath {family}", "{title}'s {prefix} Glens", "Kingdom of {prefix}", "High Realm of {family}", "Tuath of {prefix}{suffix}", "Clanlands of {family}", "Grove-Realm of {prefix}"
   ]
 }

@@ -4,77 +4,34 @@
     "Temujin", "Batu", "Subutai", "Jebe", "Mukali", "Kublai", "Ogedei", "Tolui", 
     "Altan", "Chagatai", "Arslan", "Batuhan", "Chuluun", "Erden", "Gantulga", "Khasar", 
     "Munkh", "Naran", "Otgon", "Sukh", "Temur", "Uugan", "Yesugei", "Zaya", 
-    "Bayan", "Dorj", "Ganbaatar", "Khulanbaatar", "Sarnai", "Teebe", "Batslan", "Subuan", 
-    "Jeyan", "Mukutai", "Ognkh", "Tolzaya", "Altatu", "Chtan", "Arsasar", "Batuei", 
-    "Chjin", "Erdolui", "Gantga", "Khgan", "Munrnai", "Naraei", "Otden", "Sukemur", 
-    "Temuar", "Uulai", "Yesluun", "Zayakh", "Batar", "Dorkali", "Ganban", "Khgon", 
-    "Sardorj", "Temube", "Balan", "Subaran", "Jebean", "Mutai", "Kubatai", "Ogedkh", 
-    "Toaya", "Altbatu", "Chagan", "Arsar", "Batugei", "Chulin", "Erlui", "Ganulga", 
-    "Khasan", "Munai", "Naredei", "Otgoen", "Sumur", "Tematar", "Uugaai", "Yeuun", 
-    "Zaysukh", "Bayaar", "Doali", "Ganuhan", "Khulon", "Saorj", "Temjebe", "Batuan", 
-    "Suran", "Jebayan", "Mukaai", "Kutai", "Ogeunkh", "Toluya", "Alatu", "Chaltan", 
-    "Arslar", "Bagei", "Chuujin", "Erdeui", "Galga", "Khaugan", "Munkai", "Nadei", 
-    "Otgrden", "Sukhur", "Tetar", "Uugblai", "Yesuun", "Zaukh", "Bayatar", "Dorjli", 
-    "Gahan", "Khutgon", "Sarnrj"
+    "Bayan", "Dorj", "Ganbaatar", "Khulanbaatar", "Sarnai"
   ],
   "femaleNames": [
     "Borte", "Khulan", "Yesui", "Sorkhokhtani", "Mandukhai", "Alaqa", "Hoelun", "Qutulun", 
     "Cirina", "Temulun", "Altantsetseg", "Bolormaa", "Gerel", "Narangerel", "Oyunchimeg", "Sarangerel", 
     "Tsetseg", "Uugantsetseg", "Zolzaya", "Anu", "Battsetseg", "Delger", "Enkhtuya", "Munhtuya", 
-    "Nomin", "Odval", "Solongo", "Tungalag", "Boani", "Khutseg", "Yesueg", "Somin", 
-    "Mantani", "Alaqeg", "Hoseg", "Qutomin", "Cirini", "Teseg", "Alttseg", "Boloin", 
-    "Geani", "Nartseg", "Oyuneg", "Samin", "Tsetani", "Uugaeg", "Zoseg", "Anuomin", 
-    "Battni", "Deseg", "Enktseg", "Munhin", "Noani", "Odvtseg", "Soloeg", "Tumin", 
-    "Bortani", "Khuleg", "Yeseg", "Soromin", "Mandni", "Alseg", "Hoetseg", "Qutuin", 
-    "Ciani", "Temtseg", "Altaeg", "Bomin", "Gertani", "Naraeg", "Oyseg", "Saromin", 
-    "Tsetni", "Uuseg", "Zoltseg", "Anuin", "Baani", "Deltseg", "Enkheg", "Mumin", 
-    "Nomtani", "Odvaeg", "Soseg", "Tunomin", "Bortni", "Khseg", "Yestseg", "Sorkin", 
-    "Maani", "Alatseg", "Hoeleg", "Qumin", "Cirtani", "Temueg", "Bolomin", "Gereni", 
-    "Naseg", "Oyutseg", "Sarain", "Tsani", "Uugtseg", "Zolzeg", "Anmin", "Battani", 
-    "Delgeg", "Enseg", "Munomin", "Nomini", "Odseg", "Soltseg", "Tungin"
+    "Nomin", "Odval", "Solongo", "Tungalag"
   ],
   "familyNames": [
     "Horsewind", "Skyarrow", "Wolfpack", "Dustmane", "Eaglefeather", "Grassfire", "Stormhoof", "Batbayar", 
     "Erdene", "Ganbold", "Khishig", "Munkhbayar", "Nergui", "Otgonbayar", "Sukhbaatar", "Tuvshin", 
-    "Zorig", "Hoane", "Skyshig", "Wolfnd", "Duyar", "Eagatar", "Graser", "Styar", 
-    "Batrrow", "Gahin", "Khifire", "Munkui", "Neack", "Otgbold", "Sukhig", "Tuoof", 
-    "Zorayar", "Horsne", "Skhig", "Wolwind", "Dustar", "Eatar", "Grather", "Storar", 
-    "Barow", "Erddene", "Ganbin", "Khire", "Munrgui", "Nergck", "Otold", "Sukorig", 
-    "Tuvsof", "Zoyar", "Hormane", "Skyaig", "Woind", "Dusayar", "Eaglar", "Grher", 
-    "Stoayar", "Batbow", "Erene", "Ganshin", "Khisre", "Mugui", "Nerpack", "Otgold", 
-    "Surig", "Tuvhoof", "Zoriar"
+    "Zorig"
   ],
   "settlementPrefixes": [
-    "Wind", "Horse", "Sky", "Grass", "Eagle", "Dust", "High", "Old", 
-    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
-    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
-    "Gold", "Silver", "Wiass", "Horttle", "Skyar", "Grold", "Eagdust", "Dustth", 
-    "Hight", "Oldwind", "Newld", "Grest", "Lithite", "Nortky", "Soeat", "Easower", 
-    "Wested", "Upgle", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
-    "Blaorse", "Redew"
+    "Wind", "Horse", "Sky", "Grass", "Eagle", "Dust", "Golden", "Open", 
+    "Far", "Blue", "Herd"
   ],
   "settlementSuffixes": [
-    "ordu", "ger", "khan", "step", "aul", "yurt", "ton", "ford", 
-    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
-    "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", 
-    "bay", "reach", "Ortep", "Gerield", "Khante", "Stbay", "Aulyurt", "Yurtok", 
-    "Toead", "Forordu", "Wickrd", "Haoor", "Fiefell", "Woodan", "Brven", "Valport", 
-    "Moorff", "Riaul", "Porwood", "Gatell", "Haach", "Steton", "Merele", "Feere", 
-    "Marger", "Clifck"
+    "ordu", "ger", "khan", "step", "aul", "yurt", "ordo", "kuren", 
+    "gol", "nur", "bulag", "hot", "sum", "tala", "uul"
   ],
   "rulerTitles": [
-    "Khan", "Noyan", "Bagatur", "Lord", "Lady", "High", "Grand", "Chief", 
-    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
-    "Duchess", "Marshal", "Chancellor", "Speaker"
+    "Khan", "Noyan", "Bagatur", "Khatun", "Baghatur", "Khagan", "Chief", "Elder"
   ],
   "dynastyPrefixes": [
-    "Clan", "Ordu of", "Blood of", "House", "Line of", "Order of", "Circle of", "Banner of", 
-    "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", 
-    "Flame of", "Star of", "Stone of", "Root of"
+    "Clan", "Ordu of", "Blood of", "Herd of", "Banner of"
   ],
   "kingdomPatterns": [
-    "Khanate of {prefix}{suffix}", "Ordu {family}", "{title}'s {prefix} Horde", "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", 
-    "League of {prefix}", "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", 
-    "Confederation of {suffix}", "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}"
+    "Khanate of {prefix}{suffix}", "Ordu {family}", "{title}'s {prefix} Horde", "Khanate of {prefix}", "Ordu of {family}", "Khaganate of {prefix}{suffix}", "Steppe Realm of {family}", "Herd-Nation of {prefix}"
   ]
 }
