@@ -195,11 +195,73 @@ public final class PhysicalOutcomeApplier {
     ) {
         SettlementId sid = intent.settlementId().orElse(null);
         SettlementState settlement = sid == null ? null : state.settlements().get(sid);
-        BuildingRole role = intent.buildingRole().orElse(BuildingRole.HOUSE);
-        StructureId structureId = intent.structureId().orElseGet(() ->
-                StructureId.of(intent.sourceEntityId() != null
-                        ? intent.sourceEntityId()
-                        : UUID.randomUUID()));
+        intent.provenance().put("reservationState", "CONSUMED");
+
+        // Planning-meta and non-structure intents must not become HOUSE records.
+        if (intent.type().isPlanningMeta() || intent.type().isTransientProjection()) {
+            return;
+        }
+        if (intent.type() == PhysicalIntentType.EXTEND_ROAD
+                || intent.type() == PhysicalIntentType.BUILD_BRIDGE
+                || intent.type() == PhysicalIntentType.BUILD_WALL
+                || intent.type() == PhysicalIntentType.BUILD_GATE
+                || intent.type() == PhysicalIntentType.DAMAGE_STRUCTURE
+                || intent.type() == PhysicalIntentType.SIEGE_DAMAGE
+                || intent.type() == PhysicalIntentType.DESTROY_STRUCTURE
+                || intent.type() == PhysicalIntentType.REMOVE_BANDIT_CAMP) {
+            if (settlement != null && (intent.type() == PhysicalIntentType.BUILD_WALL
+                    || intent.type() == PhysicalIntentType.BUILD_GATE)) {
+                settlement.setSecurity(Math.min(1.0, settlement.security() + 0.04));
+            }
+            if (intent.type() == PhysicalIntentType.REMOVE_BANDIT_CAMP) {
+                applyCampCleared(state, Map.of(
+                        "campId", intent.provenance().getOrDefault("campId", intent.id().value().toString()),
+                        "settlementId", sid == null ? "" : sid.toString(),
+                        "mode", intent.provenance().getOrDefault("mode", "abandon_ruin")
+                ), ctx);
+            }
+            return;
+        }
+
+        if (!intent.type().createsStructureRecord() && intent.type() != PhysicalIntentType.REPAIR_STRUCTURE) {
+            return;
+        }
+
+        StructureId structureId = intent.structureId().orElse(null);
+        if (structureId == null && intent.sourceEntityId() != null) {
+            structureId = StructureId.of(intent.sourceEntityId());
+        }
+        if (structureId == null) {
+            // Missing required identity is a data-contract error — never UUID.randomUUID().
+            intent.transitionTo(PhysicalIntentStatus.FAILED_TERMINAL,
+                    ctx.time().absoluteTicks(), "missing_structure_identity");
+            return;
+        }
+
+        if (intent.type() == PhysicalIntentType.REPAIR_STRUCTURE) {
+            DynamicStructureRecord existing = state.dynamicPhysical().structures().get(structureId);
+            if (existing != null) {
+                existing.setIntegrity(1.0);
+                existing.setStatus(StructureIntegrityStatus.ACTIVE);
+            }
+            return;
+        }
+
+        BuildingRole role = intent.buildingRole().orElse(null);
+        if (role == null) {
+            role = switch (intent.type()) {
+                case CREATE_BANDIT_CAMP, UPGRADE_BANDIT_CAMP -> BuildingRole.GUARDHOUSE;
+                case CREATE_FORTIFICATION -> BuildingRole.BARRACKS;
+                case CREATE_RUIN -> BuildingRole.RUIN;
+                case CREATE_RESOURCE_SITE -> BuildingRole.WAREHOUSE;
+                default -> null;
+            };
+        }
+        if (role == null) {
+            intent.transitionTo(PhysicalIntentStatus.FAILED_TERMINAL,
+                    ctx.time().absoluteTicks(), "missing_building_role");
+            return;
+        }
 
         int foundationY = parseInt(evidence.get("foundationY"), 64);
         int residential = switch (role) {
@@ -239,16 +301,8 @@ public final class PhysicalOutcomeApplier {
             }
             settlement.setPhysicalCapacity(settlement.physicalCapacity() + 2.0 + residential * 0.5);
             settlement.setDevelopmentDeficit(Math.max(0, settlement.developmentDeficit() - 0.35));
-            if (intent.type() == PhysicalIntentType.BUILD_WALL
-                    || intent.type() == PhysicalIntentType.CREATE_FORTIFICATION) {
+            if (intent.type() == PhysicalIntentType.CREATE_FORTIFICATION) {
                 settlement.setSecurity(Math.min(1.0, settlement.security() + 0.08));
-            }
-            if (intent.type() == PhysicalIntentType.REPAIR_STRUCTURE) {
-                DynamicStructureRecord existing = state.dynamicPhysical().structures().get(structureId);
-                if (existing != null) {
-                    existing.setIntegrity(1.0);
-                    existing.setStatus(StructureIntegrityStatus.ACTIVE);
-                }
             }
         }
 
@@ -480,18 +534,28 @@ public final class PhysicalOutcomeApplier {
                         playerSystems.recordPlayerAction(state, player, k, 0.15, ctx));
             }
         }
-        // Mark matching camp intents removed.
+        // Mark matching camp intents removed (active or already materialized physical camps).
         String campId = evidence.get("campId");
         for (PhysicalIntent intent : state.dynamicPhysical().intents().values()) {
-            if ((intent.type() == PhysicalIntentType.CREATE_BANDIT_CAMP
-                    || intent.type() == PhysicalIntentType.UPGRADE_BANDIT_CAMP)
-                    && intent.status().isActive()) {
-                if (campId == null || campId.equals(intent.provenance().get("campId"))
-                        || (intent.sourceEntityId() != null && intent.sourceEntityId().toString().equals(campId))) {
-                    intent.transitionTo(PhysicalIntentStatus.REMOVED, ctx.time().absoluteTicks(), "cleared");
-                }
+            if (intent.type() != PhysicalIntentType.CREATE_BANDIT_CAMP
+                    && intent.type() != PhysicalIntentType.UPGRADE_BANDIT_CAMP
+                    && intent.type() != PhysicalIntentType.REMOVE_BANDIT_CAMP) {
+                continue;
+            }
+            boolean match = campId == null
+                    || campId.equals(intent.provenance().get("campId"))
+                    || campId.equals(intent.id().value().toString())
+                    || (intent.sourceEntityId() != null && intent.sourceEntityId().toString().equals(campId));
+            if (!match) continue;
+            if (intent.status() == PhysicalIntentStatus.MATERIALIZED) {
+                // Force terminal clear via FAILED path is wrong — use REMOVED via restore for materialized.
+                intent.restorePersistedState(PhysicalIntentStatus.REMOVED, intent.retryCount(),
+                        "cleared", ctx.time().absoluteTicks());
+            } else if (intent.status().isActive()) {
+                intent.transitionTo(PhysicalIntentStatus.REMOVED, ctx.time().absoluteTicks(), "cleared");
             }
         }
+        // Trade hotspot / security ripple already applied via settlement updates above.
         // Complete BANDIT_REMOVAL tasks with verified evidence.
         for (EmergentTaskState task : state.emergentTasks().values()) {
             if (task.open()

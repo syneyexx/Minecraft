@@ -85,6 +85,11 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
             double reputationDelta,
             SimulationContext ctx
     ) {
+        // Zero UUID is not a legitimate Minecraft player — skip reputation changes.
+        if (player == null || (player.value().getMostSignificantBits() == 0L
+                && player.value().getLeastSignificantBits() == 0L)) {
+            return;
+        }
         state.playerReputation().adjust(player, kingdom, reputationDelta);
         KingdomState k = state.kingdoms().get(kingdom);
         if (k != null) {
@@ -206,7 +211,7 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
         stock.add(ResourceType.STONE, 15);
 
         // Dynamic physical founding — never mutates immutable WorldPlan.
-        seedPlayerRealmPhysicalIntents(state, owned, player, ctx);
+        seedPlayerRealmPhysicalIntents(state, owned, player, cultureId, ctx);
 
         state.appendHistory(new HistoricalEvent(
                 HistoricalEventId.deterministic(state.seed(), state.history().size()),
@@ -293,53 +298,25 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
             CanonicalWorldState state,
             SettlementState capital,
             PlayerId player,
+            CultureId cultureId,
             SimulationContext ctx
     ) {
+        String culture = com.livingmods.common.culture.CultureKeys.resolve(cultureId);
         var physical = state.dynamicPhysical();
+        var planner = new com.livingmods.simulation.physical.DynamicUrbanPlanner(state.seed());
+        var founding = planner.planPlayerSettlement(state, capital, culture);
+
         physical.putSettlementGeometry(new com.livingmods.simulation.physical.DynamicSettlementGeometry(
                 capital.id(),
-                capital.center(),
-                com.livingmods.common.geo.BoundingBox2.around(capital.center(), 48),
+                founding.center(),
+                founding.boundary(),
                 true
         ));
+        var geo = physical.settlementGeometry().get(capital.id());
+        geo.roadAnchors().addAll(founding.roadGraph());
+        geo.expansionAnchors().addAll(founding.expansionAnchors());
 
-        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.MANOR,
-                capital.center(), "civic_center", ctx);
-        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.HOUSE,
-                BlockPos2.of(capital.center().x() + 12, capital.center().z()), "starter_housing", ctx);
-        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.HOUSE,
-                BlockPos2.of(capital.center().x() - 12, capital.center().z() + 4), "starter_housing", ctx);
-        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.WAREHOUSE,
-                BlockPos2.of(capital.center().x(), capital.center().z() + 14), "storage", ctx);
-        seedFoundingBuilding(state, capital, com.livingmods.common.model.BuildingRole.FARMHOUSE,
-                BlockPos2.of(capital.center().x() + 18, capital.center().z() + 18), "food_production", ctx);
-
-        var roadId = com.livingmods.common.id.PhysicalIntentId.deterministic(
-                state.seed(), physical.intents().size() + 400_000L);
-        var road = new com.livingmods.simulation.physical.PhysicalIntent(
-                roadId,
-                com.livingmods.common.model.PhysicalIntentType.EXTEND_ROAD,
-                "player_realm",
-                capital.id().value(),
-                Optional.of(capital.id()),
-                capital.ownerKingdom(),
-                Optional.empty(),
-                Optional.empty(),
-                capital.center(),
-                com.livingmods.common.geo.BoundingBox2.of(
-                        capital.center().x() - 2, capital.center().z() - 2,
-                        capital.center().x() + 24, capital.center().z() + 2),
-                1,
-                com.livingmods.common.model.PhysicalIntentStatus.READY,
-                ctx.time(),
-                3,
-                Map.of("cause", "player_foundation", "player", player.toString()),
-                Map.of(ResourceType.STONE, 8.0, ResourceType.WOOD, 4.0),
-                "avalon"
-        );
-        seedChunks(road);
-        physical.putIntent(road);
-
+        // FOUND_PLAYER_SETTLEMENT is planning-meta: orchestrates footprint, does not place one giant building.
         var zoneId = com.livingmods.common.id.PhysicalIntentId.deterministic(
                 state.seed(), physical.intents().size() + 401_000L);
         var zone = new com.livingmods.simulation.physical.PhysicalIntent(
@@ -351,18 +328,79 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
                 capital.ownerKingdom(),
                 Optional.empty(),
                 Optional.empty(),
-                capital.center(),
-                com.livingmods.common.geo.BoundingBox2.around(capital.center(), 48),
+                founding.center(),
+                founding.boundary(),
                 1,
                 com.livingmods.common.model.PhysicalIntentStatus.READY,
                 ctx.time(),
                 2,
-                Map.of("cause", "player_foundation", "player", player.toString()),
+                Map.of(
+                        "cause", "player_foundation",
+                        "player", player.toString(),
+                        "culture", culture,
+                        "planning", "founding_footprint"
+                ),
                 Map.of(),
-                "avalon"
+                culture
         );
-        seedChunks(zone);
         physical.putIntent(zone);
+
+        // Initial road graph from civic core.
+        var roadRoute = planner.planRoad(state, capital, founding.civicCore(),
+                founding.roadGraph().size() > 1 ? founding.roadGraph().get(1) : founding.center(), culture);
+        var roadId = com.livingmods.common.id.PhysicalIntentId.deterministic(
+                state.seed(), physical.intents().size() + 400_000L);
+        var road = new com.livingmods.simulation.physical.PhysicalIntent(
+                roadId,
+                com.livingmods.common.model.PhysicalIntentType.EXTEND_ROAD,
+                "player_realm",
+                capital.id().value(),
+                Optional.of(capital.id()),
+                capital.ownerKingdom(),
+                Optional.empty(),
+                Optional.empty(),
+                founding.civicCore(),
+                com.livingmods.common.geo.BoundingBox2.of(
+                        founding.center().x() - 2, founding.center().z() - 2,
+                        founding.center().x() + 24, founding.center().z() + 2),
+                1,
+                com.livingmods.common.model.PhysicalIntentStatus.READY,
+                ctx.time(),
+                3,
+                Map.of("cause", "player_foundation", "player", player.toString(), "reservationState", "NONE"),
+                Map.of(ResourceType.STONE, 8.0, ResourceType.WOOD, 4.0),
+                culture
+        );
+        road.addDependency(zoneId);
+        StringBuilder rx = new StringBuilder();
+        StringBuilder rz = new StringBuilder();
+        for (int i = 0; i < roadRoute.path().size(); i++) {
+            if (i > 0) { rx.append(','); rz.append(','); }
+            rx.append(roadRoute.path().get(i).x());
+            rz.append(roadRoute.path().get(i).z());
+        }
+        road.provenance().put("routeX", rx.toString());
+        road.provenance().put("routeZ", rz.toString());
+        road.provenance().put("routePoints", String.valueOf(roadRoute.path().size()));
+        seedChunks(road);
+        physical.putIntent(road);
+
+        String[] causes = {"civic_center", "starter_housing", "starter_housing", "storage", "food_production", "steward_guard"};
+        for (int i = 0; i < founding.starterBuildings().size(); i++) {
+            var plot = founding.starterBuildings().get(i);
+            var role = i == 0 ? com.livingmods.common.model.BuildingRole.MANOR
+                    : i == 3 ? com.livingmods.common.model.BuildingRole.WAREHOUSE
+                    : i == 4 ? com.livingmods.common.model.BuildingRole.FARMHOUSE
+                    : i == 5 ? com.livingmods.common.model.BuildingRole.GUARDHOUSE
+                    : com.livingmods.common.model.BuildingRole.HOUSE;
+            seedFoundingBuilding(state, capital, role, plot.center(), plot.footprint(),
+                    causes[Math.min(i, causes.length - 1)], culture, zoneId, roadId, plot.entranceFacing(), ctx);
+        }
+
+        zone.transitionTo(com.livingmods.common.model.PhysicalIntentStatus.MATERIALIZING,
+                ctx.time().absoluteTicks(), null);
+        zone.transitionTo(com.livingmods.common.model.PhysicalIntentStatus.MATERIALIZED,
+                ctx.time().absoluteTicks(), "plan_committed");
     }
 
     private static void seedFoundingBuilding(
@@ -370,7 +408,12 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
             SettlementState capital,
             com.livingmods.common.model.BuildingRole role,
             BlockPos2 plot,
+            com.livingmods.common.geo.BoundingBox2 footprint,
             String cause,
+            String culture,
+            com.livingmods.common.id.PhysicalIntentId zoneId,
+            com.livingmods.common.id.PhysicalIntentId roadId,
+            String entranceFacing,
             SimulationContext ctx
     ) {
         var physical = state.dynamicPhysical();
@@ -378,7 +421,6 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
                 state.seed(), physical.structures().size() + physical.intents().size() + 410_000L);
         var intentId = com.livingmods.common.id.PhysicalIntentId.deterministic(
                 state.seed(), physical.intents().size() + 420_000L + role.ordinal());
-        int half = role == com.livingmods.common.model.BuildingRole.MANOR ? 6 : 4;
         var intent = new com.livingmods.simulation.physical.PhysicalIntent(
                 intentId,
                 com.livingmods.common.model.PhysicalIntentType.CONSTRUCT_BUILDING,
@@ -389,15 +431,22 @@ public final class PlayerSystemsEngine implements SimulationSubsystem {
                 Optional.of(structureId),
                 Optional.of(role),
                 plot,
-                com.livingmods.common.geo.BoundingBox2.around(plot, half),
+                footprint,
                 1,
                 com.livingmods.common.model.PhysicalIntentStatus.READY,
                 ctx.time(),
                 2,
-                Map.of("cause", cause, "role", role.name()),
+                Map.of(
+                        "cause", cause,
+                        "role", role.name(),
+                        "entranceFacing", entranceFacing == null ? "south" : entranceFacing,
+                        "reservationState", "NONE"
+                ),
                 Map.of(ResourceType.WOOD, 10.0, ResourceType.STONE, 8.0),
-                "avalon"
+                culture
         );
+        intent.addDependency(zoneId);
+        intent.addDependency(roadId);
         seedChunks(intent);
         physical.putIntent(intent);
     }

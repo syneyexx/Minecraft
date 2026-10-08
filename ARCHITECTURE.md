@@ -29,13 +29,13 @@ Minecraft Server (NeoForge)
   ├─ LivingModsWorldIds          → world/livingmods/world.id
   ├─ WorldPlanCache              → WorldPlanStore.loadOrGenerate (+ MinecraftTerrainProvider)
   ├─ ChunkMaterializationHandler → CivilizationMaterializer (+ chunk attachments)
-  ├─ PhysicalReconciliationEngine→ dynamic intents → safe block realization
+  ├─ PhysicalReconciliationEngine→ exhaustive dynamic intents → RealizationResult
   ├─ CitizenProjectionBinder     → interest-based citizen spawn/despawn via IPC
-  ├─ CaravanProjectionBinder     → shipment LOD (lead merchant + cargo meta)
-  ├─ ArmyProjectionBinder        → army squad LOD (never 1:1 manpower)
-  ├─ PhysicalInteractionBridge   → verified death/interact → REPORT_PHYSICAL_OUTCOME
+  ├─ Caravan/Army/Bandit/Guard binders → ProjectedHumanoidEntity LOD
+  ├─ LiveStateCache              → async map/dashboard (no server-thread IPC block)
+  ├─ PhysicalInteractionBridge   → verified death/interact/inventory delivery
   ├─ LivingModsCommands          → /livingmods locate …
-  ├─ LivingModsNetwork           → map/dashboard payloads (live overlays from sidecar)
+  ├─ LivingModsNetwork           → map/dashboard from LiveStateCache + WorldPlan
   └─ WorldSessionLifecycle
         ├─ SidecarProcessManager → embed + launch livingmods-sidecar.jar
         ├─ SidecarClient         → async 127.0.0.1 IPC

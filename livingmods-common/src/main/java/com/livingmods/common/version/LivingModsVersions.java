@@ -2,8 +2,8 @@ package com.livingmods.common.version;
 
 /** Distinct version axes — never conflate these. */
 public final class LivingModsVersions {
-    /** Bumped for typed physical outcome contract + construction intent payloads. */
-    public static final int PROTOCOL_VERSION = 2;
+    /** Bumped for typed PhysicalIntentPayload + location-based construction queries. */
+    public static final int PROTOCOL_VERSION = 3;
     /** Bumped for full plan persistence + territory map (RELEASE BLOCK B). */
     public static final int WORLDGEN_VERSION = 2;
     /** Schema 4: DynamicPhysicalState (intents, dynamic structures, settlement geometry). */

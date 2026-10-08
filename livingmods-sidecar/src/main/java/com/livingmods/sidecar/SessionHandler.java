@@ -15,6 +15,7 @@ import com.livingmods.protocol.PayloadIo;
 import com.livingmods.protocol.ProtocolConstants;
 import com.livingmods.protocol.RequestPayloads;
 import com.livingmods.common.model.PhysicalOutcomeType;
+import com.livingmods.protocol.PhysicalIntentPayload;
 import com.livingmods.protocol.PhysicalOutcomePayload;
 import com.livingmods.simulation.engine.PlayerSystemsEngine;
 import com.livingmods.simulation.physical.PhysicalIntent;
@@ -634,44 +635,89 @@ public final class SessionHandler implements Runnable {
     }
 
     private void onConstruction(Envelope envelope, OutputStream out) throws IOException {
-        RequestPayloads.SettlementQuery q = RequestPayloads.SettlementQuery.decode(envelope.payload());
-        SettlementState s = host.state().settlement(
-                com.livingmods.common.id.SettlementId.of(q.settlementId())).orElse(null);
-        Map<String, String> data = new LinkedHashMap<>();
-        if (s == null) {
-            data.put("status", "missing");
-        } else {
-            data.put("status", "ok");
-            data.put("housingUnits", String.valueOf(s.housingUnits()));
-            data.put("physicalCapacity",
-                    String.format(java.util.Locale.ROOT, "%.1f", s.physicalCapacity()));
-            data.put("developmentDeficit",
-                    String.format(java.util.Locale.ROOT, "%.1f", s.developmentDeficit()));
-            data.put("needsConstruction", String.valueOf(s.developmentDeficit() > 0.5));
-            data.put("dynamicHousing", String.valueOf(
-                    host.state().dynamicPhysical().activeHousingUnits(s.id())));
-            List<String> packed = new ArrayList<>();
-            for (PhysicalIntent intent : host.state().dynamicPhysical().readyForSettlement(s.id())) {
-                packed.add(String.join("|",
-                        intent.id().value().toString(),
-                        intent.type().name(),
-                        intent.status().name(),
-                        String.valueOf(intent.priority()),
-                        String.valueOf(intent.footprint().minX()),
-                        String.valueOf(intent.footprint().minZ()),
-                        String.valueOf(intent.footprint().maxX()),
-                        String.valueOf(intent.footprint().maxZ()),
-                        intent.buildingRole().map(Enum::name).orElse(""),
-                        intent.cultureKey() == null ? "" : intent.cultureKey(),
-                        s.id().value().toString(),
-                        intent.structureId().map(id -> id.value().toString()).orElse(""),
-                        intent.provenance().getOrDefault("variant", "")
-                ));
-            }
-            data.put("intentsPacked", String.join(";", packed));
-            data.put("intentCount", String.valueOf(packed.size()));
+        RequestPayloads.ConstructionQuery q;
+        try {
+            q = RequestPayloads.ConstructionQuery.decode(envelope.payload());
+        } catch (Exception e) {
+            // Legacy bare SettlementQuery fallback.
+            RequestPayloads.SettlementQuery legacy = RequestPayloads.SettlementQuery.decode(envelope.payload());
+            q = RequestPayloads.ConstructionQuery.forSettlement(legacy.settlementId(), 32);
         }
-        sendResponse(out, envelope.requestId(), data);
+
+        List<PhysicalIntent> intents = new ArrayList<>();
+        if (q.isRegion()) {
+            intents.addAll(host.state().dynamicPhysical()
+                    .readyNear(q.blockX(), q.blockZ(), q.radius(), q.limit()));
+            // Also pull intents for dynamic settlements discovered near the query point.
+            for (var sid : host.state().dynamicPhysical().settlementsNear(q.blockX(), q.blockZ(), q.radius())) {
+                for (PhysicalIntent intent : host.state().dynamicPhysical().readyForSettlement(sid)) {
+                    if (intents.stream().noneMatch(i -> i.id().equals(intent.id()))) {
+                        intents.add(intent);
+                    }
+                }
+            }
+        } else {
+            intents.addAll(host.state().dynamicPhysical()
+                    .readyForSettlement(com.livingmods.common.id.SettlementId.of(q.settlementId())));
+        }
+
+        // Enforce dependency gate before shipping to Minecraft.
+        List<PhysicalIntentPayload.IntentSlice> slices = new ArrayList<>();
+        for (PhysicalIntent intent : intents) {
+            if (intent.type().isTransientProjection()) continue;
+            var deps = host.state().dynamicPhysical().evaluateDependencies(intent);
+            if (deps.failed()) {
+                intent.transitionTo(com.livingmods.common.model.PhysicalIntentStatus.FAILED_TERMINAL,
+                        host.state().time().absoluteTicks(), deps.reason());
+                continue;
+            }
+            if (!deps.satisfied()) {
+                continue; // dependency_pending — do not ship yet
+            }
+            if (slices.size() >= PhysicalIntentPayload.MAX_INTENTS) break;
+            slices.add(toSlice(intent));
+        }
+
+        PhysicalIntentPayload.Bundle bundle = new PhysicalIntentPayload.Bundle("ok", slices.size(), slices);
+        sendRawResponse(out, envelope.requestId(), bundle.encode());
+    }
+
+    private static PhysicalIntentPayload.IntentSlice toSlice(PhysicalIntent intent) {
+        List<Integer> route = new ArrayList<>();
+        String rx = intent.provenance().getOrDefault("routeX", "");
+        String rz = intent.provenance().getOrDefault("routeZ", "");
+        if (!rx.isBlank() && !rz.isBlank()) {
+            String[] xs = rx.split(",");
+            String[] zs = rz.split(",");
+            int n = Math.min(xs.length, zs.length);
+            for (int i = 0; i < n && route.size() < PhysicalIntentPayload.MAX_GEOMETRY_POINTS * 2; i++) {
+                try {
+                    route.add(Integer.parseInt(xs[i].trim()));
+                    route.add(Integer.parseInt(zs[i].trim()));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        Map<String, String> meta = new LinkedHashMap<>(intent.provenance());
+        return new PhysicalIntentPayload.IntentSlice(
+                intent.id().value(),
+                intent.type(),
+                intent.status(),
+                intent.priority(),
+                intent.footprint().minX(),
+                intent.footprint().minZ(),
+                intent.footprint().maxX(),
+                intent.footprint().maxZ(),
+                intent.buildingRole().map(Enum::name).orElse(""),
+                intent.cultureKey() == null ? "" : intent.cultureKey(),
+                intent.settlementId().map(id -> id.value()).orElse(null),
+                intent.structureId().map(id -> id.value()).orElse(null),
+                intent.provenance().getOrDefault("variant", ""),
+                new ArrayList<>(intent.pendingChunkKeys()),
+                new ArrayList<>(intent.appliedChunkKeys()),
+                route,
+                meta
+        );
     }
 
     private void onMapOverlay(Envelope envelope, OutputStream out) throws IOException {
@@ -767,11 +813,96 @@ public final class SessionHandler implements Runnable {
                     intent.status().name()));
             if (construction.size() >= q.limit()) break;
         }
+        List<String> bandits = new ArrayList<>();
+        for (PhysicalIntent intent : host.state().dynamicPhysical().intents().values()) {
+            if (intent.type() != com.livingmods.common.model.PhysicalIntentType.CREATE_BANDIT_CAMP
+                    && intent.type() != com.livingmods.common.model.PhysicalIntentType.UPGRADE_BANDIT_CAMP) {
+                continue;
+            }
+            if (intent.status() != com.livingmods.common.model.PhysicalIntentStatus.MATERIALIZED
+                    && !intent.status().isActive()) {
+                continue;
+            }
+            if (intent.status() == com.livingmods.common.model.PhysicalIntentStatus.REMOVED) continue;
+            var pos = intent.targetPosition();
+            long dx = (long) pos.x() - cx;
+            long dz = (long) pos.z() - cz;
+            if (dx * dx + dz * dz > r2) continue;
+            String campId = intent.provenance().getOrDefault("campId", intent.id().value().toString());
+            int strength = 50;
+            try {
+                strength = (int) Math.round(100 * Double.parseDouble(
+                        intent.provenance().getOrDefault("strength", "0.5")));
+            } catch (NumberFormatException ignored) {
+            }
+            bandits.add(String.join("|",
+                    campId,
+                    String.valueOf(pos.x()),
+                    String.valueOf(pos.z()),
+                    String.valueOf(Math.max(20, strength)),
+                    intent.cultureKey() == null || intent.cultureKey().isBlank() ? "avalon" : intent.cultureKey()));
+            if (bandits.size() >= q.limit()) break;
+        }
+        List<String> guards = new ArrayList<>();
+        for (SettlementState s : host.state().settlements().values()) {
+            long dx = (long) s.center().x() - cx;
+            long dz = (long) s.center().z() - cz;
+            if (dx * dx + dz * dz > r2) continue;
+            if (s.security() < 0.25) continue;
+            String faction = s.ownerKingdom().map(k -> k.value().toString()).orElse(new UUID(0, 0).toString());
+            String culture = com.livingmods.simulation.engine.CultureResolver.forSettlement(host.state(), s);
+            String duty = s.security() < 0.45 ? "gate" : s.tier().ordinal() >= SettlementTier.TOWN.ordinal() ? "civic" : "patrol";
+            guards.add(String.join("|",
+                    s.id().value().toString(),
+                    faction,
+                    String.valueOf(s.center().x()),
+                    String.valueOf(s.center().z()),
+                    duty,
+                    culture));
+            if (guards.size() >= q.limit()) break;
+        }
+        List<String> dynamicSettlements = new ArrayList<>();
+        for (var geo : host.state().dynamicPhysical().settlementGeometry().values()) {
+            long dx = (long) geo.center().x() - cx;
+            long dz = (long) geo.center().z() - cz;
+            if (dx * dx + dz * dz > r2) continue;
+            SettlementState s = host.state().settlements().get(geo.settlementId());
+            String name = s == null ? "Settlement" : s.name();
+            dynamicSettlements.add(String.join("|",
+                    geo.settlementId().value().toString(),
+                    name,
+                    String.valueOf(geo.center().x()),
+                    String.valueOf(geo.center().z()),
+                    String.valueOf(geo.playerFounded())));
+        }
+        List<String> dynamicRoads = new ArrayList<>();
+        for (PhysicalIntent intent : host.state().dynamicPhysical().intents().values()) {
+            if (intent.type() != com.livingmods.common.model.PhysicalIntentType.EXTEND_ROAD) continue;
+            if (intent.status() != com.livingmods.common.model.PhysicalIntentStatus.MATERIALIZED
+                    && intent.status() != com.livingmods.common.model.PhysicalIntentStatus.MATERIALIZING) {
+                continue;
+            }
+            var pos = intent.targetPosition();
+            long dx = (long) pos.x() - cx;
+            long dz = (long) pos.z() - cz;
+            if (dx * dx + dz * dz > r2) continue;
+            dynamicRoads.add(String.join("|",
+                    intent.id().value().toString(),
+                    String.valueOf(pos.x()),
+                    String.valueOf(pos.z()),
+                    String.valueOf(intent.footprint().maxX()),
+                    String.valueOf(intent.footprint().maxZ())));
+            if (dynamicRoads.size() >= q.limit()) break;
+        }
         data.put("armiesPacked", String.join(";", armies));
         data.put("caravansPacked", String.join(";", caravans));
         data.put("epidemicsPacked", String.join(";", epidemics));
         data.put("migrationsPacked", String.join(";", migrations));
         data.put("constructionPacked", String.join(";", construction));
+        data.put("banditsPacked", String.join(";", bandits));
+        data.put("guardsPacked", String.join(";", guards));
+        data.put("dynamicSettlementsPacked", String.join(";", dynamicSettlements));
+        data.put("dynamicRoadsPacked", String.join(";", dynamicRoads));
         data.put("sieges", String.valueOf(host.state().sieges().values().stream().filter(sg -> sg.active()).count()));
         sendResponse(out, envelope.requestId(), data);
     }
@@ -806,6 +937,10 @@ public final class SessionHandler implements Runnable {
     private static String formatHit(String name, String type, String kingdom, int x, int z, double distance) {
         return String.format(java.util.Locale.ROOT, "%s | %s | %s | %d, %d | %.0fm",
                 name, type, kingdom == null || kingdom.isBlank() ? "-" : kingdom, x, z, distance);
+    }
+
+    private void sendRawResponse(OutputStream out, long requestId, byte[] payload) throws IOException {
+        send(out, MessageType.RESPONSE, requestId, host.state().time().absoluteTicks(), payload);
     }
 
     private void sendResponse(OutputStream out, long requestId, Map<String, String> payload)

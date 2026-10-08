@@ -29,6 +29,74 @@ public final class RequestPayloads {
         }
     }
 
+    /**
+     * Construction / physical-intent query: settlement-scoped or spatial region.
+     * Format version 1 — replaces settlement-only SettlementQuery for GET_CONSTRUCTION_PLAN.
+     */
+    public record ConstructionQuery(
+            int mode,
+            UUID settlementId,
+            int blockX,
+            int blockZ,
+            int radius,
+            int limit
+    ) {
+        public static final int MODE_SETTLEMENT = 0;
+        public static final int MODE_REGION = 1;
+        public static final int FORMAT_VERSION = 1;
+
+        public ConstructionQuery {
+            mode = mode == MODE_REGION ? MODE_REGION : MODE_SETTLEMENT;
+            radius = clamp(radius, 0, MAX_QUERY_RADIUS);
+            limit = clamp(limit, 1, Math.min(64, MAX_QUERY_LIMIT));
+        }
+
+        public static ConstructionQuery forSettlement(UUID settlementId, int limit) {
+            return new ConstructionQuery(MODE_SETTLEMENT, settlementId, 0, 0, 0, limit);
+        }
+
+        public static ConstructionQuery forRegion(int blockX, int blockZ, int radius, int limit) {
+            return new ConstructionQuery(MODE_REGION, new UUID(0, 0), blockX, blockZ, radius, limit);
+        }
+
+        public boolean isRegion() {
+            return mode == MODE_REGION;
+        }
+
+        public byte[] encode() throws IOException {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            DataOutputStream dos = new DataOutputStream(bos);
+            dos.writeInt(FORMAT_VERSION);
+            dos.writeInt(mode);
+            BinaryCodec.writeUuid(dos, settlementId == null ? new UUID(0, 0) : settlementId);
+            dos.writeInt(blockX);
+            dos.writeInt(blockZ);
+            dos.writeInt(radius);
+            dos.writeInt(limit);
+            return bos.toByteArray();
+        }
+
+        public static ConstructionQuery decode(byte[] p) throws IOException {
+            DataInputStream dis = new DataInputStream(new ByteArrayInputStream(p));
+            // Backward-compatible: old SettlementQuery was a bare UUID (16 bytes).
+            if (p.length == 16) {
+                return forSettlement(BinaryCodec.readUuid(dis), 32);
+            }
+            int version = dis.readInt();
+            if (version != FORMAT_VERSION) {
+                throw new IOException("unsupported ConstructionQuery version: " + version);
+            }
+            return new ConstructionQuery(
+                    dis.readInt(),
+                    BinaryCodec.readUuid(dis),
+                    dis.readInt(),
+                    dis.readInt(),
+                    dis.readInt(),
+                    dis.readInt()
+            );
+        }
+    }
+
     public record NearbyQuery(int blockX, int blockZ, int radius, int limit) {
         public NearbyQuery {
             radius = clamp(radius, 0, MAX_QUERY_RADIUS);

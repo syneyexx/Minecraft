@@ -10,7 +10,7 @@ LivingMods persists three distinct artifacts. Do not conflate them.
 | World plan | `world/livingmods/worldplan/plan.bin` | Magic `LMPP`, format **2** (full plan), `WORLDGEN_VERSION`, seed, `contentHash`, counts, then `PlanBinaryCodec` payload |
 | Plan meta (optional quick check) | `world/livingmods/worldplan/meta.bin` | Seed/hash/version/counts without full payload |
 | Seed marker | `world/livingmods/worldplan/seed.dat` | `long` seed written on server start |
-| Canonical save | `world/livingmods/sidecar/canonical.bin` | Magic `LMCS`, schema **3**, full graph |
+| Canonical save | `world/livingmods/sidecar/canonical.bin` | Magic `LMCS`, schema **4** (reads schema 3), full graph + DynamicPhysicalState |
 | WAL | `world/livingmods/sidecar/canonical.wal` | Append-only revision + contentHash records |
 | Sidecar logs | `…/sidecar/livingmods-sidecar.log`, `livingmods-minecraft.log` | Process logs |
 

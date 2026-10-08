@@ -91,20 +91,29 @@ public final class LivingModsNetwork {
     }
 
     private static void enrichDashboardFromSidecar(SidecarClient client, Map<String, String> metrics) {
-        try {
-            var envelope = client.sendAsync(com.livingmods.protocol.MessageType.GET_WORLD_SUMMARY, new byte[0])
-                    .get(800, java.util.concurrent.TimeUnit.MILLISECONDS);
-            if (envelope == null || envelope.isError()) return;
-            Map<String, String> summary = com.livingmods.protocol.PayloadIo.decodeStrings(envelope.payload());
+        // Never block the server thread on sidecar IPC — read async LiveStateCache only.
+        Map<String, String> summary = com.livingmods.neoforge.physical.LiveStateCache.get().worldSummary();
+        Map<String, String> overlay = com.livingmods.neoforge.physical.LiveStateCache.get().mapOverlay();
+        if (!summary.isEmpty()) {
             metrics.put("warActive", summary.getOrDefault("wars", "0"));
             metrics.put("epidemicActive", summary.getOrDefault("epidemics", "0"));
             metrics.put("citizens", summary.getOrDefault("citizens", "0"));
             metrics.put("simTicks", summary.getOrDefault("simTicks", "0"));
             metrics.put("kingdomsLive", summary.getOrDefault("kingdoms", "0"));
             metrics.put("settlementsLive", summary.getOrDefault("settlements", "0"));
-        } catch (Exception e) {
-            metrics.putIfAbsent("warActive", "unknown");
-            metrics.putIfAbsent("epidemicActive", "unknown");
+            metrics.put("treasury", summary.getOrDefault("treasury", "0"));
+            metrics.put("legitimacy", summary.getOrDefault("legitimacy", "0"));
+            metrics.put("shipments", summary.getOrDefault("shipments", "0"));
+            metrics.put("treaties", summary.getOrDefault("treaties", "0"));
+            metrics.put("historyRecent", summary.getOrDefault("historyRecent", ""));
+        } else {
+            metrics.putIfAbsent("warActive", "pending");
+            metrics.putIfAbsent("epidemicActive", "pending");
+        }
+        if (!overlay.isEmpty()) {
+            metrics.put("armiesLive", String.valueOf(overlay.getOrDefault("armiesPacked", "").split(";").length));
+            metrics.put("constructionLive", overlay.getOrDefault("constructionPacked", ""));
+            metrics.put("siegesLive", overlay.getOrDefault("sieges", "0"));
         }
     }
 
@@ -173,6 +182,18 @@ public final class LivingModsNetwork {
                         s.capital()
                 ));
             }
+            // Overlay dynamic / player-founded settlements from live cache (never mutate WorldPlan).
+            for (var dyn : com.livingmods.neoforge.physical.LiveStateCache.get().dynamicSettlements()) {
+                boolean exists = settlements.stream().anyMatch(s -> s.id().equals(dyn.id()));
+                if (!exists) {
+                    settlements.add(new MapDataPayload.SettlementMarker(
+                            dyn.id(), dyn.label(), "", "VILLAGE", dyn.x(), dyn.z(), false));
+                }
+            }
+            for (var road : com.livingmods.neoforge.physical.LiveStateCache.get().dynamicRoads()) {
+                roads.add(new MapDataPayload.RoadSegment(
+                        road.x(), road.z(), road.x() + 8, road.z(), "DYNAMIC"));
+            }
             for (PlannedRoad road : plan.roads()) {
                 var pts = road.path();
                 if (pts == null || pts.size() < 2) continue;
@@ -209,17 +230,10 @@ public final class LivingModsNetwork {
             List<MapDataPayload.EpidemicMarker> epidemics,
             List<MapDataPayload.MigrationMarker> migrations
     ) {
-        SidecarClient client = WorldSessionLifecycle.activeClient();
-        if (client == null || !client.isReady()) {
-            return;
-        }
+        // Async cache only — no server-thread .get(timeout) IPC.
+        Map<String, String> data = com.livingmods.neoforge.physical.LiveStateCache.get().mapOverlay();
+        if (data.isEmpty()) return;
         try {
-            byte[] req = new com.livingmods.protocol.RequestPayloads.NearbyQuery(
-                    centerX, centerZ, radius, 48).encode();
-            var envelope = client.sendAsync(com.livingmods.protocol.MessageType.GET_MAP_OVERLAY, req)
-                    .get(800, java.util.concurrent.TimeUnit.MILLISECONDS);
-            if (envelope == null || envelope.isError()) return;
-            Map<String, String> data = com.livingmods.protocol.PayloadIo.decodeStrings(envelope.payload());
             String armyPacked = data.getOrDefault("armiesPacked", "");
             if (!armyPacked.isBlank()) {
                 for (String row : armyPacked.split(";")) {
@@ -251,23 +265,19 @@ public final class LivingModsNetwork {
                 }
             }
         } catch (Exception e) {
-            LivingModsMod.LOG.debug("Live map overlay fetch failed: {}", e.toString());
+            LivingModsMod.LOG.debug("Live map overlay cache read failed: {}", e.toString());
         }
     }
 
     private static byte classifyTerrain(WorldPlan plan, int x, int z) {
-        if (plan == null) {
-            return 0;
-        }
-        for (PlannedSettlement s : plan.settlements().values()) {
-            if (Math.abs(s.center().x() - x) < 48 && Math.abs(s.center().z() - z) < 48) {
-                return 4;
+        byte cached = com.livingmods.neoforge.physical.LiveStateCache.get().terrainClass(x, z);
+        if (plan != null) {
+            for (PlannedSettlement s : plan.settlements().values()) {
+                if (Math.abs(s.center().x() - x) < 48 && Math.abs(s.center().z() - z) < 48) {
+                    return 4;
+                }
             }
         }
-        int h = Long.hashCode((((long) x) * 734287L) ^ (((long) z) * 912371L) ^ plan.seed());
-        int n = h & 0xFF;
-        if (n < 20) return 2;
-        if (n > 220) return 3;
-        return 1;
+        return cached;
     }
 }

@@ -82,7 +82,7 @@ A subsystem may be promoted to RELEASE_READY only after the relevant sections of
 
 | Axis | Current | Source |
 |------|---------|--------|
-| Protocol | 2 | `LivingModsVersions.PROTOCOL_VERSION` (typed physical outcomes) |
+| Protocol | 3 | `LivingModsVersions.PROTOCOL_VERSION` (typed intents + outcomes) |
 | Worldgen | 2 | `WORLDGEN_VERSION` |
 | Canonical save schema | 4 | `CANONICAL_SAVE_SCHEMA` (DynamicPhysicalState) |
 | Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` (initial materialization only) |

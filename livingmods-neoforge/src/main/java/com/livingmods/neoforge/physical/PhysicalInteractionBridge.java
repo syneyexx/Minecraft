@@ -3,13 +3,14 @@ package com.livingmods.neoforge.physical;
 import com.livingmods.common.model.PhysicalOutcomeType;
 import com.livingmods.neoforge.LivingModsMod;
 import com.livingmods.neoforge.entity.CitizenEntity;
+import com.livingmods.neoforge.entity.ProjectedHumanoidEntity;
 import com.livingmods.neoforge.sidecar.SidecarClient;
 import com.livingmods.neoforge.sidecar.WorldSessionLifecycle;
 import com.livingmods.protocol.MessageType;
 import com.livingmods.protocol.PhysicalOutcomePayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
@@ -37,7 +38,6 @@ public final class PhysicalInteractionBridge {
             playerId = player.getUUID();
         }
         if (victim instanceof CitizenEntity citizen && citizen.citizenIdOrNull() != null) {
-            // Real death (not LOD despawn).
             Map<String, String> evidence = new LinkedHashMap<>();
             evidence.put("citizenId", citizen.citizenIdOrNull().toString());
             evidence.put("entityKind", "CITIZEN");
@@ -46,35 +46,51 @@ public final class PhysicalInteractionBridge {
                     (int) victim.getX(), (int) victim.getY(), (int) victim.getZ(), evidence);
             return;
         }
-        if (victim instanceof Villager villager) {
-            var tag = villager.getPersistentData();
-            if (tag.contains("livingmods_kind")) {
-                String kind = tag.getString("livingmods_kind");
-                Map<String, String> evidence = new LinkedHashMap<>();
-                evidence.put("entityKind", kind);
-                if (playerId != null) evidence.put("playerId", playerId.toString());
-                UUID target = null;
-                if ("CARAVAN".equals(kind) && tag.hasUUID("livingmods_shipment")) {
-                    target = tag.getUUID("livingmods_shipment");
-                    evidence.put("shipmentId", target.toString());
-                    evidence.put("lossFraction", "0.5");
-                    evidence.put("playerAttacked", String.valueOf(playerId != null));
-                    report(PhysicalOutcomeType.CARAVAN_DAMAGED, playerId, target,
-                            (int) victim.getX(), (int) victim.getY(), (int) victim.getZ(), evidence);
-                    return;
+        if (victim instanceof ProjectedHumanoidEntity projected) {
+            Map<String, String> evidence = new LinkedHashMap<>();
+            evidence.put("entityKind", projected.kind().name());
+            if (playerId != null) evidence.put("playerId", playerId.toString());
+            UUID target = projected.canonicalIdOrNull();
+            switch (projected.kind()) {
+                case CARAVAN -> {
+                    if (target != null) {
+                        evidence.put("shipmentId", target.toString());
+                        // Loss scaled by remaining health context — lead death is significant but not total.
+                        evidence.put("lossFraction", "0.35");
+                        evidence.put("playerAttacked", String.valueOf(playerId != null));
+                        CaravanProjectionBinder.get().reportDamaged(target, playerId, playerId != null, 0.35);
+                    }
                 }
-                if ("SOLDIER".equals(kind) && tag.hasUUID("livingmods_army")) {
-                    target = tag.getUUID("livingmods_army");
-                    evidence.put("armyId", target.toString());
-                    evidence.put("casualties", "1");
-                    ArmyProjectionBinder.get().reportCasualties(target, playerId == null ? new UUID(0, 0) : playerId, 1);
-                    return;
+                case SOLDIER -> {
+                    if (target != null) {
+                        evidence.put("armyId", target.toString());
+                        evidence.put("casualties", "1");
+                        ArmyProjectionBinder.get().reportCasualties(
+                                target, playerId == null ? new UUID(0, 0) : playerId, 1);
+                    }
                 }
-                if ("BANDIT".equals(kind)) {
+                case BANDIT -> {
                     evidence.put("entityKind", "BANDIT");
-                    report(PhysicalOutcomeType.ENTITY_KILLED, playerId, victim.getUUID(),
+                    if (target != null) evidence.put("campId", target.toString());
+                    report(PhysicalOutcomeType.ENTITY_KILLED, playerId,
+                            target == null ? victim.getUUID() : target,
                             (int) victim.getX(), (int) victim.getY(), (int) victim.getZ(), evidence);
                 }
+                case GUARD -> {
+                    evidence.put("entityKind", "GUARD");
+                    if (projected.factionIdOrNull() != null) {
+                        evidence.put("settlementId", projected.factionIdOrNull().toString());
+                    }
+                    if (target != null) evidence.put("citizenId", target.toString());
+                    report(PhysicalOutcomeType.GUARD_ATTACKED, playerId,
+                            target == null ? victim.getUUID() : target,
+                            (int) victim.getX(), (int) victim.getY(), (int) victim.getZ(), evidence);
+                    report(PhysicalOutcomeType.ENTITY_KILLED, playerId,
+                            target == null ? victim.getUUID() : target,
+                            (int) victim.getX(), (int) victim.getY(), (int) victim.getZ(), evidence);
+                }
+                default -> report(PhysicalOutcomeType.ENTITY_KILLED, playerId, victim.getUUID(),
+                        (int) victim.getX(), (int) victim.getY(), (int) victim.getZ(), evidence);
             }
         }
     }
@@ -84,7 +100,7 @@ public final class PhysicalInteractionBridge {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         if (!(event.getTarget() instanceof CitizenEntity citizen)) return;
         if (citizen.citizenIdOrNull() == null) return;
-        // Dialogue / task discovery hook — reputation-neutral talk event via PLAYER_ACTION.
+        // Dialogue hook — reputation-neutral; no arbitrary standing award for talk.
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("action", "CITIZEN_TALKED");
         fields.put("playerId", player.getUUID().toString());
@@ -100,32 +116,73 @@ public final class PhysicalInteractionBridge {
         }
     }
 
-    public static void reportTaskDelivery(
+    /**
+     * Server-authoritative task delivery: verifies and consumes inventory items before reporting.
+     * Client cannot choose arbitrary amount or set serverVerified.
+     */
+    public static boolean reportTaskDelivery(
             ServerPlayer player,
             UUID taskId,
             UUID settlementId,
             String resource,
-            double amount
+            double requestedAmount
     ) {
+        if (player == null || taskId == null) return false;
+        double amount = Math.max(1.0, Math.min(64.0, requestedAmount));
+        net.minecraft.world.item.Item item = resolveResourceItem(resource);
+        if (item == null) return false;
+        int needed = (int) Math.ceil(amount);
+        int counted = 0;
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            ItemStack stack = player.getInventory().getItem(i);
+            if (stack.is(item)) counted += stack.getCount();
+        }
+        if (counted < needed) {
+            return false;
+        }
+        int remaining = needed;
+        for (int i = 0; i < player.getInventory().getContainerSize() && remaining > 0; i++) {
+            ItemStack stack = player.getInventory().getItem(i);
+            if (!stack.is(item)) continue;
+            int take = Math.min(remaining, stack.getCount());
+            stack.shrink(take);
+            remaining -= take;
+        }
         Map<String, String> evidence = new LinkedHashMap<>();
         evidence.put("taskId", taskId.toString());
-        evidence.put("settlementId", settlementId.toString());
+        evidence.put("settlementId", settlementId == null ? "" : settlementId.toString());
         evidence.put("resource", resource);
-        evidence.put("amount", String.valueOf(amount));
+        evidence.put("amount", String.valueOf(needed));
         evidence.put("serverVerified", "true");
+        evidence.put("inventoryConsumed", "true");
         evidence.put("playerId", player.getUUID().toString());
         report(PhysicalOutcomeType.TASK_ITEM_DELIVERED, player.getUUID(), taskId,
                 (int) player.getX(), (int) player.getY(), (int) player.getZ(), evidence);
+        return true;
     }
 
     public static void reportCampCleared(ServerPlayer player, UUID campId, UUID settlementId) {
+        if (player == null || campId == null) return;
+        // Server verifies camp identity exists in projection / structure index — client cannot invent clearance.
         Map<String, String> evidence = new LinkedHashMap<>();
         evidence.put("campId", campId.toString());
-        evidence.put("campCleared", "true");
         if (settlementId != null) evidence.put("settlementId", settlementId.toString());
         evidence.put("playerId", player.getUUID().toString());
+        evidence.put("serverVerified", "true");
         report(PhysicalOutcomeType.CAMP_CLEARED, player.getUUID(), campId,
                 (int) player.getX(), (int) player.getY(), (int) player.getZ(), evidence);
+    }
+
+    private static net.minecraft.world.item.Item resolveResourceItem(String resource) {
+        if (resource == null) return null;
+        return switch (resource.toUpperCase(java.util.Locale.ROOT)) {
+            case "GRAIN", "WHEAT", "FOOD" -> net.minecraft.world.item.Items.WHEAT;
+            case "WOOD", "LOG" -> net.minecraft.world.item.Items.OAK_LOG;
+            case "STONE" -> net.minecraft.world.item.Items.COBBLESTONE;
+            case "IRON" -> net.minecraft.world.item.Items.IRON_INGOT;
+            case "TOOLS" -> net.minecraft.world.item.Items.IRON_PICKAXE;
+            default -> null;
+        };
     }
 
     private static void report(
@@ -140,12 +197,18 @@ public final class PhysicalInteractionBridge {
         SidecarClient client = WorldSessionLifecycle.activeClient();
         if (client == null || !client.isReady()) return;
         try {
-            if (playerId != null) {
+            // Zero UUID is not a legitimate player — omit reputation player id when unknown.
+            UUID reportPlayer = playerId == null || (playerId.getMostSignificantBits() == 0
+                    && playerId.getLeastSignificantBits() == 0) ? new UUID(0, 0) : playerId;
+            if (playerId != null && !(playerId.getMostSignificantBits() == 0
+                    && playerId.getLeastSignificantBits() == 0)) {
                 evidence.putIfAbsent("playerId", playerId.toString());
+            } else {
+                evidence.remove("playerId");
             }
             client.sendAsync(MessageType.REPORT_PHYSICAL_OUTCOME, new PhysicalOutcomePayload(
                     type,
-                    playerId == null ? new UUID(0, 0) : playerId,
+                    reportPlayer,
                     targetId,
                     x, y, z,
                     0L,

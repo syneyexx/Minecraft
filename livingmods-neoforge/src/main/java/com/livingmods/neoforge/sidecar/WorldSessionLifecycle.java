@@ -5,7 +5,10 @@ import com.livingmods.neoforge.LivingModsMod;
 import com.livingmods.neoforge.LivingModsWorldIds;
 import com.livingmods.neoforge.entity.CitizenProjectionBinder;
 import com.livingmods.neoforge.physical.ArmyProjectionBinder;
+import com.livingmods.neoforge.physical.BanditProjectionBinder;
 import com.livingmods.neoforge.physical.CaravanProjectionBinder;
+import com.livingmods.neoforge.physical.GuardProjectionBinder;
+import com.livingmods.neoforge.physical.LiveStateCache;
 import com.livingmods.neoforge.physical.PhysicalReconciliationEngine;
 import com.livingmods.neoforge.worldgen.WorldPlanCache;
 import com.livingmods.protocol.MessageType;
@@ -125,7 +128,10 @@ public final class WorldSessionLifecycle {
             CitizenProjectionBinder.get().onServerTick(server);
             CaravanProjectionBinder.get().onServerTick(server);
             ArmyProjectionBinder.get().onServerTick(server);
+            BanditProjectionBinder.get().onServerTick(server);
+            GuardProjectionBinder.get().onServerTick(server);
             PhysicalReconciliationEngine.get().onServerTick(server);
+            LiveStateCache.get().onServerTick(server);
         }
     }
 
@@ -212,7 +218,10 @@ public final class WorldSessionLifecycle {
         CitizenProjectionBinder.get().clear();
         CaravanProjectionBinder.get().clear();
         ArmyProjectionBinder.get().clear();
+        BanditProjectionBinder.get().clear();
+        GuardProjectionBinder.get().clear();
         PhysicalReconciliationEngine.get().clear();
+        LiveStateCache.get().clear();
         timeSyncBridge.reset();
         activeWorldId = null;
         activeIdentity = null;
