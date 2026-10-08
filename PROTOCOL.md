@@ -7,7 +7,7 @@ Binary envelopes via `BinaryCodec` / `Envelope`:
 - Typed payloads under `MessageType`
 - Strings length-prefixed; max string length `65_536`
 
-`PROTOCOL_VERSION = 1`.
+`PROTOCOL_VERSION = 2` (typed `PhysicalOutcomePayload` for `REPORT_PHYSICAL_OUTCOME`; string-map fallback retained in sidecar decode).
 
 ## Handshake
 
