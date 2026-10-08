@@ -44,10 +44,10 @@ Worldgen and chunk materialization do **not** wait on the sidecar. The sidecar l
 | Axis | Value | Constant |
 |------|-------|----------|
 | Protocol | 4 | `LivingModsVersions.PROTOCOL_VERSION` |
-| Worldgen | 3 | `WORLDGEN_VERSION` |
+| Worldgen | 4 | `WORLDGEN_VERSION` |
 | Canonical save schema | 6 | `CANONICAL_SAVE_SCHEMA` |
 | Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` |
-| Structure catalog revision | 1 | `STRUCTURE_CATALOG_REVISION` |
+| Structure catalog revision | 2 | `STRUCTURE_CATALOG_REVISION` |
 | Mod / sidecar | 0.1.0 | `MOD_VERSION` / `SIDECAR_VERSION` |
 
 Documented also in `gradle.properties`. Runtime authority is the Java constants.

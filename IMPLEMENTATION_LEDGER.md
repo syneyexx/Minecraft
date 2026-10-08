@@ -88,10 +88,10 @@ A subsystem may be promoted to RELEASE_READY only after the relevant sections of
 | Axis | Current | Source |
 |------|---------|--------|
 | Protocol | 4 | `LivingModsVersions.PROTOCOL_VERSION` (typed player actions; M5 append-only types) |
-| Worldgen | 3 | `WORLDGEN_VERSION` (PlannedBuilding.assetId) |
+| Worldgen | 4 | `WORLDGEN_VERSION` (M6.1 asset-first planning + landmarks) |
 | Canonical save schema | 6 | `CANONICAL_SAVE_SCHEMA` (DynamicStructureRecord.assetId; reads ≥3) |
 | Physical content revision | 2 | `PHYSICAL_CONTENT_REVISION` (initial materialization only) |
-| Structure catalog revision | 1 | `STRUCTURE_CATALOG_REVISION` |
+| Structure catalog revision | 2 | `STRUCTURE_CATALOG_REVISION` (distinct geometry + geometryHash) |
 | Mod / sidecar | 0.1.0 | `MOD_VERSION` / `SIDECAR_VERSION` |
 
 Also recorded in `gradle.properties` for clarity; **Java constants win at runtime**.

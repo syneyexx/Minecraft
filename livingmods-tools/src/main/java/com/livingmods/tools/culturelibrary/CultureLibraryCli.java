@@ -30,6 +30,20 @@ public final class CultureLibraryCli {
         }
         String cmd = args[0];
         Path repoRoot = Path.of(".").toAbsolutePath().normalize();
+        // Gradle :livingmods-tools:run often starts with cwd under the tools module.
+        if (repoRoot.getFileName() != null && repoRoot.getFileName().toString().equals("livingmods-tools")) {
+            repoRoot = repoRoot.getParent();
+        }
+        if (!Files.isDirectory(repoRoot.resolve("livingmods-worldgen"))) {
+            Path walk = repoRoot;
+            for (int i = 0; i < 4 && walk != null; i++) {
+                if (Files.isDirectory(walk.resolve("livingmods-worldgen"))) {
+                    repoRoot = walk;
+                    break;
+                }
+                walk = walk.getParent();
+            }
+        }
         // Catalog must live in worldgen resources so sidecar/worldgen planning can load it
         // (NeoForge Jar-in-Jars worldgen, so materialization sees the same assets).
         Path resources = repoRoot.resolve("livingmods-worldgen/src/main/resources/assets/livingmods");
@@ -68,19 +82,41 @@ public final class CultureLibraryCli {
             case "validate" -> {
                 Path root = flagPath(args, "--root", resources);
                 StructureCatalog catalog = StructureCatalog.loadFromDirectory(root);
-                int bad = 0;
+                var validation = com.livingmods.worldgen.structure.CatalogValidation.validate(catalog.all());
+                int bad = validation.errors().size();
+                for (String err : validation.errors()) {
+                    System.out.println("ERROR " + err);
+                }
+                for (String warn : validation.warnings()) {
+                    System.out.println("WARN " + warn);
+                }
                 for (StructureAsset a : catalog.all()) {
                     if (a.contentPath().isBlank()) {
                         System.out.println("MISSING_CONTENT_PATH " + a.assetId());
                         bad++;
                         continue;
                     }
-                    if (catalog.loadContent(a.assetId()).isEmpty()) {
+                    var content = catalog.loadContent(a.assetId());
+                    if (content.isEmpty()) {
                         System.out.println("MISSING_CONTENT " + a.assetId() + " path=" + a.contentPath());
                         bad++;
+                    } else if (!a.geometryHash().isBlank()) {
+                        String gh = com.livingmods.worldgen.structure.MlsStructureFormat.geometryHash(content.get());
+                        if (!gh.equals(a.geometryHash())) {
+                            System.out.println("GEOMETRY_HASH_MISMATCH " + a.assetId());
+                            bad++;
+                        }
                     }
                 }
-                System.out.println("validated assets=" + catalog.size() + " problems=" + bad);
+                System.out.println("validated assets=" + catalog.size()
+                        + " uniqueGeometry=" + validation.uniqueGeometryCount()
+                        + " problems=" + bad);
+            }
+            case "import-local" -> {
+                Path dir = flagPath(args, "--dir", cache.resolve("local-inbox"));
+                String culture = flag(args, "--culture", "avalon");
+                ImportPipeline pipeline = new ImportPipeline(cache, importState, resources);
+                System.out.println(pipeline.importLocalDirectory(culture, dir).summary());
             }
             case "report" -> {
                 Path root = flagPath(args, "--root", resources);
@@ -112,6 +148,7 @@ public final class CultureLibraryCli {
         System.out.println("  author [--out path]");
         System.out.println("  search --query TEXT [--limit N]");
         System.out.println("  import --culture KEY [--plan path]");
+        System.out.println("  import-local --culture KEY --dir path");
         System.out.println("  validate [--root path]");
         System.out.println("  report [--root path]");
         System.out.println("  resume");

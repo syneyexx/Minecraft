@@ -98,12 +98,15 @@ public final class StructureManifestParser {
                     str(obj, "contentPath", ""),
                     str(obj, "sourceHash", ""),
                     str(obj, "contentHash", ""),
+                    str(obj, "geometryHash", ""),
+                    str(obj, "uniquenessGroup", ""),
                     integer(obj, "importRevision", StructureCatalogVersions.CONTENT_REVISION),
                     status,
                     bool(obj, "sanitized", false)
             );
             return java.util.Optional.of(asset);
         } catch (Exception e) {
+            System.err.println("structure_manifest_parse_error: " + e.getMessage());
             return java.util.Optional.empty();
         }
     }

@@ -5,10 +5,11 @@ public final class LivingModsVersions {
     /** Bumped for typed PlayerActionRequest/Response (M4 player agency). */
     public static final int PROTOCOL_VERSION = 4;
     /**
-     * Bumped for M6 culture structure library: PlannedBuilding.assetId selection
-     * participates in new-world geometry. Old plans without assetId keep procedural fallback.
+     * Bumped for M6.1 asset-first lot planning + landmark reservation.
+     * Alters new-world physical identity vs M6 lot-first selection.
+     * Old plans without usable asset data keep procedural fallback.
      */
-    public static final int WORLDGEN_VERSION = 3;
+    public static final int WORLDGEN_VERSION = 4;
     /**
      * Schema 6: DynamicStructureRecord.assetId for live construction library identity.
      * Schema 5: full player reputation (standing/ruled/legal/knowledge/policies),
@@ -17,7 +18,7 @@ public final class LivingModsVersions {
      */
     public static final int CANONICAL_SAVE_SCHEMA = 6;
     /** Packaged structure catalog content revision (distinct from worldgen/save/protocol). */
-    public static final int STRUCTURE_CATALOG_REVISION = 1;
+    public static final int STRUCTURE_CATALOG_REVISION = 2;
     /**
      * Initial-world chunk materialization provenance only.
      * Do not conflate with DynamicPhysicalState intent revisions.

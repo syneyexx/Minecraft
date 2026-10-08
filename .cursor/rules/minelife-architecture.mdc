@@ -87,8 +87,8 @@ Player intent → Minecraft client UI
 - `PROTOCOL_VERSION = 4` (`PlayerActionRequest`/`Response` + M5 append-only action types; retained physical payloads)
 - `CANONICAL_SAVE_SCHEMA = 6` (DynamicStructureRecord.assetId; schema 5 player gameplay retained; reads ≥3)
 - `PHYSICAL_CONTENT_REVISION = 2` (initial chunk materialization only)
-- `WORLDGEN_VERSION = 3` (PlannedBuilding.assetId)
-- `STRUCTURE_CATALOG_REVISION = 1` (packaged MLS catalog content)
+- `WORLDGEN_VERSION = 4` (M6.1 asset-first lot planning + landmark reservation)
+- `STRUCTURE_CATALOG_REVISION = 2` (distinct geometry library + geometryHash)
 
 ### M5 authority notes
 - Client screens never hold `SidecarClient` or issue `MessageType` requests

@@ -4,63 +4,35 @@
     "Durgan", "Brom", "Kael", "Torin", "Garrick", "Brand", "Haldor", "Rurik", 
     "Skarn", "Varr", "Balin", "Dain", "Farin", "Gimli", "Halin", "Korin", 
     "Lorin", "Morin", "Nalin", "Orin", "Thrain", "Urist", "Vili", "Yorin", 
-    "Zarin", "Brokk", "Eitri", "Fafnir", "Grimm", "Hroth", "Durin", "Broalin", 
-    "Kaelin", "Garbrom", "Branrn", "Harin", "Rurvili", "Skarth", "Vador", "Balimli", 
-    "Dainin", "Fanir", "Gimrick", "Haliin", "Kolin", "Lorrokk", "Moriel", "Naarr", 
-    "Oriorin", "Urgan", "Vilurik", "Yoriin", "Zaist", "Brorimm", "Eitrnd", "Griorin", 
-    "Hrotri"
+    "Zarin", "Brokk", "Eitri", "Fafnir", "Grimm", "Hroth"
   ],
   "femaleNames": [
     "Bruna", "Hilda", "Greta", "Kara", "Sigrid", "Mara", "Edda", "Tova", 
     "Ragna", "Una", "Bera", "Dagna", "Elda", "Frey", "Groa", "Helga", 
     "Inga", "Jorunn", "Kata", "Luta", "Marta", "Nessa", "Olga", "Petra", 
-    "Tilda", "Vera", "Ylva", "Brara", "Hilbera", "Gretnn", "Kalda", "Siggrid", 
-    "Marana", "Edata", "Tovvera", "Ragnra", "Unlda", "Berluta", "Dagnva", "Eldda", 
-    "Frefrey", "Groata", "Heuna", "Ingtova", "Joruoa", "Kassa", "Lutilda", "Martna", 
-    "Nelga", "Olgolga", "Petrta", "Tiuna", "Veringa", "Ylvara"
+    "Tilda", "Vera", "Ylva"
   ],
   "familyNames": [
     "Ironfist", "Anvilborn", "Deepdelver", "Slaghand", "Orevein", "Coalheart", "Cragwalker", "Anvilmark", 
     "Coalbrow", "Deepgrip", "Forgevein", "Grimstone", "Ironbrow", "Oretooth", "Slagborn", "Steelhand", 
-    "Underpeak", "Irand", "Anvvein", "Deepst", "Slark", "Oreborn", "Coalin", "Crone", 
-    "Anvborn", "Coalow", "Deand", "Foreart", "Grimow", "Irver", "Oregrip", "Slagak", 
-    "Stker", "Undooth", "Ironnd", "Anein", "Deefist", "Slagrk", "Ororn", "Coavein", 
-    "Cragne", "Anorn", "Coabrow", "Deepnd", "Foart", "Gribrow", "Ironer", "Orrip", 
-    "Slapeak", "Steeer", "Unoth", "Irohand", "Anviin", "Deist", "Slamark", "Orevrn", 
-    "Coein", "Cratone", "Anvirn", "Corow", "Deehand", "Forgrt", "Grrow", "Irolver", 
-    "Oretip", "Sleak", "Stelker", "Undeth"
+    "Underpeak"
   ],
   "settlementPrefixes": [
-    "Iron", "Anvil", "Forge", "Coal", "Slag", "Ore", "High", "Old", 
-    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
-    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
-    "Gold", "Silver", "Iroal", "Anvttle", "Forgar", "Coold", "Slaore", "Oreth", 
-    "Hight", "Oldiron", "Newld", "Grest", "Lithite", "Nortge", "Soeat", "Easower", 
-    "Wested", "Uplag", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
-    "Blanvil", "Redew"
+    "Iron", "Anvil", "Forge", "Coal", "Slag", "Ore", "Deep", "Stone", 
+    "Under", "Black", "Peak"
   ],
   "settlementSuffixes": [
-    "vale", "hold", "delve", "deep", "mine", "crag", "ton", "ford", 
-    "wick", "haven", "field", "wood", "brook", "moor", "ridge", "port", 
-    "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", "bay", 
-    "reach", "Vaeep", "Holield", "Delvll", "Deach", "Minton", "Cragor", "Toell", 
-    "Forelve", "Wicken", "Haate", "Fiebay", "Woodag", "Brook", "Moomere", "Ridgld", 
-    "Poick", "Gatport", "Hallff", "Stine", "Merwood", "Fellad", "Maale", "Cliford", 
-    "Bayge", "Rersh"
+    "vale", "hold", "delve", "deep", "mine", "crag", "forge", "gate", 
+    "anvil", "vein", "hall"
   ],
   "rulerTitles": [
-    "Guildmaster", "Forge Lord", "Warden", "Lord", "Lady", "High", "Grand", "Chief", 
-    "Master", "Elder", "Steward", "Regent", "Prince", "Princess", "Duke", "Duchess", 
-    "Marshal", "Chancellor", "Speaker", "Keeper"
+    "Guildmaster", "Forge Lord", "Warden", "King", "Queen", "Thane", "Forge-Lord", "Deep-Warden", 
+    "Master", "Elder"
   ],
   "dynastyPrefixes": [
-    "House", "Guild of", "Line of", "Clan", "Blood of", "Order of", "Circle of", "Banner of", 
-    "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", 
-    "Flame of", "Star of", "Stone of", "Root of"
+    "House", "Guild of", "Line of", "Clan", "Forge of", "Delve of"
   ],
   "kingdomPatterns": [
-    "Hold of {prefix}{suffix}", "Guildrealm of {family}", "{title}'s {prefix} Delve", "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", 
-    "League of {prefix}", "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", 
-    "Confederation of {suffix}", "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}"
+    "Hold of {prefix}{suffix}", "Guildrealm of {family}", "{title}'s {prefix} Delve", "Kingdom Under {prefix}", "Deep Realm of {family}", "Forge-Hold of {prefix}", "Delve of {family}", "Under-Kingdom of {prefix}{suffix}"
   ]
 }

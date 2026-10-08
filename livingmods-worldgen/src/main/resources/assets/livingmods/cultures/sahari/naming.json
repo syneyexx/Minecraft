@@ -4,64 +4,34 @@
     "Rashid", "Omar", "Karim", "Farid", "Hassan", "Yusuf", "Tariq", "Samir", 
     "Idris", "Nabil", "Malik", "Zayd", "Imran", "Bilal", "Adnan", "Jamal", 
     "Khalid", "Nasir", "Rami", "Sami", "Anwar", "Faisal", "Hakim", "Lutfi", 
-    "Qadir", "Salim", "Wasim", "Yasin", "Zubair", "Amin", "Rarid", "Omaalik", 
-    "Kariir", "Fadir", "Hasomar", "Yusuis", "Tamal", "Samakim", "Idriin", "Nariq", 
-    "Malilal", "Zaydar", "Imsin", "Bilssan", "Adnayd", "Jaami", "Khaalim", "Nasiim", 
-    "Rabil", "Samalid", "Anwafi", "Fahid", "Hakamir", "Lutfan", "Qasal", "Salbair", 
-    "Wasiuf", "Yaran", "Zubsami", "Aminim"
+    "Qadir", "Salim", "Wasim", "Yasin", "Zubair", "Amin"
   ],
   "femaleNames": [
     "Layla", "Zahra", "Amira", "Fatima", "Noor", "Salma", "Yasmin", "Hana", 
     "Leila", "Rana", "Amina", "Dalal", "Farah", "Ghada", "Iman", "Jamila", 
     "Karima", "Lina", "Mona", "Nadia", "Rania", "Safia", "Tara", "Wafa", 
-    "Yara", "Zainab", "Bushra", "Dina", "Heba", "Reem", "Laima", "Zahmina", 
-    "Amirna", "Faara", "Nooahra", "Salmla", "Yaila", "Hantara", "Leilem", "Ramin", 
-    "Amihada", "Dalaia", "Faina", "Ghanoor", "Imanal", "Jaona", "Karinab", "Linara", 
-    "Moana", "Nadrima", "Ranifa", "Sayla", "Tarhana", "Wafaan", "Yafia", "Zaiheba", 
-    "Bushma", "Dirah", "Hebadia", "Reemra"
+    "Yara", "Zainab", "Bushra", "Dina", "Heba", "Reem"
   ],
   "familyNames": [
     "Al-Nazir", "Desertborn", "Sandwalker", "Suncrest", "Goldvein", "Miragehand", "Dunevoice", "Al-Faris", 
     "Al-Hakim", "Al-Rashid", "Bin-Salah", "Desertwind", "Goldensand", "Oasisborn", "Sunspear", "Miragewalker", 
-    "Qasri", "Alest", "Desalah", "Sandir", "Suris", "Golpear", "Mirain", "Duind", 
-    "AlFborn", "AlHaim", "Alker", "Binhand", "Desend", "Goker", "Oasshid", "Sunsri", 
-    "Miice", "Qasborn", "AlNast", "Delah", "Sanazir", "Suncis", "Goear", "Mirvein", 
-    "Dunend", "Alorn", "AlHakim", "AlRaer", "Biand", "Dessand", "Golder", "Oahid", 
-    "Sunasri", "Mirace", "Qaorn", "AlNrest", "Deseah", "Sazir", "Sunaris", "Goldar", 
-    "Miein", "Dunwind", "AlFarn", "Alkim", "AlRlker", "BinSnd", "Deand", "Gollker", 
-    "Oasiid", "Susri", "Miroice", "Qasrrn"
+    "Qasri"
   ],
   "settlementPrefixes": [
-    "Qasr", "Oasis", "Golden", "Mirage", "Sun", "Dune", "High", "Old", 
-    "New", "Great", "Little", "North", "South", "East", "West", "Upper", 
-    "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", 
-    "Gold", "Silver", "Qaage", "Oasttle", "Goldar", "Miold", "Sundune", "Duneth", 
-    "Hight", "Oldqasr", "Newld", "Grest", "Lithite", "Norten", "Soeat", "Easower", 
-    "Wested", "Upsun", "Loworth", "Farar", "Never", "Brihigh", "Darkst", "Whark", 
-    "Blaasis", "Redew"
+    "Qasr", "Oasis", "Golden", "Mirage", "Sun", "Dune", "Palm", "Sand", 
+    "Spice", "Ivory", "Amber"
   ],
   "settlementSuffixes": [
-    "a", "ur", "abad", "shahr", "qasr", "wah", "ton", "ford", 
-    "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge", 
-    "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", 
-    "bay", "reach", "Aaahr", "Urield", "Abadte", "Shbay", "Qaswah", "Wahok", 
-    "Toead", "Foraven", "Wickrd", "Haoor", "Fiefell", "Woodad", "Brven", "Valport", 
-    "Moorff", "Riasr", "Porwood", "Gatell", "Haach", "Steton", "Merele", "Feere", 
-    "Marur", "Clifck"
+    "a", "ur", "abad", "shahr", "qasr", "wah", "stan", "souk", 
+    "oasis", "medina", "ribat", "wadi", "kasbah", "port"
   ],
   "rulerTitles": [
-    "Sultan", "Emir", "Caliph", "Lord", "Lady", "High", "Grand", "Chief", 
-    "Master", "Elder", "Warden", "Steward", "Regent", "Prince", "Princess", "Duke", 
-    "Duchess", "Marshal", "Chancellor", "Speaker"
+    "Sultan", "Emir", "Caliph", "Sheikh", "Vizier", "Pasha", "Malik", "Sultana"
   ],
   "dynastyPrefixes": [
-    "House", "Banu", "Dynasty of", "Clan", "Line of", "Blood of", "Order of", "Circle of", 
-    "Banner of", "Seat of", "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", 
-    "Shield of", "Flame of", "Star of", "Stone of"
+    "House", "Banu", "Dynasty of", "Tribe of", "Caravan of", "Line of", "Court of", "Oasis of"
   ],
   "kingdomPatterns": [
-    "Sultanate of {prefix}{suffix}", "Emirate of {family}", "{title}'s Oasis of {prefix}", "Kingdom of {prefix}{suffix}", "Realm of {family}", "{title}'s {prefix} Lands", "Dominion of {prefix}{suffix}", "Hold of {family}", 
-    "League of {prefix}", "Empire of {prefix}{suffix}", "{family} March", "Protectorate of {prefix}", "Free {prefix}{suffix}", "United {prefix} Realms", "Crownlands of {family}", "{title}dom of {prefix}", 
-    "Confederation of {suffix}", "Principality of {prefix}{suffix}", "Grand Duchy of {family}", "Satrapy of {prefix}"
+    "Sultanate of {prefix}{suffix}", "Emirate of {family}", "{title}'s Oasis of {prefix}", "Sultanate of {prefix}", "Emirate of {prefix}{suffix}", "Caliphate of {family}", "Oasis Realm of {prefix}", "Dominion of {prefix}{suffix}"
   ]
 }

@@ -57,6 +57,8 @@ public record StructureAsset(
         String contentPath,
         String sourceHash,
         String contentHash,
+        String geometryHash,
+        String uniquenessGroup,
         int importRevision,
         ImportStatus status,
         boolean sanitized
@@ -90,6 +92,12 @@ public record StructureAsset(
         contentPath = contentPath == null ? "" : contentPath;
         sourceHash = sourceHash == null ? "" : sourceHash;
         contentHash = contentHash == null ? "" : contentHash;
+        geometryHash = geometryHash == null ? "" : geometryHash;
+        uniquenessGroup = uniquenessGroup == null || uniquenessGroup.isBlank()
+                ? (canonicalRole.name().toLowerCase() + ":" + archetype)
+                : uniquenessGroup;
+        // Mirror is only advertised when the engine supports it — currently disabled.
+        mirrorAllowed = false;
         status = status == null ? ImportStatus.AUTHORED : status;
         weight = weight <= 0 ? 1.0 : weight;
         entranceConfidence = Math.max(0, Math.min(1, entranceConfidence));
@@ -103,6 +111,9 @@ public record StructureAsset(
         residentialSlotsHint = Math.max(0, residentialSlotsHint);
         workSlotsHint = Math.max(0, workSlotsHint);
         importRevision = Math.max(0, importRevision);
+        entranceX = Math.max(0, Math.min(width - 1, entranceX));
+        entranceY = Math.max(0, Math.min(height - 1, entranceY));
+        entranceZ = Math.max(0, Math.min(depth - 1, entranceZ));
     }
 
     public boolean matchesCulture(String key) {

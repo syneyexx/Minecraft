@@ -70,35 +70,14 @@ public final class NamingDataAuthor {
     }
 
     private static List<String> expand(List<String> base, List<String> extras, int target) {
-        Set<String> out = new LinkedHashSet<>(base);
+        // Curated pools only — never splice gibberish syllable fillers.
+        Set<String> out = new LinkedHashSet<>();
+        if (base != null) out.addAll(base);
         for (String e : extras) {
             if (out.size() >= target) break;
-            out.add(e);
+            if (e != null && !e.isBlank()) out.add(e);
         }
-        // Deterministic synthetic fillers from base syllables — avoid spam duplicates.
-        List<String> roots = new ArrayList<>(out);
-        int i = 0;
-        while (out.size() < target && !roots.isEmpty()) {
-            String a = roots.get(i % roots.size());
-            String b = roots.get((i * 7 + 3) % roots.size());
-            String syn = synthesize(a, b, i);
-            out.add(syn);
-            i++;
-            if (i > target * 8) break;
-        }
-        return new ArrayList<>(out).subList(0, Math.min(target, out.size()));
-    }
-
-    private static String synthesize(String a, String b, int i) {
-        String aa = a.replaceAll("[^A-Za-z]", "");
-        String bb = b.replaceAll("[^A-Za-z]", "");
-        if (aa.length() < 2) aa = aa + "ara";
-        if (bb.length() < 2) bb = bb + "ven";
-        int cutA = Math.min(aa.length(), Math.max(1, 2 + (i % 3)));
-        int cutB = Math.min(bb.length(), Math.max(1, 2 + ((i + 1) % 3)));
-        String s = aa.substring(0, cutA) + bb.substring(bb.length() - cutB).toLowerCase(Locale.ROOT);
-        if (s.isEmpty()) s = "Ara" + i;
-        return Character.toUpperCase(s.charAt(0)) + (s.length() > 1 ? s.substring(1) : "");
+        return new ArrayList<>(out);
     }
 
     private static List<String> maleSeeds(String culture) {
@@ -185,48 +164,124 @@ public final class NamingDataAuthor {
     }
 
     private static List<String> prefixSeeds(String culture) {
-        return List.of("High", "Old", "New", "Great", "Little", "North", "South", "East", "West", "Upper",
-                "Lower", "Far", "Near", "Bright", "Dark", "White", "Black", "Red", "Gold", "Silver");
+        return switch (culture) {
+            case "nordheim" -> List.of("Frost", "Storm", "Iron", "Wolf", "Sea", "Rime", "Ash", "Skald", "Fjell", "Drake");
+            case "avalon" -> List.of("High", "Old", "Fair", "Green", "Stone", "King", "White", "Red", "Gold", "River");
+            case "sahari" -> List.of("Golden", "Palm", "Sand", "Oasis", "Sun", "Mirage", "Spice", "Dune", "Ivory", "Amber");
+            case "yamato" -> List.of("Sakura", "Kaze", "Yama", "Hana", "Tsuki", "Kiri", "Mizu", "Take", "Hoshi", "Aoi");
+            case "helvetia" -> List.of("Alpine", "Snow", "Peak", "Crystal", "High", "Pine", "Glacier", "Valley", "Stone", "Cloud");
+            case "amaru" -> List.of("Jade", "Sun", "Jungle", "Cloud", "Terrace", "Green", "Stone", "Rain", "Serpent", "Flame");
+            case "varangian" -> List.of("White", "Black", "River", "Forest", "North", "Ice", "Trade", "Birch", "Wolf", "Old");
+            case "celtara" -> List.of("Green", "Oak", "Mist", "Hill", "Glen", "Stone", "Wild", "Grove", "River", "Tor");
+            case "qin" -> List.of("Jade", "Golden", "Azure", "Central", "Eastern", "Western", "Imperial", "River", "Mountain", "Silk");
+            case "atlantea" -> List.of("Azure", "Tide", "Pearl", "Coral", "Salt", "Harbor", "Bright", "Deep", "Storm", "Isle");
+            case "steppeborn" -> List.of("Wind", "Sky", "Horse", "Grass", "Golden", "Eagle", "Open", "Far", "Blue", "Herd");
+            case "ironvale" -> List.of("Deep", "Iron", "Coal", "Forge", "Stone", "Under", "Ore", "Black", "Anvil", "Peak");
+            case "wizard_trees" -> List.of("Glow", "Root", "Spore", "Mycel", "Crystal", "Hollow", "Night", "Deep", "Verdant", "Arcane");
+            default -> List.of("New", "Old", "Great", "Far");
+        };
     }
 
     private static List<String> suffixSeeds(String culture) {
-        return List.of("ton", "ford", "wick", "haven", "field", "wood", "brook", "vale", "moor", "ridge",
-                "port", "gate", "hall", "stead", "mere", "fell", "marsh", "cliff", "bay", "reach");
+        // Culture-appropriate settlement endings — not a universal English pool.
+        return switch (culture) {
+            case "nordheim" -> List.of("heim", "vik", "fjord", "gard", "stad", "ness", "holm", "by", "dal", "berg");
+            case "avalon" -> List.of("ton", "ford", "wick", "ham", "bury", "chester", "worth", "field", "bridge", "shire");
+            case "sahari" -> List.of("abad", "stan", "qasr", "souk", "oasis", "medina", "ribat", "wadi", "kasbah", "port");
+            case "yamato" -> List.of("mura", "ichi", "yama", "shima", "kawa", "hara", "saki", "minato", "dera", "ji");
+            case "helvetia" -> List.of("berg", "thal", "dorf", "bad", "wald", "see", "horn", "alp", "bruck", "hof");
+            case "amaru" -> List.of("coatl", "tlan", "pan", "can", "tepec", "yan", "calli", "mil", "ixco", "hua");
+            case "varangian" -> List.of("grad", "ovsk", "sk", "pol", "gorod", "mir", "slav", "ino", "ka", "burg");
+            case "celtara" -> List.of("dun", "kil", "glen", "tor", "llyn", "bally", "cairn", "rath", "avon", "ness");
+            case "qin" -> List.of("zhou", "cheng", "men", "guan", "shan", "he", "jiang", "fu", "ting", "cun");
+            case "atlantea" -> List.of("port", "bay", "isle", "harbor", "reef", "cove", "strand", "quay", "marina", "point");
+            case "steppeborn" -> List.of("ordo", "kuren", "gol", "nur", "bulag", "hot", "sum", "tala", "uul", "ger");
+            case "ironvale" -> List.of("delve", "hold", "forge", "mine", "deep", "gate", "anvil", "vein", "hall", "crag");
+            case "wizard_trees" -> List.of("hollow", "grove", "cap", "root", "spire", "cavern", "bloom", "veil", "deep", "glow");
+            default -> List.of("hold", "haven", "vale", "gate");
+        };
     }
 
     private static List<String> titleSeeds(String culture) {
-        return List.of("Lord", "Lady", "High", "Grand", "Chief", "Master", "Elder", "Warden", "Steward", "Regent",
-                "Prince", "Princess", "Duke", "Duchess", "Marshal", "Chancellor", "Speaker", "Keeper", "First", "Supreme");
+        return switch (culture) {
+            case "nordheim" -> List.of("Jarl", "King", "Queen", "Thane", "Hersir", "Skald-Lord", "Sea-King", "Ring-Giver");
+            case "avalon" -> List.of("King", "Queen", "Lord", "Lady", "Duke", "Duchess", "Baron", "Earl", "Prince", "Princess");
+            case "sahari" -> List.of("Sultan", "Emir", "Caliph", "Sheikh", "Vizier", "Pasha", "Malik", "Sultana");
+            case "yamato" -> List.of("Emperor", "Shogun", "Daimyo", "Lord", "Lady", "Regent", "Prince", "Princess");
+            case "helvetia" -> List.of("Count", "Countess", "Lord", "Lady", "Burgermeister", "Warden", "Prince", "Abbot");
+            case "amaru" -> List.of("Tlatoani", "High Priest", "Lord", "Lady", "Speaker", "Sun-Warden", "Elder");
+            case "varangian" -> List.of("Prince", "Princess", "Boyar", "Grand Prince", "Tsar", "Tsarina", "Voivode");
+            case "celtara" -> List.of("High King", "Queen", "Chieftain", "Druid-Lord", "Ri", "Banrion", "Elder");
+            case "qin" -> List.of("Emperor", "Empress", "King", "Minister", "Governor", "Magistrate", "Prince", "Princess");
+            case "atlantea" -> List.of("Archon", "Navarch", "Lord", "Lady", "Harbor-King", "Prince", "Princess", "Admiral");
+            case "steppeborn" -> List.of("Khan", "Khatun", "Noyan", "Baghatur", "Khagan", "Chief", "Elder");
+            case "ironvale" -> List.of("King", "Queen", "Thane", "Forge-Lord", "Deep-Warden", "Master", "Elder");
+            case "wizard_trees" -> List.of("Archmage", "Spore-Elder", "Root-Lord", "High Mycel", "Keeper", "Speaker");
+            default -> List.of("Lord", "Lady", "Ruler", "Elder");
+        };
     }
 
     private static List<String> dynastySeeds(String culture) {
-        return List.of("House", "Clan", "Line of", "Blood of", "Order of", "Circle of", "Banner of", "Seat of",
-                "Throne of", "Court of", "Legacy of", "Kin of", "Realm of", "Crown of", "Shield of", "Flame of",
-                "Star of", "Stone of", "Root of", "Tide of");
+        return switch (culture) {
+            case "nordheim" -> List.of("House", "Clan", "Blood of", "Line of", "Shield of", "Ship of");
+            case "avalon" -> List.of("House", "Line of", "Banner of", "Seat of", "Crown of", "Court of");
+            case "sahari" -> List.of("House", "Tribe of", "Caravan of", "Line of", "Court of", "Oasis of");
+            case "yamato" -> List.of("Clan", "House", "Line of", "Court of", "Banner of");
+            case "helvetia" -> List.of("House", "Line of", "Alpine Seat of", "Banner of");
+            case "amaru" -> List.of("Line of", "Blood of", "Sun of", "Temple of", "House");
+            case "varangian" -> List.of("House", "Line of", "Court of", "Boyar of");
+            case "celtara" -> List.of("Clan", "Tuath of", "Blood of", "Grove of", "House");
+            case "qin" -> List.of("House", "Clan", "Court of", "Line of", "Mandate of");
+            case "atlantea" -> List.of("House", "Fleet of", "Harbor of", "Line of", "Tide of");
+            case "steppeborn" -> List.of("Ordu of", "Clan", "Blood of", "Herd of", "Banner of");
+            case "ironvale" -> List.of("House", "Clan", "Forge of", "Delve of", "Line of");
+            case "wizard_trees" -> List.of("Circle of", "Root of", "Spore of", "Line of", "Grove of");
+            default -> List.of("House", "Line of", "Clan");
+        };
     }
 
     private static List<String> kingdomSeeds(String culture) {
-        return List.of(
-                "Kingdom of {prefix}{suffix}",
-                "Realm of {family}",
-                "{title}'s {prefix} Lands",
-                "Dominion of {prefix}{suffix}",
-                "Hold of {family}",
-                "League of {prefix}",
-                "Empire of {prefix}{suffix}",
-                "{family} March",
-                "Protectorate of {prefix}",
-                "Free {prefix}{suffix}",
-                "United {prefix} Realms",
-                "Crownlands of {family}",
-                "{title}dom of {prefix}",
-                "Confederation of {suffix}",
-                "Principality of {prefix}{suffix}",
-                "Grand Duchy of {family}",
-                "Satrapy of {prefix}",
-                "Khanate of {prefix}{suffix}",
-                "Theocracy of {prefix}",
-                "Guildrealm of {family}"
-        );
+        return switch (culture) {
+            case "nordheim" -> List.of(
+                    "Kingdom of {prefix}{suffix}", "Jarldom of {prefix}", "Hold of {family}",
+                    "{family} Vik", "Sea-Realm of {prefix}", "Shieldlands of {family}");
+            case "avalon" -> List.of(
+                    "Kingdom of {prefix}{suffix}", "Realm of {family}", "Duchy of {prefix}{suffix}",
+                    "Principality of {prefix}", "Crownlands of {family}", "{family} March");
+            case "sahari" -> List.of(
+                    "Sultanate of {prefix}", "Emirate of {prefix}{suffix}", "Caliphate of {family}",
+                    "Oasis Realm of {prefix}", "Dominion of {prefix}{suffix}");
+            case "yamato" -> List.of(
+                    "Empire of {prefix}", "Shogunate of {family}", "Domain of {prefix}{suffix}",
+                    "Province of {prefix}", "Court of {family}");
+            case "helvetia" -> List.of(
+                    "County of {prefix}{suffix}", "Alpine Realm of {family}", "Confederation of {prefix}",
+                    "Principality of {prefix}", "Canton of {prefix}{suffix}");
+            case "amaru" -> List.of(
+                    "Empire of {prefix}", "Sun-Realm of {family}", "Temple-State of {prefix}",
+                    "Dominion of {prefix}{suffix}", "High Seat of {family}");
+            case "varangian" -> List.of(
+                    "Principality of {prefix}{suffix}", "Grand Realm of {family}", "Tsardom of {prefix}",
+                    "Boyar Lands of {family}", "River-Realm of {prefix}");
+            case "celtara" -> List.of(
+                    "Kingdom of {prefix}", "High Realm of {family}", "Tuath of {prefix}{suffix}",
+                    "Clanlands of {family}", "Grove-Realm of {prefix}");
+            case "qin" -> List.of(
+                    "Empire of {prefix}", "Kingdom of {prefix}{suffix}", "Mandate of {family}",
+                    "Province of {prefix}", "Imperial Domain of {family}");
+            case "atlantea" -> List.of(
+                    "Maritime Realm of {prefix}", "Archonate of {family}", "Harbor Kingdom of {prefix}{suffix}",
+                    "Isle League of {prefix}", "Principality of {prefix}");
+            case "steppeborn" -> List.of(
+                    "Khanate of {prefix}", "Ordu of {family}", "Khaganate of {prefix}{suffix}",
+                    "Steppe Realm of {family}", "Herd-Nation of {prefix}");
+            case "ironvale" -> List.of(
+                    "Kingdom Under {prefix}", "Deep Realm of {family}", "Forge-Hold of {prefix}",
+                    "Delve of {family}", "Under-Kingdom of {prefix}{suffix}");
+            case "wizard_trees" -> List.of(
+                    "Mycelium Realm of {prefix}", "Root-Court of {family}", "Spore Dominion of {prefix}",
+                    "Arcane Hollow of {family}", "Circle of {prefix}{suffix}");
+            default -> List.of("Realm of {family}", "Lands of {prefix}{suffix}");
+        };
     }
 }

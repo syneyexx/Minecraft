@@ -26,11 +26,14 @@ import com.livingmods.worldgen.terrain.TerrainSample;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Urban hierarchy: boundary → main streets → districts → secondary streets → lots → buildings.
+ * Urban hierarchy: boundary → main streets → districts → landmarks → asset-sized lots → buildings.
  * District geometry follows street corridors, terrain, waterfront, gates, and castle adjacency —
  * not only rectangular pie slices.
+ *
+ * <p>M6.1 planning order: role → asset → rotation → real dimensions → reserve lot → entrance align.
  */
 public final class UrbanPlanner {
     private final LivingModsConfig config;
@@ -61,13 +64,10 @@ public final class UrbanPlanner {
 
         for (int i = 0; i < settlements.size(); i++) {
             PlannedSettlement s = settlements.get(i);
-            if (!s.tier().isUrban() && s.tier() != SettlementTier.CAPITAL) {
-                out.add(s);
-                continue;
-            }
             CultureDefinition culture = cultures.get(s.cultureKey())
                     .orElseThrow(() -> new IllegalStateException("culture " + s.cultureKey()));
             DeterministicRandom random = new DeterministicRandom(Hashing.mix(base, i));
+            // All tiers use the catalog — hamlets/villages get a compact rural layout.
             out.add(layoutSettlement(seed, i, s, culture, roads, random));
         }
         return out;
@@ -104,35 +104,65 @@ public final class UrbanPlanner {
         int buildingOrdinal = 0;
         int housingTarget = SettlementFootprint.housingBuildingTarget(s.plannedPopulation(), culture);
         int housingBuilt = 0;
+        boolean coastal = waterfront(s.center(), radius) || s.role() == SettlementRole.PORT;
+        boolean underground = s.underground() || culture.underground();
 
+        // 1) Landmark-first: reserve major anchors using real asset dimensions.
         for (PlannedDistrict district : districts) {
-            List<PlannedLot> districtLots = subdivideLots(
-                    seed, index, s, district, culture, streets, random, lotOrdinal, occupiedLotCells
-            );
-            lotOrdinal += districtLots.size();
-            for (PlannedLot lot : districtLots) {
-                lots.add(lot);
-                if (!lot.occupied()) continue;
-                BuildingRole role = pickRole(district.type(), lot, random);
+            List<BuildingRole> landmarks = landmarkRolesFor(district.type(), s);
+            for (BuildingRole landmarkRole : landmarks) {
+                if (buildingOrdinal > 80) break;
+                WealthClass wealth = wealthFor(district.type(), s.tier());
+                int entranceDir = nearestStreetDirection(district.bounds().center(), streets);
+                OptionalPlacement placed = placeAssetFirst(
+                        seed, index, buildingOrdinal, s, culture, district, landmarkRole, wealth,
+                        entranceDir, coastal, underground, recentAssetIds, occupiedLotCells, streets, random
+                );
+                if (placed != null) {
+                    lots.add(placed.lot());
+                    buildings.add(placed.building());
+                    recentAssetIds.add(placed.building().assetId());
+                    lotOrdinal++;
+                    buildingOrdinal++;
+                }
+            }
+        }
+
+        // 2) Fill remaining district area with asset-sized lots (role → asset → lot).
+        for (PlannedDistrict district : districts) {
+            int fillBudget = fillBudgetFor(district.type(), s.tier());
+            for (int n = 0; n < fillBudget; n++) {
+                BuildingRole role = pickFillRole(district.type(), s, random);
                 if (isHousing(role) && housingBuilt >= housingTarget && random.chance(0.55)) {
                     continue;
                 }
-                WealthClass wealth = wealthFor(district.type(), s.tier());
-                int foundationY = (int) terrain.surfaceHeight(lot.bounds().center().x(), lot.bounds().center().z());
-                LotId lotId = lot.id();
-                ArchitectureGrammar.Blueprint bp = grammar.generate(
-                        seed, index * 10_000L + buildingOrdinal, culture, role, wealth, s.tier(),
-                        lotId, s.id(), district.id(), lot.bounds(), lot.entranceDirection(), foundationY,
-                        recentAssetIds
-                );
-                buildings.add(bp.building());
-                if (bp.building().usesImportedAsset()) {
-                    recentAssetIds.add(bp.building().assetId());
+                // Skip roles already satisfied as unique landmarks in this district.
+                if (isLandmarkRole(role) && districtHasRole(buildings, district, role)) {
+                    continue;
                 }
+                WealthClass wealth = wealthFor(district.type(), s.tier());
+                int entranceDir = random.nextInt(4);
+                OptionalPlacement placed = placeAssetFirst(
+                        seed, index, buildingOrdinal, s, culture, district, role, wealth,
+                        entranceDir, coastal, underground, recentAssetIds, occupiedLotCells, streets, random
+                );
+                if (placed == null) continue;
+                lots.add(placed.lot());
+                buildings.add(placed.building());
+                if (placed.building().usesImportedAsset()) {
+                    recentAssetIds.add(placed.building().assetId());
+                }
+                lotOrdinal++;
                 buildingOrdinal++;
                 if (isHousing(role)) housingBuilt++;
             }
         }
+
+        // Special placement routes (agriculture, mining, walls/gates, ruins, bridges).
+        buildingOrdinal = placeSpecialRoutes(
+                seed, index, s, culture, districts, lots, buildings, recentAssetIds,
+                occupiedLotCells, streets, gates, wallPath, coastal, underground, random, buildingOrdinal
+        );
 
         // Ensure housing capacity target when lots under-produced.
         housingBuilt = ensureHousingCapacity(
@@ -164,32 +194,21 @@ public final class UrbanPlanner {
                         || d.type() == DistrictType.WEALTHY_RESIDENTIAL)
                 .findFirst()
                 .orElse(districts.get(districts.size() - 1));
-        BoundingBox2 b = residential.bounds();
+        List<String> recent = new ArrayList<>();
+        for (PlannedBuilding existing : buildings) {
+            if (existing.usesImportedAsset()) recent.add(existing.assetId());
+        }
         int guard = 0;
         while (housingBuilt < housingTarget && guard++ < housingTarget * 2) {
-            int x = b.minX() + random.nextInt(Math.max(1, b.width() - 8));
-            int z = b.minZ() + random.nextInt(Math.max(1, b.depth() - 8));
-            BoundingBox2 lotBox = BoundingBox2.of(x, z, x + 7, z + 7);
-            if (lotOverlapsExisting(lotBox, occupied)) continue;
-            markLotCells(lotBox, occupied);
-            LotId lotId = LotId.deterministic(seed, index * 1000L + lots.size() + 50_000);
-            PlannedLot lot = new PlannedLot(
-                    lotId, s.id(), residential.id(), residential.type(), lotBox,
-                    0, terrain.averageSlope(lotBox, 4),
-                    EnumSet.of(BuildingRole.HOUSE, BuildingRole.TOWNHOUSE), true
+            OptionalPlacement p = placeAssetFirst(
+                    seed, index, buildings.size() + 50_000, s, culture, residential,
+                    BuildingRole.HOUSE, wealthFor(residential.type(), s.tier()), 0,
+                    false, s.underground(), recent, occupied, List.of(), random
             );
-            lots.add(lot);
-            WealthClass wealth = wealthFor(residential.type(), s.tier());
-            int foundationY = (int) terrain.surfaceHeight(lotBox.center().x(), lotBox.center().z());
-            List<String> recent = new ArrayList<>();
-            for (PlannedBuilding existing : buildings) {
-                if (existing.usesImportedAsset()) recent.add(existing.assetId());
-            }
-            ArchitectureGrammar.Blueprint bp = grammar.generate(
-                    seed, index * 10_000L + buildings.size() + 50_000, culture, BuildingRole.HOUSE, wealth,
-                    s.tier(), lotId, s.id(), residential.id(), lotBox, 0, foundationY, recent
-            );
-            buildings.add(bp.building());
+            if (p == null) break;
+            lots.add(p.lot());
+            buildings.add(p.building());
+            if (p.building().usesImportedAsset()) recent.add(p.building().assetId());
             housingBuilt++;
         }
         return housingBuilt;
@@ -266,14 +285,32 @@ public final class UrbanPlanner {
                 districts.add(district(seed, index, d++, s, DistrictType.DOCKS,
                         waterfrontBox(s.center(), r, random)));
             }
-        } else {
+        } else if (s.tier() == SettlementTier.TOWN) {
             districts.add(district(seed, index, d++, s, DistrictType.PLAZA,
                     boxAround(s.center(), r / 5)));
             districts.add(district(seed, index, d++, s, DistrictType.CRAFTSMEN,
                     annularSector(s.center(), r / 5, r * 4 / 5, 0, Math.PI * 2, random)));
+            districts.add(district(seed, index, d++, s, DistrictType.COMMON_RESIDENTIAL,
+                    annularSector(s.center(), r / 4, r * 9 / 10, 0.5, 5.5, random)));
             if (s.role() == SettlementRole.MILITARY) {
                 districts.add(district(seed, index, d++, s, DistrictType.MILITARY,
                         gateAdjacentBox(s.center(), gates, r, random)));
+            }
+            if (s.role() == SettlementRole.PORT || waterfront(s.center(), r)) {
+                districts.add(district(seed, index, d++, s, DistrictType.DOCKS,
+                        waterfrontBox(s.center(), r, random)));
+            }
+        } else {
+            // Hamlet / village — compact rural layout with agriculture.
+            districts.add(district(seed, index, d++, s, DistrictType.PLAZA,
+                    boxAround(s.center(), Math.max(8, r / 4))));
+            districts.add(district(seed, index, d++, s, DistrictType.COMMON_RESIDENTIAL,
+                    annularSector(s.center(), r / 6, r * 4 / 5, 0, Math.PI * 2, random)));
+            districts.add(district(seed, index, d++, s, DistrictType.CRAFTSMEN,
+                    annularSector(s.center(), r / 5, r * 3 / 4, 2.0, 4.0, random)));
+            if (s.role() == SettlementRole.MINING || "ironvale".equals(s.cultureKey())) {
+                districts.add(district(seed, index, d++, s, DistrictType.CRAFTSMEN,
+                        boxAround(BlockPos2.of(s.center().x() + r / 3, s.center().z()), r / 5)));
             }
         }
 
@@ -542,25 +579,345 @@ public final class UrbanPlanner {
 
     private EnumSet<BuildingRole> rolesFor(DistrictType type) {
         return switch (type) {
-            case CASTLE -> EnumSet.of(BuildingRole.CASTLE_KEEP, BuildingRole.GATEHOUSE, BuildingRole.TOWER);
-            case GOVERNMENT -> EnumSet.of(BuildingRole.PALACE, BuildingRole.MONUMENT);
-            case MARKET, COMMERCIAL -> EnumSet.of(BuildingRole.MARKET_HALL, BuildingRole.SHOP, BuildingRole.MARKET_STALL, BuildingRole.TAVERN);
+            case CASTLE -> EnumSet.of(BuildingRole.CASTLE_KEEP, BuildingRole.GATEHOUSE, BuildingRole.TOWER, BuildingRole.BARRACKS);
+            case GOVERNMENT -> EnumSet.of(BuildingRole.PALACE, BuildingRole.MONUMENT, BuildingRole.PRISON);
+            case MARKET, COMMERCIAL -> EnumSet.of(BuildingRole.MARKET_HALL, BuildingRole.SHOP, BuildingRole.MARKET_STALL, BuildingRole.TAVERN, BuildingRole.WAREHOUSE);
             case WEALTHY_RESIDENTIAL -> EnumSet.of(BuildingRole.MANOR, BuildingRole.TOWNHOUSE);
-            case COMMON_RESIDENTIAL -> EnumSet.of(BuildingRole.HOUSE, BuildingRole.TOWNHOUSE);
-            case MILITARY -> EnumSet.of(BuildingRole.BARRACKS, BuildingRole.GUARDHOUSE, BuildingRole.TOWER);
-            case RELIGIOUS -> EnumSet.of(BuildingRole.TEMPLE);
-            case CRAFTSMEN -> EnumSet.of(BuildingRole.WORKSHOP, BuildingRole.SMITHY, BuildingRole.TAVERN);
-            case DOCKS -> EnumSet.of(BuildingRole.DOCK, BuildingRole.WAREHOUSE);
+            case COMMON_RESIDENTIAL -> EnumSet.of(BuildingRole.HOUSE, BuildingRole.TOWNHOUSE, BuildingRole.WELL);
+            case MILITARY -> EnumSet.of(BuildingRole.BARRACKS, BuildingRole.GUARDHOUSE, BuildingRole.TOWER, BuildingRole.GATEHOUSE);
+            case RELIGIOUS -> EnumSet.of(BuildingRole.TEMPLE, BuildingRole.MONUMENT);
+            case CRAFTSMEN -> EnumSet.of(BuildingRole.WORKSHOP, BuildingRole.SMITHY, BuildingRole.TAVERN, BuildingRole.SAWMILL);
+            case DOCKS -> EnumSet.of(BuildingRole.DOCK, BuildingRole.WAREHOUSE, BuildingRole.TOWER);
             case HISTORIC_CENTER, PLAZA, EDUCATION -> EnumSet.of(
-                    BuildingRole.HOUSE, BuildingRole.SHOP, BuildingRole.SCHOOL, BuildingRole.CLINIC, BuildingRole.TAVERN);
-            default -> EnumSet.of(BuildingRole.HOUSE, BuildingRole.SHOP);
+                    BuildingRole.HOUSE, BuildingRole.SHOP, BuildingRole.SCHOOL, BuildingRole.CLINIC,
+                    BuildingRole.TAVERN, BuildingRole.WELL, BuildingRole.PRISON);
+            default -> EnumSet.of(BuildingRole.HOUSE, BuildingRole.SHOP, BuildingRole.FARMHOUSE);
         };
     }
 
-    private BuildingRole pickRole(DistrictType type, PlannedLot lot, DeterministicRandom random) {
-        List<BuildingRole> roles = new ArrayList<>(lot.allowedRoles());
+    private List<BuildingRole> landmarkRolesFor(DistrictType type, PlannedSettlement s) {
+        List<BuildingRole> out = new ArrayList<>();
+        switch (type) {
+            case CASTLE -> {
+                out.add(BuildingRole.CASTLE_KEEP);
+                out.add(BuildingRole.GATEHOUSE);
+            }
+            case GOVERNMENT -> {
+                if (s.capital() || s.tier() == SettlementTier.CAPITAL) out.add(BuildingRole.PALACE);
+                out.add(BuildingRole.MONUMENT);
+            }
+            case RELIGIOUS -> out.add(BuildingRole.TEMPLE);
+            case MARKET, COMMERCIAL -> out.add(BuildingRole.MARKET_HALL);
+            case MILITARY -> {
+                out.add(BuildingRole.BARRACKS);
+                out.add(BuildingRole.GUARDHOUSE);
+            }
+            case DOCKS -> {
+                out.add(BuildingRole.DOCK);
+                out.add(BuildingRole.WAREHOUSE);
+            }
+            case PLAZA, HISTORIC_CENTER -> {
+                out.add(BuildingRole.WELL);
+                if (s.tier().ordinal() >= SettlementTier.TOWN.ordinal()) out.add(BuildingRole.SCHOOL);
+            }
+            default -> {
+            }
+        }
+        return out;
+    }
+
+    private BuildingRole pickFillRole(DistrictType type, PlannedSettlement s, DeterministicRandom random) {
+        List<BuildingRole> roles = new ArrayList<>(rolesFor(type));
+        // Agricultural outskirts for hamlets/villages
+        if (!s.tier().isUrban() && s.tier() != SettlementTier.CAPITAL) {
+            roles.add(BuildingRole.FARMHOUSE);
+            roles.add(BuildingRole.BARN);
+            roles.add(BuildingRole.MILL);
+            roles.add(BuildingRole.WELL);
+        }
+        if (s.role() == SettlementRole.MINING || "ironvale".equals(s.cultureKey())) {
+            roles.add(BuildingRole.MINE_ENTRANCE);
+            roles.add(BuildingRole.SMITHY);
+        }
         if (roles.isEmpty()) return BuildingRole.HOUSE;
         return random.pick(roles);
+    }
+
+    private int fillBudgetFor(DistrictType type, SettlementTier tier) {
+        int base = switch (type) {
+            case COMMON_RESIDENTIAL -> 18;
+            case WEALTHY_RESIDENTIAL -> 8;
+            case MARKET, COMMERCIAL, CRAFTSMEN -> 10;
+            case DOCKS, MILITARY -> 6;
+            case CASTLE, GOVERNMENT, RELIGIOUS -> 4;
+            default -> 8;
+        };
+        if (tier == SettlementTier.HAMLET) return Math.max(4, base / 3);
+        if (tier == SettlementTier.VILLAGE) return Math.max(6, base / 2);
+        if (tier == SettlementTier.TOWN) return (base * 3) / 4;
+        return base;
+    }
+
+    private boolean isLandmarkRole(BuildingRole role) {
+        return role == BuildingRole.PALACE || role == BuildingRole.CASTLE_KEEP
+                || role == BuildingRole.TEMPLE || role == BuildingRole.MARKET_HALL
+                || role == BuildingRole.MONUMENT;
+    }
+
+    private boolean districtHasRole(List<PlannedBuilding> buildings, PlannedDistrict district, BuildingRole role) {
+        for (PlannedBuilding b : buildings) {
+            if (b.districtId().equals(district.id()) && b.role() == role) return true;
+        }
+        return false;
+    }
+
+    private int nearestStreetDirection(BlockPos2 from, List<BlockPos2> streets) {
+        if (streets.isEmpty()) return 2;
+        BlockPos2 nearest = streets.get(0);
+        double best = Double.MAX_VALUE;
+        for (BlockPos2 p : streets) {
+            double d = p.distanceTo(from);
+            if (d < best) {
+                best = d;
+                nearest = p;
+            }
+        }
+        int dx = nearest.x() - from.x();
+        int dz = nearest.z() - from.z();
+        if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? 1 : 3;
+        return dz > 0 ? 2 : 0;
+    }
+
+    private record OptionalPlacement(PlannedLot lot, PlannedBuilding building) {}
+
+    private OptionalPlacement placeAssetFirst(
+            long seed, int settlementIndex, int buildingOrdinal,
+            PlannedSettlement s, CultureDefinition culture, PlannedDistrict district,
+            BuildingRole role, WealthClass wealth, int entranceDir,
+            boolean coastal, boolean underground,
+            List<String> recentAssetIds, java.util.Set<Long> occupied,
+            List<BlockPos2> streets, DeterministicRandom random
+    ) {
+        long ordinal = settlementIndex * 10_000L + buildingOrdinal;
+        Optional<ArchitectureGrammar.AssetPlacement> apOpt = grammar.selectAssetPlacement(
+                seed, ordinal, culture, role, wealth, s.tier(), entranceDir,
+                recentAssetIds, coastal && (role == BuildingRole.DOCK || role == BuildingRole.TOWER),
+                underground
+        );
+        BoundingBox2 districtBounds = district.bounds();
+        int lotW;
+        int lotD;
+        ArchitectureGrammar.AssetPlacement ap = null;
+        if (apOpt.isPresent()) {
+            ap = apOpt.get();
+            lotW = ap.lotWidth();
+            lotD = ap.lotDepth();
+        } else {
+            // Emergency procedural lot size by role class
+            lotW = switch (role) {
+                case PALACE, CASTLE_KEEP -> 28;
+                case TEMPLE, MARKET_HALL, BARRACKS, MANOR -> 18;
+                case WELL, MARKET_STALL, WAYSTONE -> 7;
+                default -> culture.architecture().layoutStyle() == CultureDefinition.LayoutStyle.GRID ? 12 : 14;
+            };
+            lotD = role == BuildingRole.PALACE || role == BuildingRole.CASTLE_KEEP ? 24 : Math.max(8, lotW - 2);
+        }
+        // Culture spacing: steppe/dispersed cultures get more padding.
+        int gap = switch (culture.architecture().layoutStyle()) {
+            case ORGANIC_RADIAL -> 3;
+            case TERRACED, CAVERN -> 2;
+            default -> 2;
+        };
+        if ("steppeborn".equals(culture.key())) gap = 5;
+
+        for (int attempt = 0; attempt < 24; attempt++) {
+            int x = districtBounds.minX() + random.nextInt(Math.max(1, districtBounds.width() - lotW));
+            int z = districtBounds.minZ() + random.nextInt(Math.max(1, districtBounds.depth() - lotD));
+            BoundingBox2 lotBox = BoundingBox2.of(x, z, x + lotW - 1, z + lotD - 1);
+            if (lotBox.maxX() > districtBounds.maxX() || lotBox.maxZ() > districtBounds.maxZ()) continue;
+            if (lotOverlapsExisting(lotBox, occupied)) continue;
+            if (role != BuildingRole.DOCK && role != BuildingRole.BRIDGE
+                    && terrain.waterPresence(lotBox.center().x(), lotBox.center().z())) {
+                continue;
+            }
+            if (role == BuildingRole.DOCK && !terrain.coast(lotBox.center().x(), lotBox.center().z())
+                    && !terrain.waterPresence(lotBox.center().x(), lotBox.center().z())
+                    && !coastal) {
+                continue;
+            }
+            double slope = terrain.averageSlope(lotBox, 4);
+            int tolerance = ap != null ? ap.asset().terrainTolerance() : 4;
+            if (slope > 0.15 * tolerance && role != BuildingRole.MINE_ENTRANCE) {
+                continue;
+            }
+            markLotCells(expand(lotBox, gap / 2), occupied);
+            int dir = nearestStreetDirection(lotBox.center(), streets);
+            LotId lotId = LotId.deterministic(seed, settlementIndex * 1000L + buildingOrdinal + 700);
+            PlannedLot lot = new PlannedLot(
+                    lotId, s.id(), district.id(), district.type(), lotBox,
+                    dir, slope, EnumSet.of(role), true
+            );
+            int foundationY = (int) terrain.surfaceHeight(lotBox.center().x(), lotBox.center().z());
+            ArchitectureGrammar.Blueprint bp;
+            if (ap != null) {
+                // Recompute rotation toward actual street
+                ArchitectureGrammar.AssetPlacement aligned = new ArchitectureGrammar.AssetPlacement(
+                        ap.asset(),
+                        ArchitectureGrammar.chooseRotationFit(ap.asset(), dir, lotBox),
+                        ap.width(), ap.depth(), ap.clearance(),
+                        ap.entranceFacing()
+                );
+                int[] dims = com.livingmods.worldgen.structure.MlsStructureFormat.rotatedDimensions(
+                        ap.asset().width(), ap.asset().depth(), aligned.rotationSteps());
+                aligned = new ArchitectureGrammar.AssetPlacement(
+                        ap.asset(), aligned.rotationSteps(), dims[0], dims[1], ap.clearance(),
+                        com.livingmods.worldgen.structure.MlsStructureFormat.rotateFacing(
+                                ap.asset().entranceFacing(), aligned.rotationSteps())
+                );
+                bp = grammar.generateFromPlacement(
+                        seed, ordinal, culture, role, wealth, s.tier(),
+                        lotId, s.id(), district.id(), lotBox, foundationY, aligned
+                );
+            } else {
+                bp = grammar.generate(
+                        seed, ordinal, culture, role, wealth, s.tier(),
+                        lotId, s.id(), district.id(), lotBox, dir, foundationY, recentAssetIds
+                );
+            }
+            return new OptionalPlacement(lot, bp.building());
+        }
+        return null;
+    }
+
+    private static BoundingBox2 expand(BoundingBox2 box, int pad) {
+        if (pad <= 0) return box;
+        return BoundingBox2.of(box.minX() - pad, box.minZ() - pad, box.maxX() + pad, box.maxZ() + pad);
+    }
+
+    private int placeSpecialRoutes(
+            long seed, int index, PlannedSettlement s, CultureDefinition culture,
+            List<PlannedDistrict> districts, List<PlannedLot> lots, List<PlannedBuilding> buildings,
+            List<String> recentAssetIds, java.util.Set<Long> occupied, List<BlockPos2> streets,
+            List<BlockPos2> gates, List<BlockPos2> wallPath,
+            boolean coastal, boolean underground, DeterministicRandom random, int buildingOrdinal
+    ) {
+        PlannedDistrict host = districts.isEmpty() ? null : districts.get(districts.size() - 1);
+        if (host == null) return buildingOrdinal;
+
+        // Agriculture for hamlet/village
+        if (s.tier() == SettlementTier.HAMLET || s.tier() == SettlementTier.VILLAGE
+                || s.role() == SettlementRole.FARMING) {
+            for (BuildingRole role : List.of(
+                    BuildingRole.FARMHOUSE, BuildingRole.BARN, BuildingRole.MILL, BuildingRole.WAREHOUSE
+            )) {
+                OptionalPlacement p = placeAssetFirst(
+                        seed, index, buildingOrdinal, s, culture, host, role, WealthClass.COMMON, 2,
+                        coastal, underground, recentAssetIds, occupied, streets, random
+                );
+                if (p != null) {
+                    lots.add(p.lot());
+                    buildings.add(p.building());
+                    if (p.building().usesImportedAsset()) recentAssetIds.add(p.building().assetId());
+                    buildingOrdinal++;
+                }
+            }
+        }
+
+        // Mining
+        if (s.role() == SettlementRole.MINING || "ironvale".equals(s.cultureKey())) {
+            OptionalPlacement p = placeAssetFirst(
+                    seed, index, buildingOrdinal, s, culture, host, BuildingRole.MINE_ENTRANCE,
+                    WealthClass.POOR, 0, coastal, true, recentAssetIds, occupied, streets, random
+            );
+            if (p != null) {
+                lots.add(p.lot());
+                buildings.add(p.building());
+                if (p.building().usesImportedAsset()) recentAssetIds.add(p.building().assetId());
+                buildingOrdinal++;
+            }
+        }
+
+        // Gatehouses at gates
+        if (!gates.isEmpty() && s.walls()) {
+            PlannedDistrict military = districts.stream()
+                    .filter(d -> d.type() == DistrictType.MILITARY || d.type() == DistrictType.CASTLE)
+                    .findFirst().orElse(host);
+            for (int gi = 0; gi < Math.min(2, gates.size()); gi++) {
+                OptionalPlacement p = placeAssetFirst(
+                        seed, index, buildingOrdinal, s, culture, military, BuildingRole.GATEHOUSE,
+                        WealthClass.COMMON, nearestStreetDirection(gates.get(gi), streets),
+                        coastal, underground, recentAssetIds, occupied, streets, random
+                );
+                if (p != null) {
+                    lots.add(p.lot());
+                    buildings.add(p.building());
+                    if (p.building().usesImportedAsset()) recentAssetIds.add(p.building().assetId());
+                    buildingOrdinal++;
+                }
+            }
+        }
+
+        // Wall modules along wall path (sparse)
+        if (!wallPath.isEmpty() && s.walls()) {
+            PlannedDistrict military = districts.stream()
+                    .filter(d -> d.type() == DistrictType.MILITARY || d.type() == DistrictType.CASTLE)
+                    .findFirst().orElse(host);
+            for (int i = 0; i < wallPath.size(); i += Math.max(8, wallPath.size() / 4)) {
+                OptionalPlacement p = placeAssetFirst(
+                        seed, index, buildingOrdinal, s, culture, military, BuildingRole.WALL_SEGMENT,
+                        WealthClass.COMMON, 0, coastal, underground, recentAssetIds, occupied, streets, random
+                );
+                if (p != null) {
+                    lots.add(p.lot());
+                    buildings.add(p.building());
+                    if (p.building().usesImportedAsset()) recentAssetIds.add(p.building().assetId());
+                    buildingOrdinal++;
+                }
+            }
+        }
+
+        // Waystations / bridges near roads for towns+
+        if (s.tier().ordinal() >= SettlementTier.VILLAGE.ordinal()) {
+            OptionalPlacement way = placeAssetFirst(
+                    seed, index, buildingOrdinal, s, culture, host, BuildingRole.WAYSTONE,
+                    WealthClass.POOR, 2, coastal, underground, recentAssetIds, occupied, streets, random
+            );
+            if (way != null) {
+                lots.add(way.lot());
+                buildings.add(way.building());
+                if (way.building().usesImportedAsset()) recentAssetIds.add(way.building().assetId());
+                buildingOrdinal++;
+            }
+        }
+
+        // Occasional ruin on outskirts
+        if (random.chance(0.35)) {
+            OptionalPlacement ruin = placeAssetFirst(
+                    seed, index, buildingOrdinal, s, culture, host, BuildingRole.RUIN,
+                    WealthClass.POOR, random.nextInt(4), coastal, underground, recentAssetIds, occupied, streets, random
+            );
+            if (ruin != null) {
+                lots.add(ruin.lot());
+                buildings.add(ruin.building());
+                if (ruin.building().usesImportedAsset()) recentAssetIds.add(ruin.building().assetId());
+                buildingOrdinal++;
+            }
+        }
+
+        // Lighthouse for coastal atlantea / ports
+        if (coastal && ("atlantea".equals(s.cultureKey()) || s.role() == SettlementRole.PORT)) {
+            OptionalPlacement light = placeAssetFirst(
+                    seed, index, buildingOrdinal, s, culture, host, BuildingRole.TOWER,
+                    WealthClass.COMMON, 2, true, underground, recentAssetIds, occupied, streets, random
+            );
+            if (light != null) {
+                lots.add(light.lot());
+                buildings.add(light.building());
+                if (light.building().usesImportedAsset()) recentAssetIds.add(light.building().assetId());
+                buildingOrdinal++;
+            }
+        }
+        return buildingOrdinal;
     }
 
     private WealthClass wealthFor(DistrictType type, SettlementTier tier) {

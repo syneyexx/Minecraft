@@ -146,7 +146,8 @@ public final class CultureStructureAuthor {
             int entranceY,
             int entranceZ,
             FoundationMode foundation,
-            String contentHash
+            String contentHash,
+            String geometryHash
     ) {}
 
     private AuthoredBuilding build(CultureDefinition culture, Spec spec, int variant, long seed) throws IOException {
@@ -159,33 +160,30 @@ public final class CultureStructureAuthor {
         int w = sil.width;
         int d = sil.depth;
         int h = sil.height;
-        // Foundation
+        // Footprint mask by layout kind (archetype-distinct topology).
+        boolean[][] footprint = footprintMask(w, d, sil);
+        // Foundation + floor only on footprint
         for (int x = 0; x < w; x++) {
             for (int z = 0; z < d; z++) {
+                if (!footprint[x][z]) continue;
                 put(blocks, index, palette, x, 0, z, mat.foundation);
+                if (!isPerimeter(x, z, footprint, w, d)) {
+                    put(blocks, index, palette, x, 1, z, mat.floor);
+                }
             }
         }
-        // Floor
-        for (int x = 1; x < w - 1; x++) {
-            for (int z = 1; z < d - 1; z++) {
-                put(blocks, index, palette, x, 1, z, mat.floor);
-            }
-        }
-        // Walls with culture silhouette cutouts
+        // Exterior walls
         for (int y = 1; y < h - 1; y++) {
             for (int x = 0; x < w; x++) {
                 for (int z = 0; z < d; z++) {
-                    boolean edge = x == 0 || z == 0 || x == w - 1 || z == d - 1;
-                    if (!edge) continue;
+                    if (!footprint[x][z]) continue;
+                    if (!isPerimeter(x, z, footprint, w, d)) continue;
                     if (sil.courtyard && x > sil.courtMinX && x < sil.courtMaxX
                             && z > sil.courtMinZ && z < sil.courtMaxZ) {
                         continue;
                     }
-                    // Roundhouse approximation for celtara
-                    if (sil.round && !inEllipse(x, z, w, d)) continue;
-                    // Longhouse: thicker gable ends
                     String block = mat.wall;
-                    if (sil.timberFrame && (x + z + y + variant) % 3 == 0) {
+                    if (sil.timberFrame && (x + z + y + sil.layoutSeed) % 3 == 0) {
                         block = mat.accent;
                     }
                     if (sil.stoneBase && y <= 2) {
@@ -195,46 +193,67 @@ public final class CultureStructureAuthor {
                 }
             }
         }
-        // Interior columns / partitions by role
-        if (spec.role() == BuildingRole.TEMPLE || spec.role() == BuildingRole.PALACE
-                || spec.role() == BuildingRole.CASTLE_KEEP) {
-            for (int y = 1; y < h - 2; y++) {
-                put(blocks, index, palette, w / 3, y, d / 3, mat.accent);
-                put(blocks, index, palette, 2 * w / 3, y, 2 * d / 3, mat.accent);
+        // Interior partitions keyed by archetype layout
+        placeInteriorPartitions(blocks, index, palette, sil, mat, footprint, w, d, h);
+        placeRoleFunctional(blocks, index, palette, spec, mat, sil, footprint, w, d, h, variant);
+        // Wings / annexes / chimneys / porches
+        placeAnnexes(blocks, index, palette, sil, mat, footprint, w, d, h);
+
+        // Door opening on south-most perimeter cell near center-x of footprint
+        int doorX = w / 2;
+        int doorZ = 0;
+        int best = Integer.MAX_VALUE;
+        for (int x = 1; x < w - 1; x++) {
+            for (int z = 0; z < d; z++) {
+                if (!footprint[x][z] || !isPerimeter(x, z, footprint, w, d)) continue;
+                int score = Math.abs(x - w / 2) * 3 + z; // prefer south/low z near center
+                if (score < best) {
+                    best = score;
+                    doorX = x;
+                    doorZ = z;
+                }
             }
         }
-        if (spec.role() == BuildingRole.SMITHY || "forge_hall".equals(spec.archetype())) {
-            put(blocks, index, palette, w / 2, 1, d / 2, "minecraft:furnace[facing=south]");
-            put(blocks, index, palette, w / 2, 1, d / 2 + 1, "minecraft:anvil");
-        }
-        if (spec.role() == BuildingRole.TAVERN) {
-            put(blocks, index, palette, 2, 1, 2, "minecraft:barrel");
-            put(blocks, index, palette, 3, 1, 2, "minecraft:crafting_table");
-        }
-        if (spec.role() == BuildingRole.SCHOOL) {
-            put(blocks, index, palette, w / 2, 1, d / 2, "minecraft:lectern[facing=south]");
-        }
-        if (spec.role() == BuildingRole.CLINIC) {
-            put(blocks, index, palette, 2, 1, 2, "minecraft:white_bed[facing=south,part=foot]");
-        }
-        // Door opening south facade
-        int doorX = w / 2;
-        int doorZ = sil.round ? d / 2 + (d / 4) : 0;
-        if (doorZ >= d) doorZ = 0;
         for (int y = 1; y <= 2; y++) {
             removeAt(blocks, doorX, y, doorZ);
         }
-        put(blocks, index, palette, doorX, 1, doorZ, mat.door);
+        // Valid multi-block door
+        String doorLower = mat.door.contains("half=")
+                ? mat.door
+                : mat.door.replace("]", ",half=lower,hinge=left,open=false]").replace("[,", "[");
+        if (!doorLower.contains("half=")) {
+            doorLower = mat.door.split("\\[")[0] + "[facing=south,half=lower,hinge=left,open=false]";
+        }
+        String doorUpper = doorLower.replace("half=lower", "half=upper");
+        put(blocks, index, palette, doorX, 1, doorZ, doorLower);
+        put(blocks, index, palette, doorX, 2, doorZ, doorUpper);
         // Windows
         for (int i = 0; i < sil.windowSlots; i++) {
-            int wx = 1 + (i * 3 + variant) % Math.max(1, w - 2);
+            int wx = 1 + Math.floorMod(i * 3 + sil.layoutSeed + variant, Math.max(1, w - 2));
             int wz = (i % 2 == 0) ? 0 : d - 1;
-            if (sil.round && !inEllipse(wx, wz, w, d)) continue;
+            if (wx < 0 || wz < 0 || wx >= w || wz >= d || !footprint[wx][wz]) continue;
+            if (!isPerimeter(wx, wz, footprint, w, d)) continue;
             removeAt(blocks, wx, 2, wz);
             put(blocks, index, palette, wx, 2, wz, mat.window);
         }
+        // Upper floors for multi-storey archetypes
+        if (sil.floors > 1) {
+            for (int floor = 1; floor < sil.floors; floor++) {
+                int fy = 1 + floor * 4;
+                if (fy >= h - 1) break;
+                for (int x = 1; x < w - 1; x++) {
+                    for (int z = 1; z < d - 1; z++) {
+                        if (!footprint[x][z] || isPerimeter(x, z, footprint, w, d)) continue;
+                        put(blocks, index, palette, x, fy, z, mat.floor);
+                    }
+                }
+            }
+        }
         // Roof
-        placeRoof(blocks, index, palette, sil, mat, w, d, h);
+        placeRoof(blocks, index, palette, sil, mat, w, d, h, footprint);
+
+        // Archetype signature feature (meaningful facade/roof accent — not hash noise)
+        placeArchetypeSignature(blocks, index, palette, sil, mat, footprint, w, d, h, spec, variant);
 
         // Special: pagoda layers / dome / yurt / stepped temple
         if (sil.pagodaLayers > 0) {
@@ -311,7 +330,289 @@ public final class CultureStructureAuthor {
                 finalW, finalH, finalD, doorX, 1, doorZClamped, facing, sil.foundation, palette, blocks);
         byte[] bytes = MlsStructureFormat.write(content);
         return new AuthoredBuilding(bytes, finalW, finalD, finalH, blocks.size(), "south", doorX, 1, doorZClamped,
-                sil.foundation, MlsStructureFormat.contentHash(bytes));
+                sil.foundation, MlsStructureFormat.contentHash(bytes), MlsStructureFormat.geometryHash(content));
+    }
+
+    private enum LayoutKind { RECT, L_WING, T_WING, U_COURTYARD, ELONGATED, ROUND, COMPOUND }
+
+    private static boolean[][] footprintMask(int w, int d, Silhouette sil) {
+        boolean[][] m = new boolean[w][d];
+        for (int x = 0; x < w; x++) {
+            for (int z = 0; z < d; z++) {
+                boolean on = true;
+                switch (sil.layout) {
+                    case ROUND -> on = inEllipse(x, z, w, d);
+                    case ELONGATED -> on = true;
+                    case L_WING -> {
+                        int cutX = w * 2 / 3;
+                        int cutZ = d * 2 / 3;
+                        on = x < cutX || z < cutZ;
+                    }
+                    case T_WING -> {
+                        int stem = w / 3;
+                        int bar = d / 3;
+                        on = (x >= stem && x < w - stem) || z < bar + 1;
+                    }
+                    case U_COURTYARD -> {
+                        int inset = Math.max(2, Math.min(w, d) / 4);
+                        boolean outer = true;
+                        boolean hole = x >= inset && x < w - inset && z >= inset && z < d - inset;
+                        on = outer && !hole;
+                        // Keep south open for courtyard entrance on U
+                        if (hole && z >= d - inset) on = false;
+                        if (x < inset || x >= w - inset || z < inset) on = true;
+                    }
+                    case COMPOUND -> {
+                        // Two blocks with gap corridor
+                        int mid = w / 2;
+                        on = x < mid - 1 || x > mid + 1;
+                        if (z < 2 || z >= d - 2) on = true; // connecting bars
+                    }
+                    default -> on = true;
+                }
+                if (sil.round) on = on && inEllipse(x, z, w, d);
+                m[x][z] = on;
+            }
+        }
+        return m;
+    }
+
+    private static boolean isPerimeter(int x, int z, boolean[][] fp, int w, int d) {
+        if (!fp[x][z]) return false;
+        if (x == 0 || z == 0 || x == w - 1 || z == d - 1) return true;
+        return !fp[x - 1][z] || !fp[x + 1][z] || !fp[x][z - 1] || !fp[x][z + 1];
+    }
+
+    private void placeInteriorPartitions(
+            List<MlsStructureFormat.BlockPlacement> blocks,
+            Map<String, Integer> index,
+            List<String> palette,
+            Silhouette sil,
+            Materials mat,
+            boolean[][] fp,
+            int w, int d, int h
+    ) {
+        int wallTop = Math.max(2, h - 2);
+        // Cross partition pattern unique per layoutSeed
+        int px = 2 + Math.floorMod(sil.layoutSeed, Math.max(1, w - 4));
+        int pz = 2 + Math.floorMod(sil.layoutSeed / 7, Math.max(1, d - 4));
+        if (sil.layout == LayoutKind.RECT || sil.layout == LayoutKind.ELONGATED || sil.layout == LayoutKind.L_WING) {
+            for (int z = 1; z < d - 1; z++) {
+                if (!fp[px][z] || isPerimeter(px, z, fp, w, d)) continue;
+                // doorway gap in partition
+                if (Math.abs(z - pz) <= 1) continue;
+                for (int y = 1; y < wallTop; y++) {
+                    put(blocks, index, palette, px, y, z, mat.wall);
+                }
+            }
+        }
+        if (sil.layout == LayoutKind.T_WING || sil.layout == LayoutKind.COMPOUND || sil.floors > 1) {
+            for (int x = 1; x < w - 1; x++) {
+                if (!fp[x][pz] || isPerimeter(x, pz, fp, w, d)) continue;
+                if (Math.abs(x - px) <= 1) continue;
+                for (int y = 1; y < wallTop; y++) {
+                    put(blocks, index, palette, x, y, pz, mat.accent);
+                }
+            }
+        }
+        // Columns for landmarks
+        if (sil.landmark) {
+            for (int y = 1; y < wallTop; y++) {
+                put(blocks, index, palette, w / 3, y, d / 3, mat.accent);
+                put(blocks, index, palette, 2 * w / 3, y, 2 * d / 3, mat.accent);
+                put(blocks, index, palette, w / 3, y, 2 * d / 3, mat.accent);
+                put(blocks, index, palette, 2 * w / 3, y, d / 3, mat.accent);
+            }
+        }
+    }
+
+    private void placeRoleFunctional(
+            List<MlsStructureFormat.BlockPlacement> blocks,
+            Map<String, Integer> index,
+            List<String> palette,
+            Spec spec,
+            Materials mat,
+            Silhouette sil,
+            boolean[][] fp,
+            int w, int d, int h,
+            int variant
+    ) {
+        int cx = Math.min(w - 2, Math.max(1, w / 2));
+        int cz = Math.min(d - 2, Math.max(1, d / 2));
+        switch (spec.role()) {
+            case SMITHY -> {
+                put(blocks, index, palette, cx, 1, cz, "minecraft:furnace[facing=south]");
+                put(blocks, index, palette, cx, 1, Math.min(d - 2, cz + 1), "minecraft:anvil");
+                put(blocks, index, palette, Math.max(1, cx - 1), 1, cz, "minecraft:blast_furnace[facing=south]");
+            }
+            case TAVERN -> {
+                put(blocks, index, palette, 2, 1, 2, "minecraft:barrel");
+                put(blocks, index, palette, 3, 1, 2, "minecraft:crafting_table");
+                put(blocks, index, palette, 4, 1, 2, "minecraft:oak_stairs[facing=north,half=bottom]");
+                put(blocks, index, palette, 2, 1, 3, "minecraft:oak_stairs[facing=east,half=bottom]");
+            }
+            case SCHOOL -> put(blocks, index, palette, cx, 1, cz, "minecraft:lectern[facing=south]");
+            case CLINIC -> {
+                put(blocks, index, palette, 2, 1, 2, "minecraft:white_bed[facing=south,part=foot]");
+                put(blocks, index, palette, 2, 1, 3, "minecraft:white_bed[facing=south,part=head]");
+            }
+            case WAREHOUSE, BARN -> {
+                for (int i = 0; i < 3 + variant % 3; i++) {
+                    int x = 2 + i * 2;
+                    if (x < w - 2 && fp[x][cz]) {
+                        put(blocks, index, palette, x, 1, cz, "minecraft:barrel");
+                    }
+                }
+            }
+            case BARRACKS, GUARDHOUSE -> {
+                for (int i = 0; i < 2; i++) {
+                    int x = 2 + i * 3;
+                    if (x + 1 < w - 1) {
+                        put(blocks, index, palette, x, 1, 2, "minecraft:red_bed[facing=south,part=foot]");
+                        put(blocks, index, palette, x, 1, 3, "minecraft:red_bed[facing=south,part=head]");
+                    }
+                }
+            }
+            case PRISON -> {
+                for (int y = 1; y < Math.min(4, h - 1); y++) {
+                    put(blocks, index, palette, cx, y, cz, "minecraft:iron_bars");
+                }
+            }
+            case TEMPLE, PALACE, CASTLE_KEEP -> {
+                put(blocks, index, palette, cx, 1, cz, mat.accent);
+                put(blocks, index, palette, cx, 2, cz, "minecraft:lantern[hanging=false]");
+            }
+            case MILL -> {
+                put(blocks, index, palette, cx, 1, cz, "minecraft:grindstone[face=floor,facing=south]");
+                for (int y = h / 2; y < h - 1; y++) {
+                    put(blocks, index, palette, cx, y, 0, mat.accent);
+                }
+            }
+            case WELL -> {
+                for (int x = cx - 1; x <= cx + 1; x++) {
+                    for (int z = cz - 1; z <= cz + 1; z++) {
+                        if (x >= 0 && z >= 0 && x < w && z < d) {
+                            put(blocks, index, palette, x, 1, z, mat.foundation);
+                        }
+                    }
+                }
+                put(blocks, index, palette, cx, 1, cz, "minecraft:water");
+            }
+            case MARKET_STALL -> {
+                put(blocks, index, palette, cx, 1, cz, "minecraft:oak_fence");
+                put(blocks, index, palette, cx, 2, cz, mat.roof);
+            }
+            case DOCK -> {
+                for (int z = 0; z < d; z++) {
+                    put(blocks, index, palette, 0, 0, z, "minecraft:oak_slab[type=bottom]");
+                    put(blocks, index, palette, w - 1, 0, z, "minecraft:oak_slab[type=bottom]");
+                }
+            }
+            case BRIDGE -> {
+                for (int x = 0; x < w; x++) {
+                    put(blocks, index, palette, x, 1, d / 2, mat.floor);
+                    put(blocks, index, palette, x, 2, 0, "minecraft:oak_fence");
+                    put(blocks, index, palette, x, 2, d - 1, "minecraft:oak_fence");
+                }
+            }
+            case MINE_ENTRANCE -> {
+                put(blocks, index, palette, cx, 1, 0, "minecraft:rail");
+                put(blocks, index, palette, cx, 1, 1, "minecraft:rail");
+                put(blocks, index, palette, cx, 2, 0, mat.accent);
+            }
+            case TOWER, GATEHOUSE -> {
+                for (int y = 1; y < h - 1; y++) {
+                    put(blocks, index, palette, 1, y, 1, mat.foundation);
+                    put(blocks, index, palette, w - 2, y, 1, mat.foundation);
+                    put(blocks, index, palette, 1, y, d - 2, mat.foundation);
+                    put(blocks, index, palette, w - 2, y, d - 2, mat.foundation);
+                }
+            }
+            case HOUSE, TOWNHOUSE, MANOR, FARMHOUSE -> {
+                if (w > 6 && d > 6) {
+                    put(blocks, index, palette, 2, 1, 2, "minecraft:crafting_table");
+                    put(blocks, index, palette, w - 3, 1, d - 3,
+                            "minecraft:white_bed[facing=north,part=foot]");
+                    put(blocks, index, palette, w - 3, 1, d - 4,
+                            "minecraft:white_bed[facing=north,part=head]");
+                }
+            }
+            default -> {
+            }
+        }
+        if ("forge_hall".equals(spec.archetype())) {
+            put(blocks, index, palette, cx, 1, cz, "minecraft:blast_furnace[facing=south]");
+            put(blocks, index, palette, cx + 1, 1, cz, "minecraft:anvil");
+            put(blocks, index, palette, cx - 1, 1, cz, "minecraft:lava_cauldron");
+        }
+    }
+
+    private void placeArchetypeSignature(
+            List<MlsStructureFormat.BlockPlacement> blocks,
+            Map<String, Integer> index,
+            List<String> palette,
+            Silhouette sil,
+            Materials mat,
+            boolean[][] fp,
+            int w, int d, int h,
+            Spec spec,
+            int variant
+    ) {
+        int ax = 1 + Math.floorMod(sil.layoutSeed, Math.max(1, w - 2));
+        int az = 1 + Math.floorMod(sil.layoutSeed / 5, Math.max(1, d - 2));
+        if (ax >= w || az >= d || !fp[ax][az]) {
+            ax = Math.min(w - 1, Math.max(0, w / 2));
+            az = Math.min(d - 1, Math.max(0, d / 2));
+        }
+        // Distinct vertical accent stack height/position per archetype+variant
+        int stack = 2 + Math.floorMod(sil.layoutSeed, 4) + (variant % 2);
+        for (int y = h - 1; y < h - 1 + stack; y++) {
+            put(blocks, index, palette, ax, y, az, mat.accent);
+        }
+        // Role cornice / buttress pattern
+        int buttress = Math.floorMod(Hashing.hashString(spec.archetype()), Math.max(1, w - 2));
+        if (buttress < w && fp[buttress][0]) {
+            put(blocks, index, palette, buttress, 2, 0, mat.foundation);
+            put(blocks, index, palette, buttress, 3, 0, mat.foundation);
+        }
+        if (spec.role() == BuildingRole.WALL_SEGMENT) {
+            for (int x = 0; x < w; x++) {
+                put(blocks, index, palette, x, h - 1, d / 2, mat.foundation);
+            }
+        }
+    }
+
+    private void placeAnnexes(
+            List<MlsStructureFormat.BlockPlacement> blocks,
+            Map<String, Integer> index,
+            List<String> palette,
+            Silhouette sil,
+            Materials mat,
+            boolean[][] fp,
+            int w, int d, int h
+    ) {
+        if (sil.chimney) {
+            int x = Math.min(w - 2, Math.max(1, 1 + Math.floorMod(sil.layoutSeed, w - 2)));
+            int z = Math.min(d - 2, Math.max(1, 1 + Math.floorMod(sil.layoutSeed / 3, d - 2)));
+            if (fp[x][z]) {
+                for (int y = 1; y < h + 2; y++) {
+                    put(blocks, index, palette, x, y, z, mat.foundation);
+                }
+            }
+        }
+        if (sil.porch) {
+            for (int x = w / 3; x < 2 * w / 3; x++) {
+                put(blocks, index, palette, x, 1, 0, "minecraft:oak_fence");
+                put(blocks, index, palette, x, 0, 0, mat.floor);
+            }
+        }
+        if (sil.balcony && sil.floors > 1) {
+            int by = 5;
+            for (int x = 2; x < w - 2; x++) {
+                put(blocks, index, palette, x, by, d - 1, mat.floor);
+                put(blocks, index, palette, x, by + 1, d - 1, "minecraft:oak_fence");
+            }
+        }
     }
 
     private void placeRoof(
@@ -320,36 +621,41 @@ public final class CultureStructureAuthor {
             List<String> palette,
             Silhouette sil,
             Materials mat,
-            int w, int d, int h
+            int w, int d, int h,
+            boolean[][] fp
     ) {
         int roofY = h - 1;
         if (sil.flatRoof) {
             for (int x = 0; x < w; x++) {
                 for (int z = 0; z < d; z++) {
-                    put(blocks, index, palette, x, roofY, z, mat.roof);
+                    if (fp[x][z]) put(blocks, index, palette, x, roofY, z, mat.roof);
                 }
             }
             return;
         }
         if (sil.steepGable) {
-            int peak = Math.max(2, Math.min(w, d) / 2);
+            int peak = Math.max(2, Math.min(w, d) / 2 + (sil.layoutSeed % 3));
             for (int layer = 0; layer < peak; layer++) {
                 for (int x = layer; x < w - layer; x++) {
                     for (int z = 0; z < d; z++) {
-                        put(blocks, index, palette, x, roofY + layer, z, mat.roof);
+                        if (fp[Math.min(w - 1, Math.max(0, x))][z] || layer == 0) {
+                            put(blocks, index, palette, x, roofY + layer, z, mat.roof);
+                        }
                     }
                 }
             }
             return;
         }
         // Default hip-ish roof
-        int peak = Math.max(1, Math.min(w, d) / 3);
+        int peak = Math.max(1, Math.min(w, d) / 3 + (sil.layoutSeed % 2));
         for (int layer = 0; layer < peak; layer++) {
             for (int x = layer; x < w - layer; x++) {
                 for (int z = layer; z < d - layer; z++) {
                     boolean edge = x == layer || z == layer || x == w - layer - 1 || z == d - layer - 1
                             || layer == peak - 1;
-                    if (edge) put(blocks, index, palette, x, roofY + layer, z, mat.roof);
+                    if (edge && (x < w && z < d) && (layer > 0 || fp[x][z])) {
+                        put(blocks, index, palette, x, roofY + layer, z, mat.roof);
+                    }
                 }
             }
         }
@@ -391,36 +697,92 @@ public final class CultureStructureAuthor {
             boolean dome, boolean stepPyramid, boolean yurt,
             int pagodaLayers, int windowSlots,
             int courtMinX, int courtMaxX, int courtMinZ, int courtMaxZ,
-            FoundationMode foundation
+            FoundationMode foundation,
+            LayoutKind layout,
+            int layoutSeed,
+            int floors,
+            boolean chimney,
+            boolean porch,
+            boolean balcony,
+            boolean landmark
     ) {}
 
     private record Materials(String wall, String floor, String roof, String foundation, String accent, String door, String window) {}
 
     private Silhouette silhouetteFor(CultureDefinition culture, Spec spec, int variant, long seed) {
         String key = culture.key();
+        int arch = (int) Hashing.hashString(spec.archetype());
+        int layoutSeed = (int) (seed ^ arch ^ (variant * 0x9E3779B9));
         int baseW = switch (spec.role()) {
             case WELL, WAYSTONE, MARKET_STALL -> 5 + (variant % 2);
             case HOUSE, FARMHOUSE -> 8 + (variant % 4);
             case TOWNHOUSE, SHOP, GUARDHOUSE, CLINIC -> 9 + (variant % 3);
             case TAVERN, SMITHY, WORKSHOP, BARN, SCHOOL -> 11 + (variant % 4);
             case TEMPLE, MARKET_HALL, WAREHOUSE, BARRACKS, MANOR -> 14 + (variant % 5);
-            case PALACE, CASTLE_KEEP -> 20 + (variant % 6);
+            case PALACE, CASTLE_KEEP -> 22 + (variant % 6);
             case TOWER, GATEHOUSE -> 6 + (variant % 3);
             case DOCK, BRIDGE -> 12 + (variant % 4);
+            case WALL_SEGMENT -> 8 + (variant % 2);
+            case MINE_ENTRANCE -> 7 + (variant % 3);
+            case PRISON -> 12 + (variant % 3);
+            case MONUMENT -> 8 + (variant % 4);
             default -> 10 + (variant % 3);
         };
-        int baseD = baseW;
-        boolean steep = false, flat = false, court = false, round = false, timber = false, stoneBase = false;
-        boolean dome = false, step = false, yurt = false;
+        // Archetype-specific dimension offsets — critical for distinct geometry
+        baseW += Math.floorMod(arch, 5) + variant;
+        int baseD = Math.max(5, baseW - 1 - Math.floorMod(arch, 3));
+        baseD += Math.floorMod(arch / 11, 4) + Math.floorMod(variant * 2, 3);
+        LayoutKind layout = LayoutKind.values()[Math.floorMod(arch, LayoutKind.values().length)];
+        // Role/archetype overrides for meaningful forms
+        if (spec.role() == BuildingRole.PALACE || spec.role() == BuildingRole.CASTLE_KEEP) {
+            layout = LayoutKind.COMPOUND;
+            baseW = Math.max(baseW, 24);
+            baseD = Math.max(baseD, 20);
+        } else if (spec.role() == BuildingRole.BARRACKS || spec.role() == BuildingRole.WAREHOUSE
+                || spec.role() == BuildingRole.BARN) {
+            layout = LayoutKind.ELONGATED;
+            baseW = Math.max(baseW, 14);
+            baseD = Math.max(8, baseW / 2 + variant);
+        } else if ("longhouse".equals(spec.archetype()) || key.equals("nordheim") && spec.role() == BuildingRole.HOUSE) {
+            layout = LayoutKind.ELONGATED;
+            baseW = Math.max(baseW, 14);
+            baseD = Math.max(7, 6 + variant % 3);
+        } else if ("courtyard_house".equals(spec.archetype()) || "siheyuan".equals(spec.archetype())
+                || "caravanserai".equals(spec.archetype())) {
+            layout = LayoutKind.U_COURTYARD;
+        } else if ("roundhouse".equals(spec.archetype()) || "yurt".equals(spec.archetype())
+                || "ger".equals(spec.archetype())) {
+            layout = LayoutKind.ROUND;
+        } else if ("chalet".equals(spec.archetype()) || "manor".equals(spec.archetype())
+                || "knight_manor".equals(spec.archetype()) || "artisan_house".equals(spec.archetype())) {
+            layout = Math.floorMod(arch, 2) == 0 ? LayoutKind.L_WING : LayoutKind.T_WING;
+        } else if (spec.role() == BuildingRole.TEMPLE || spec.role() == BuildingRole.MARKET_HALL) {
+            layout = LayoutKind.T_WING;
+            baseW = Math.max(baseW, 16);
+            baseD = Math.max(baseD, 14);
+        } else if (spec.role() == BuildingRole.TOWER || spec.role() == BuildingRole.GATEHOUSE) {
+            layout = LayoutKind.RECT;
+            baseW = Math.min(baseW, 9);
+            baseD = baseW;
+        } else if (variant % 3 == 0 && (spec.role() == BuildingRole.HOUSE || spec.role() == BuildingRole.TOWNHOUSE)) {
+            // Ensure residential variants aren't all RECT shells
+            layout = LayoutKind.values()[Math.floorMod(arch + variant, 4)]; // RECT/L/T/U
+        }
+
+        boolean steep = false, flat = false, court = layout == LayoutKind.U_COURTYARD, round = layout == LayoutKind.ROUND;
+        boolean timber = false, stoneBase = false;
+        boolean dome = false, step = false, yurt = "yurt".equals(spec.archetype()) || "ger".equals(spec.archetype());
         int pagoda = 0;
         FoundationMode foundation = FoundationMode.CUT_AND_FILL;
         switch (key) {
             case "nordheim" -> {
                 steep = true;
                 stoneBase = true;
-                baseW = Math.max(baseW, 12);
-                baseD = Math.max(7, baseW / 2 + variant % 3); // elongated longhouse
                 timber = true;
+                if (layout == LayoutKind.ELONGATED) {
+                    baseW = Math.max(baseW, 14);
+                    baseD = Math.max(7, baseW / 2);
+                }
             }
             case "avalon" -> {
                 steep = true;
@@ -429,7 +791,7 @@ public final class CultureStructureAuthor {
             }
             case "sahari" -> {
                 flat = true;
-                court = true;
+                court = court || spec.role() == BuildingRole.HOUSE;
                 dome = spec.role() == BuildingRole.TEMPLE || spec.role() == BuildingRole.PALACE;
                 foundation = FoundationMode.FLAT;
             }
@@ -456,50 +818,82 @@ public final class CultureStructureAuthor {
                 baseW = Math.max(baseW, 11);
             }
             case "celtara" -> {
-                round = spec.role() == BuildingRole.HOUSE || spec.role() == BuildingRole.FARMHOUSE
-                        || "roundhouse".equals(spec.archetype()) || "clan_hall".equals(spec.archetype());
+                round = round || "roundhouse".equals(spec.archetype());
+                if (round) layout = LayoutKind.ROUND;
                 timber = true;
             }
             case "qin" -> {
                 court = true;
+                if (spec.role() == BuildingRole.HOUSE || "siheyuan".equals(spec.archetype())) {
+                    layout = LayoutKind.U_COURTYARD;
+                }
                 pagoda = (spec.role() == BuildingRole.TEMPLE || "pagoda".equals(spec.archetype())) ? 3 : 0;
                 timber = true;
             }
             case "atlantea" -> {
                 flat = true;
-                dome = spec.role() == BuildingRole.TEMPLE || spec.role() == BuildingRole.PALACE;
+                dome = spec.role() == BuildingRole.TEMPLE || spec.role() == BuildingRole.PALACE
+                        || "lighthouse".equals(spec.archetype());
                 foundation = FoundationMode.WATERFRONT;
             }
             case "steppeborn" -> {
-                yurt = spec.role() == BuildingRole.HOUSE || "yurt".equals(spec.archetype())
-                        || "ger".equals(spec.archetype());
+                if (yurt) {
+                    layout = LayoutKind.ROUND;
+                    round = true;
+                }
                 flat = !yurt;
                 foundation = FoundationMode.FLAT;
             }
             case "ironvale" -> {
                 flat = true;
                 stoneBase = true;
-                foundation = variant % 2 == 0 ? FoundationMode.UNDERGROUND : FoundationMode.CUT_AND_FILL;
+                foundation = "mine_hall".equals(spec.archetype()) || spec.role() == BuildingRole.MINE_ENTRANCE
+                        ? FoundationMode.UNDERGROUND
+                        : (variant % 2 == 0 ? FoundationMode.CUT_AND_FILL : FoundationMode.HILLSIDE);
             }
             case "wizard_trees" -> {
                 foundation = FoundationMode.UNDERGROUND;
                 timber = true;
+                layout = Math.floorMod(arch, 2) == 0 ? LayoutKind.L_WING : LayoutKind.COMPOUND;
             }
             default -> steep = true;
         }
-        int h = switch (spec.role()) {
-            case TOWER -> 12 + variant;
-            case PALACE, CASTLE_KEEP -> 10 + variant % 4;
-            case TEMPLE -> 9 + variant % 3;
-            default -> 6 + variant % 3;
+        if (yurt) {
+            round = true;
+            layout = LayoutKind.ROUND;
+        }
+        int floors = switch (spec.role()) {
+            case TOWER -> 3 + variant % 2;
+            case PALACE, CASTLE_KEEP, MANOR -> 2 + variant % 2;
+            case TOWNHOUSE, TAVERN, BARRACKS -> 2;
+            default -> 1 + (Math.floorMod(arch, 5) == 0 ? 1 : 0);
         };
+        int h = switch (spec.role()) {
+            case TOWER -> 12 + variant + floors;
+            case PALACE, CASTLE_KEEP -> 12 + variant % 4 + floors;
+            case TEMPLE -> 9 + variant % 3 + pagoda;
+            case GATEHOUSE -> 10 + variant;
+            default -> 5 + floors * 3 + variant % 3;
+        };
+        baseW = Math.max(5, baseW);
+        baseD = Math.max(5, baseD);
         int courtMinX = court ? baseW / 4 : 0;
         int courtMaxX = court ? 3 * baseW / 4 : 0;
         int courtMinZ = court ? baseD / 4 : 0;
         int courtMaxZ = court ? 3 * baseD / 4 : 0;
+        boolean landmark = spec.role() == BuildingRole.PALACE || spec.role() == BuildingRole.CASTLE_KEEP
+                || spec.role() == BuildingRole.TEMPLE || spec.role() == BuildingRole.MONUMENT
+                || spec.role() == BuildingRole.MARKET_HALL;
+        boolean chimney = spec.role() == BuildingRole.HOUSE || spec.role() == BuildingRole.SMITHY
+                || spec.role() == BuildingRole.TAVERN || Math.floorMod(arch, 4) == 0;
+        boolean porch = spec.role() == BuildingRole.HOUSE || spec.role() == BuildingRole.MANOR
+                || "chalet".equals(spec.archetype()) || "coastal_villa".equals(spec.archetype());
+        boolean balcony = floors > 1 && (spec.role() == BuildingRole.TOWNHOUSE || spec.role() == BuildingRole.MANOR
+                || Math.floorMod(arch, 3) == 1);
         return new Silhouette(baseW, baseD, h, steep, flat, court, round, timber, stoneBase,
-                dome, step, yurt, pagoda, 3 + variant % 3,
-                courtMinX, courtMaxX, courtMinZ, courtMaxZ, foundation);
+                dome, step, yurt, pagoda, 3 + variant % 3 + Math.floorMod(arch, 3),
+                courtMinX, courtMaxX, courtMinZ, courtMaxZ, foundation,
+                layout, layoutSeed, floors, chimney, porch, balcony, landmark);
     }
 
     private Materials materialsFor(CultureDefinition culture, Spec spec) {
@@ -556,17 +950,27 @@ public final class CultureStructureAuthor {
                 + "      \"entranceZ\": " + built.entranceZ() + ",\n"
                 + "      \"entranceConfidence\": 0.9,\n"
                 + "      \"allowedRotations\": [0, 90, 180, 270],\n"
-                + "      \"mirrorAllowed\": true,\n"
+                + "      \"mirrorAllowed\": false,\n"
                 + "      \"weight\": 1.0,\n"
-                + "      \"tags\": [\"" + spec.archetype() + "\"],\n"
+                + "      \"tags\": [\"" + spec.archetype() + "\""
+                + (spec.role() == BuildingRole.DOCK || "lighthouse".equals(spec.archetype())
+                || "coastal_villa".equals(spec.archetype()) || "pier".equals(spec.archetype())
+                ? ", \"coastal\"" : "")
+                + "],\n"
                 + "      \"biomeTags\": [],\n"
-                + "      \"coastalRequired\": false,\n"
+                + "      \"coastalRequired\": "
+                + (spec.role() == BuildingRole.DOCK || "lighthouse".equals(spec.archetype())
+                || "pier".equals(spec.archetype())) + ",\n"
                 + "      \"underground\": " + spec.underground() + ",\n"
-                + "      \"defensive\": " + spec.defensive() + ",\n"
+                + "      \"defensive\": " + (spec.defensive()
+                || spec.role() == BuildingRole.CASTLE_KEEP || spec.role() == BuildingRole.GATEHOUSE
+                || spec.role() == BuildingRole.TOWER || spec.role() == BuildingRole.WALL_SEGMENT) + ",\n"
                 + "      \"uniquePerSettlement\": " + unique + ",\n"
                 + "      \"uniquePerKingdom\": " + (spec.role() == BuildingRole.PALACE) + ",\n"
-                + "      \"requiredClearance\": 1,\n"
-                + "      \"terrainTolerance\": 3,\n"
+                + "      \"requiredClearance\": "
+                + (unique ? 2 : (spec.role() == BuildingRole.HOUSE ? 1 : 1)) + ",\n"
+                + "      \"terrainTolerance\": " + (built.foundation() == FoundationMode.HILLSIDE ? 6
+                : built.foundation() == FoundationMode.TERRACED ? 5 : 3) + ",\n"
                 + "      \"foundationMode\": \"" + built.foundation().name() + "\",\n"
                 + "      \"anchor\": \"center\",\n"
                 + "      \"interiorClass\": \"" + InteriorClass.FULL_INTERIOR.name() + "\",\n"
@@ -577,10 +981,25 @@ public final class CultureStructureAuthor {
                 + "      \"contentPath\": \"" + contentPath + "\",\n"
                 + "      \"sourceHash\": \"" + built.contentHash() + "\",\n"
                 + "      \"contentHash\": \"" + built.contentHash() + "\",\n"
+                + "      \"geometryHash\": \"" + built.geometryHash() + "\",\n"
+                + "      \"uniquenessGroup\": \"" + spec.role().name().toLowerCase(Locale.ROOT)
+                + ":" + uniquenessArchetype(spec) + "\",\n"
                 + "      \"importRevision\": " + StructureCatalogVersions.CONTENT_REVISION + ",\n"
                 + "      \"status\": \"" + ImportStatus.AUTHORED.name() + "\",\n"
                 + "      \"sanitized\": false\n"
                 + "    }";
+    }
+
+    /** Collapse palace/keep variants into one uniqueness group for landmark uniqueness. */
+    private static String uniquenessArchetype(Spec spec) {
+        return switch (spec.role()) {
+            case PALACE -> "palace";
+            case CASTLE_KEEP -> "keep";
+            case TEMPLE -> "temple";
+            case MARKET_HALL -> "market_hall";
+            case MONUMENT -> "monument";
+            default -> spec.archetype();
+        };
     }
 
     private void writeCultureJson(CultureDefinition c, Path path) throws IOException {
@@ -593,19 +1012,21 @@ public final class CultureStructureAuthor {
 
     private static List<Spec> surfaceSpecs(String culture) {
         List<Spec> list = new ArrayList<>();
-        // Residential ~28
-        add(list, BuildingRole.HOUSE, "poor_hut", SettlementTier.HAMLET, SettlementTier.VILLAGE, WealthClass.POOR, 3);
+        // Residential — majority of variation
+        add(list, BuildingRole.HOUSE, "poor_hut", SettlementTier.HAMLET, SettlementTier.VILLAGE, WealthClass.POOR, 4);
         add(list, BuildingRole.HOUSE, cultureHouse(culture), SettlementTier.HAMLET, SettlementTier.CITY, WealthClass.COMMON, 6);
-        add(list, BuildingRole.HOUSE, "medium_house", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 4);
-        add(list, BuildingRole.HOUSE, "artisan_house", SettlementTier.TOWN, SettlementTier.CITY, WealthClass.COMFORTABLE, 3);
-        add(list, BuildingRole.HOUSE, "merchant_house", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 3);
-        add(list, BuildingRole.TOWNHOUSE, "townhouse", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 4);
+        add(list, BuildingRole.HOUSE, "medium_house", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 5);
+        add(list, BuildingRole.HOUSE, "artisan_house", SettlementTier.TOWN, SettlementTier.CITY, WealthClass.COMFORTABLE, 4);
+        add(list, BuildingRole.HOUSE, "merchant_house", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 4);
+        add(list, BuildingRole.HOUSE, "corner_house", SettlementTier.TOWN, SettlementTier.CITY, WealthClass.COMMON, 3);
+        add(list, BuildingRole.TOWNHOUSE, "townhouse", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 5);
         add(list, BuildingRole.MANOR, cultureManor(culture), SettlementTier.CITY, SettlementTier.CAPITAL, WealthClass.WEALTHY, 3);
         add(list, BuildingRole.PALACE, culturePalace(culture), SettlementTier.CAPITAL, SettlementTier.CAPITAL, WealthClass.ROYAL, 2);
-        // Agriculture ~10
-        add(list, BuildingRole.FARMHOUSE, "farmhouse", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 3);
+        // Agriculture
+        add(list, BuildingRole.FARMHOUSE, "farmhouse", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 4);
         add(list, BuildingRole.BARN, "barn", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.POOR, 3);
         add(list, BuildingRole.MILL, "mill", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 2);
+        add(list, BuildingRole.SAWMILL, "sawmill", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 2);
         add(list, BuildingRole.WAREHOUSE, "granary", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMMON, 2);
         // Commerce / craft ~18
         add(list, BuildingRole.MARKET_STALL, "market_stall", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.POOR, 3);
@@ -640,53 +1061,56 @@ public final class CultureStructureAuthor {
     }
 
     private static void addCultureSpecials(List<Spec> list, String culture) {
+        // Only archetypes NOT already emitted by cultureHouse/Temple/Palace/etc.
         switch (culture) {
             case "nordheim" -> {
-                add(list, BuildingRole.HOUSE, "longhouse", SettlementTier.VILLAGE, SettlementTier.CAPITAL, WealthClass.COMMON, 3);
-                add(list, BuildingRole.TEMPLE, "stave_temple", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 2);
+                add(list, BuildingRole.HOUSE, "longhouse", SettlementTier.VILLAGE, SettlementTier.CAPITAL, WealthClass.COMMON, 4);
+                add(list, BuildingRole.WAREHOUSE, "mead_hall", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 2);
             }
             case "sahari" -> {
                 add(list, BuildingRole.HOUSE, "courtyard_house", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 3);
                 add(list, BuildingRole.WAREHOUSE, "caravanserai", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 2);
             }
             case "yamato" -> {
-                add(list, BuildingRole.HOUSE, "minka", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 3);
-                add(list, BuildingRole.HOUSE, "machiya", SettlementTier.TOWN, SettlementTier.CITY, WealthClass.COMFORTABLE, 2);
-                add(list, BuildingRole.TEMPLE, "pagoda", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 2);
+                add(list, BuildingRole.HOUSE, "machiya", SettlementTier.TOWN, SettlementTier.CITY, WealthClass.COMFORTABLE, 3);
+                add(list, BuildingRole.HOUSE, "compound_house", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.WEALTHY, 2);
             }
             case "helvetia" -> {
-                add(list, BuildingRole.HOUSE, "chalet", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 3);
-                add(list, BuildingRole.TAVERN, "mountain_inn", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 2);
+                add(list, BuildingRole.TAVERN, "mountain_inn", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 3);
+                add(list, BuildingRole.HOUSE, "alpine_cottage", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 3);
             }
             case "amaru" -> {
-                add(list, BuildingRole.TEMPLE, "step_pyramid", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.NOBLE, 2);
                 add(list, BuildingRole.HOUSE, "terrace_house", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 3);
+                add(list, BuildingRole.WAREHOUSE, "terrace_storehouse", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMMON, 2);
             }
             case "varangian" -> {
                 add(list, BuildingRole.WAREHOUSE, "trading_hall", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 2);
-                add(list, BuildingRole.HOUSE, "log_house", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 3);
+                add(list, BuildingRole.HOUSE, "izba", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 3);
             }
             case "celtara" -> {
-                add(list, BuildingRole.HOUSE, "roundhouse", SettlementTier.HAMLET, SettlementTier.TOWN, WealthClass.COMMON, 4);
-                add(list, BuildingRole.TEMPLE, "druid_grove", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 2);
+                add(list, BuildingRole.HOUSE, "clan_hall", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMFORTABLE, 3);
+                add(list, BuildingRole.WALL_SEGMENT, "hillfort_palisade", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMMON, 3);
             }
             case "qin" -> {
                 add(list, BuildingRole.HOUSE, "siheyuan", SettlementTier.TOWN, SettlementTier.CITY, WealthClass.COMFORTABLE, 3);
-                add(list, BuildingRole.TEMPLE, "pagoda", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 2);
+                add(list, BuildingRole.GATEHOUSE, "axial_gate", SettlementTier.CITY, SettlementTier.CAPITAL, WealthClass.COMMON, 2);
             }
             case "atlantea" -> {
-                add(list, BuildingRole.HOUSE, "coastal_villa", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.WEALTHY, 2);
+                add(list, BuildingRole.HOUSE, "coastal_villa", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.WEALTHY, 3);
                 add(list, BuildingRole.TOWER, "lighthouse", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMMON, 2);
             }
             case "steppeborn" -> {
-                add(list, BuildingRole.HOUSE, "yurt", SettlementTier.HAMLET, SettlementTier.CITY, WealthClass.COMMON, 4);
                 add(list, BuildingRole.HOUSE, "ger", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 3);
-                add(list, BuildingRole.PALACE, "khan_hall", SettlementTier.CITY, SettlementTier.CAPITAL, WealthClass.ROYAL, 2);
+                add(list, BuildingRole.WAREHOUSE, "steppe_compound", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMMON, 2);
             }
             case "ironvale" -> {
                 add(list, BuildingRole.SMITHY, "forge_hall", SettlementTier.TOWN, SettlementTier.CAPITAL, WealthClass.COMMON, 3);
                 add(list, BuildingRole.MINE_ENTRANCE, "mine_hall", SettlementTier.HAMLET, SettlementTier.CITY, WealthClass.POOR, 3);
-                add(list, BuildingRole.HOUSE, "stout_house", SettlementTier.HAMLET, SettlementTier.CITY, WealthClass.COMMON, 3);
+                add(list, BuildingRole.WAREHOUSE, "ore_store", SettlementTier.VILLAGE, SettlementTier.CITY, WealthClass.COMMON, 2);
+            }
+            case "avalon" -> {
+                add(list, BuildingRole.HOUSE, "cottage", SettlementTier.HAMLET, SettlementTier.VILLAGE, WealthClass.COMMON, 3);
+                add(list, BuildingRole.TEMPLE, "abbey_wing", SettlementTier.CITY, SettlementTier.CAPITAL, WealthClass.COMFORTABLE, 2);
             }
             default -> {
             }
@@ -695,24 +1119,39 @@ public final class CultureStructureAuthor {
 
     private static List<Spec> wizardSpecs() {
         List<Spec> list = new ArrayList<>();
-        addU(list, BuildingRole.HOUSE, "root_dwelling", 6);
-        addU(list, BuildingRole.HOUSE, "fungal_dwelling", 5);
-        addU(list, BuildingRole.MANOR, "root_hall", 3);
-        addU(list, BuildingRole.SCHOOL, "arcane_library", 3);
-        addU(list, BuildingRole.WORKSHOP, "alchemy_chamber", 3);
-        addU(list, BuildingRole.TEMPLE, "ritual_chamber", 3);
-        addU(list, BuildingRole.WAREHOUSE, "fungal_farm", 3);
-        addU(list, BuildingRole.WAREHOUSE, "arcane_vault", 2);
-        addU(list, BuildingRole.GATEHOUSE, "portal_chamber", 2);
-        addU(list, BuildingRole.PALACE, "council_cavern", 2);
-        addU(list, BuildingRole.GUARDHOUSE, "guard_cavern", 3);
-        addU(list, BuildingRole.MARKET_HALL, "cavern_market", 3);
-        addU(list, BuildingRole.CLINIC, "spore_clinic", 2);
-        addU(list, BuildingRole.TOWER, "crystal_spire", 3);
-        addU(list, BuildingRole.WELL, "glow_well", 2);
-        addU(list, BuildingRole.MONUMENT, "mycel_monument", 2);
-        addU(list, BuildingRole.BARRACKS, "root_barracks", 2);
-        addU(list, BuildingRole.TAVERN, "glowcap_tavern", 2);
+        // Target ~100+ useful underground assets
+        addU(list, BuildingRole.HOUSE, "root_dwelling", 8);
+        addU(list, BuildingRole.HOUSE, "fungal_dwelling", 7);
+        addU(list, BuildingRole.HOUSE, "spore_cottage", 6);
+        addU(list, BuildingRole.HOUSE, "crystal_home", 5);
+        addU(list, BuildingRole.TOWNHOUSE, "cavern_row", 5);
+        addU(list, BuildingRole.MANOR, "root_hall", 4);
+        addU(list, BuildingRole.MANOR, "mycel_manor", 3);
+        addU(list, BuildingRole.SCHOOL, "arcane_library", 4);
+        addU(list, BuildingRole.SCHOOL, "rune_school", 3);
+        addU(list, BuildingRole.WORKSHOP, "alchemy_chamber", 4);
+        addU(list, BuildingRole.WORKSHOP, "crystal_workshop", 3);
+        addU(list, BuildingRole.TEMPLE, "ritual_chamber", 4);
+        addU(list, BuildingRole.TEMPLE, "spore_shrine", 3);
+        addU(list, BuildingRole.WAREHOUSE, "fungal_farm", 4);
+        addU(list, BuildingRole.WAREHOUSE, "arcane_vault", 3);
+        addU(list, BuildingRole.WAREHOUSE, "root_store", 3);
+        addU(list, BuildingRole.GATEHOUSE, "portal_chamber", 3);
+        addU(list, BuildingRole.PALACE, "council_cavern", 3);
+        addU(list, BuildingRole.GUARDHOUSE, "guard_cavern", 4);
+        addU(list, BuildingRole.MARKET_HALL, "cavern_market", 4);
+        addU(list, BuildingRole.MARKET_STALL, "glow_stall", 4);
+        addU(list, BuildingRole.CLINIC, "spore_clinic", 3);
+        addU(list, BuildingRole.TOWER, "crystal_spire", 4);
+        addU(list, BuildingRole.TOWER, "root_spire", 3);
+        addU(list, BuildingRole.WELL, "glow_well", 3);
+        addU(list, BuildingRole.MONUMENT, "mycel_monument", 3);
+        addU(list, BuildingRole.BARRACKS, "root_barracks", 3);
+        addU(list, BuildingRole.TAVERN, "glowcap_tavern", 3);
+        addU(list, BuildingRole.SMITHY, "deep_forge", 3);
+        addU(list, BuildingRole.CASTLE_KEEP, "root_keep", 2);
+        addU(list, BuildingRole.PRISON, "spore_cells", 2);
+        addU(list, BuildingRole.WALL_SEGMENT, "root_bulwark", 3);
         return list;
     }
 
@@ -764,6 +1203,7 @@ public final class CultureStructureAuthor {
     }
 
     private static String cultureHouse(String c) {
+        // Distinct from addCultureSpecials archetypes to avoid duplicate assetIds.
         return switch (c) {
             case "nordheim" -> "timber_house";
             case "sahari" -> "sandstone_house";

@@ -20,9 +20,13 @@ import java.util.regex.Pattern;
 /**
  * Public BuildPaste discovery client.
  * Search uses the public SvelteKit {@code /search/__data.json} endpoint.
- * Structure block payloads are delivered only via the authenticated Minecraft mod
- * {@code /paste} flow and are therefore marked {@code SOURCE_UNAVAILABLE} here —
- * we never bypass premium/auth.
+ *
+ * <p>M6.1 re-audit (unauthenticated): search/build pages expose titles, slugs, premium flags,
+ * and descriptive text mentioning Minecraft NBT changes — not downloadable structure payloads.
+ * "download" hits in search results point at external map sites, not BuildPaste block arrays.
+ * {@code /build/.../__data.json} returns empty nodes for sampled public builds.
+ * Structure block payloads remain gated behind the authenticated in-game {@code /paste} flow.
+ * We never bypass login/premium/private endpoints. Use {@code import-local} for manual MLS/NBT.
  */
 public final class BuildPasteClient {
     public static final String BASE = "https://buildpaste.net";
